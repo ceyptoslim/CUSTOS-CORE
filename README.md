@@ -97,7 +97,7 @@ Tests cover the policy engine, rate limiter, API endpoints, input validation, an
 
 ---
 
-## What Is Implemented (v0.1)
+## What Is Implemented (v0.2)
 
 | Component | Status |
 |---|---|
@@ -105,10 +105,13 @@ Tests cover the policy engine, rate limiter, API endpoints, input validation, an
 | Rate limiter (per-client, per-minute/hour/token) | ✅ |
 | Input validation layer | ✅ |
 | Hash-chained audit ledger (tamper-evident) | ✅ |
+| SQLite audit persistence (survives restarts) | ✅ |
+| JWT authentication on /v1/evaluate | ✅ |
 | Prometheus metrics | ✅ |
 | Grafana dashboard (auto-provisioned) | ✅ |
 | Docker Compose stack | ✅ |
 | GitHub Actions CI (lint + test + build) | ✅ |
+| Bandit security scanning in CI | ✅ |
 | `/health` and `/ready` endpoints | ✅ |
 
 ---
@@ -135,3 +138,4 @@ Every push runs `ruff` lint + `pytest` + Docker build via GitHub Actions.
 ## License
 
 Apache 2.0 — see [LICENSE](LICENSE)
+
