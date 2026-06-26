@@ -1,11 +1,15 @@
 """
-CUSTOS Pydantic Models v0.3
-Added trace_id to EvaluateResponse and AuditRecordResponse.
+CUSTOS Pydantic Models v0.4
+Added schemas for replay, policy diff, and snapshot endpoints.
 """
 
-from typing import Optional
+from typing import Any, Optional
 from pydantic import BaseModel, Field, field_validator
 
+
+# ---------------------------------------------------------------------------
+# Existing schemas (unchanged)
+# ---------------------------------------------------------------------------
 
 class EvaluateRequest(BaseModel):
     client_id: str = Field(default="default", min_length=1, max_length=128)
@@ -34,7 +38,7 @@ class EvaluateResponse(BaseModel):
     reason: str
     client_id: str
     audit_record_hash: Optional[str] = None
-    trace_id: Optional[str] = None          # v0.3: span correlation
+    trace_id: Optional[str] = None
 
 
 class HealthResponse(BaseModel):
@@ -47,16 +51,6 @@ class ReadyResponse(BaseModel):
     checks: dict
 
 
-class MetricsSnapshot(BaseModel):
-    requests_total: int
-    requests_allowed: int
-    requests_denied: int
-    requests_audited: int
-    rate_limit_hits: int
-    audit_chain_length: int
-    uptime_seconds: float
-
-
 class AuditRecordResponse(BaseModel):
     timestamp: float
     client_id: str
@@ -66,4 +60,82 @@ class AuditRecordResponse(BaseModel):
     content_hash: str
     record_hash: str
     previous_hash: str
-    trace_id: Optional[str] = None          # v0.3: span correlation
+    trace_id: Optional[str] = None
+
+
+# ---------------------------------------------------------------------------
+# v0.4 — Replay schemas
+# ---------------------------------------------------------------------------
+
+class ReplayRequest(BaseModel):
+    record_hash: str = Field(..., min_length=64, max_length=64)
+    original_content: str = Field(..., min_length=1, max_length=32_768)
+
+
+class ReplayResponse(BaseModel):
+    original_record_hash: str
+    original_timestamp: float
+    original_action: str
+    original_triggered_rule: Optional[str]
+    original_trace_id: Optional[str]
+    replayed_action: str
+    replayed_triggered_rule: Optional[str]
+    replayed_reason: str
+    decision_matches: bool
+    replay_timestamp: float
+    content_hash: str
+
+
+# ---------------------------------------------------------------------------
+# v0.4 — Policy diff schemas
+# ---------------------------------------------------------------------------
+
+class PolicyRuleRequest(BaseModel):
+    name: str
+    pattern: str
+    action: str = Field(..., pattern="^(allow|deny|audit)$")
+    reason: str
+
+
+class PolicyDiffRequest(BaseModel):
+    content: str = Field(..., min_length=1, max_length=32_768)
+    current_rules: list[PolicyRuleRequest]
+    proposed_rules: list[PolicyRuleRequest]
+
+
+class PolicyDiffResponse(BaseModel):
+    content_preview: str
+    current_action: str
+    current_triggered_rule: Optional[str]
+    current_reason: str
+    proposed_action: str
+    proposed_triggered_rule: Optional[str]
+    proposed_reason: str
+    decision_changed: bool
+    change_summary: str
+
+
+# ---------------------------------------------------------------------------
+# v0.4 — Snapshot schemas
+# ---------------------------------------------------------------------------
+
+class SnapshotResponse(BaseModel):
+    generated_at: float
+    start_time: Optional[float]
+    end_time: Optional[float]
+    record_count: int
+    records: list[Any]
+    chain_valid: bool
+    chain_verification_reason: str
+    latest_hash: str
+    snapshot_hash: str
+
+
+class SnapshotVerifyRequest(BaseModel):
+    snapshot: dict[str, Any]
+
+
+class SnapshotVerifyResponse(BaseModel):
+    valid: bool
+    reason: str
+    
