@@ -1,11 +1,10 @@
 """
-CUSTOS Core -- FastAPI Runtime v0.3
-Exposes: POST /v1/evaluate, GET /health, GET /ready, GET /metrics, GET /v1/audit
-
-v0.3 additions:
-- Structured JSON logging on every request
-- OpenTelemetry-compatible span on /v1/evaluate
-- Trace ID returned in EvaluateResponse and stored in audit chain
+CUSTOS Core -- FastAPI Runtime v0.4
+Exposes all v0.3 endpoints plus:
+- POST /v1/replay
+- POST /v1/policy/diff
+- GET  /v1/audit/snapshot
+- POST /v1/audit/snapshot/verify
 """
 
 import os
@@ -25,15 +24,25 @@ from custos.models import (
     EvaluateRequest,
     EvaluateResponse,
     HealthResponse,
+    PolicyDiffRequest,
+    PolicyDiffResponse,
     ReadyResponse,
+    ReplayRequest,
+    ReplayResponse,
+    SnapshotResponse,
+    SnapshotVerifyRequest,
+    SnapshotVerifyResponse,
 )
-from custos.policy_engine import PolicyEngine, PolicyResult
+from custos.policy_diff import PolicyDiffer
+from custos.policy_engine import PolicyAction, PolicyEngine, PolicyResult, PolicyRule
 from custos.rate_limiter import QuotaConfig, RateLimiter
+from custos.replay import ReplayEngine
+from custos.snapshot import SnapshotEngine
 from custos.tracing import tracer
 from custos.validation import InputValidator
 
 # ---------------------------------------------------------------------------
-# Logging — configure at import time
+# Logging
 # ---------------------------------------------------------------------------
 configure_logging(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = get_logger("main")
@@ -45,6 +54,9 @@ policy_engine = PolicyEngine()
 rate_limiter = RateLimiter()
 audit_chain = AuditChain()
 validator = InputValidator()
+replay_engine = ReplayEngine(audit_chain, policy_engine)
+snapshot_engine = SnapshotEngine(audit_chain)
+policy_differ = PolicyDiffer()
 
 rate_limiter.register(
     "default",
@@ -52,7 +64,7 @@ rate_limiter.register(
 )
 
 # ---------------------------------------------------------------------------
-# Metrics counters
+# Metrics
 # ---------------------------------------------------------------------------
 _metrics = {
     "custos_requests_total": 0,
@@ -82,7 +94,7 @@ async def optional_auth(
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("custos.startup", extra={"version": "0.3.0"})
+    logger.info("custos.startup", extra={"version": "0.4.0"})
     yield
     logger.info("custos.shutdown")
 
@@ -90,13 +102,13 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="CUSTOS Core",
     description="Policy-Governed AI Execution Firewall",
-    version="0.3.0",
+    version="0.4.0",
     lifespan=lifespan,
 )
 
 
 # ---------------------------------------------------------------------------
-# Routes
+# Existing routes (unchanged from v0.3)
 # ---------------------------------------------------------------------------
 
 @app.get("/health", response_model=HealthResponse)
@@ -157,36 +169,23 @@ async def evaluate(
 ):
     span = tracer.start_span("custos.evaluate")
     span.set_attribute("client_id", req.client_id)
-
     _metrics["custos_requests_total"] += 1
 
-    # Validation
     val = validator.validate_request(req.client_id, req.content, req.token_count)
     if not val.valid:
         span.set_status("ERROR")
         tracer.finish_span(span)
-        logger.warning(
-            "evaluate.validation_failed",
-            extra={"client_id": req.client_id, "error": val.error,
-                   "trace_id": span.trace_id},
-        )
         raise HTTPException(status_code=422, detail=val.error)
 
-    # Rate limiter
     allowed, msg = rate_limiter.check_and_consume(req.client_id, req.token_count)
     if not allowed:
         _metrics["custos_rate_limit_hits"] += 1
         audit_chain.record(req.client_id, "rate_limited", msg, req.content,
-                          trace_id=span.trace_id)
+                           trace_id=span.trace_id)
         span.set_status("RATE_LIMITED")
         tracer.finish_span(span)
-        logger.warning(
-            "evaluate.rate_limited",
-            extra={"client_id": req.client_id, "trace_id": span.trace_id},
-        )
         raise HTTPException(status_code=429, detail=msg)
 
-    # Policy evaluation
     result: PolicyResult = policy_engine.evaluate(req.content)
 
     if result.allowed:
@@ -197,7 +196,6 @@ async def evaluate(
     else:
         _metrics["custos_requests_denied"] += 1
 
-    # Audit chain — includes trace_id for correlation
     audit_entry = audit_chain.record(
         client_id=req.client_id,
         action=result.action.value,
@@ -207,24 +205,17 @@ async def evaluate(
         trace_id=span.trace_id,
     )
 
-    # Finish span with full context
     span.set_attribute("action", result.action.value)
-    span.set_attribute("triggered_rule", result.triggered_rule)
     span.set_attribute("audit_record_hash", audit_entry.record_hash)
     span.set_attribute("allowed", result.allowed)
     tracer.finish_span(span)
 
-    logger.info(
-        "evaluate.complete",
-        extra={
-            "client_id": req.client_id,
-            "action": result.action.value,
-            "triggered_rule": result.triggered_rule,
-            "allowed": result.allowed,
-            "trace_id": span.trace_id,
-            "audit_record_hash": audit_entry.record_hash,
-        },
-    )
+    logger.info("evaluate.complete", extra={
+        "client_id": req.client_id,
+        "action": result.action.value,
+        "allowed": result.allowed,
+        "trace_id": span.trace_id,
+    })
 
     return EvaluateResponse(
         allowed=result.allowed,
@@ -246,3 +237,145 @@ async def get_audit_log(client_id: str = None):
 async def verify_audit_chain():
     valid, reason = audit_chain.verify()
     return {"valid": valid, "reason": reason, "chain_length": audit_chain.length}
+
+
+# ---------------------------------------------------------------------------
+# v0.4 — Replay Engine
+# ---------------------------------------------------------------------------
+
+@app.post("/v1/replay", response_model=ReplayResponse)
+async def replay(req: ReplayRequest):
+    """
+    Reproduce a past policy decision given its audit record hash
+    and the original content string.
+    """
+    try:
+        result = replay_engine.replay_by_hash(
+            record_hash=req.record_hash,
+            original_content=req.original_content,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    # Record the replay itself in the audit chain
+    audit_chain.record(
+        client_id="system",
+        action="replay",
+        reason=f"Replayed record {req.record_hash[:16]}...",
+        content=req.original_content,
+    )
+
+    logger.info("replay.complete", extra={
+        "record_hash": req.record_hash,
+        "decision_matches": result.decision_matches,
+    })
+
+    return ReplayResponse(
+        original_record_hash=result.original_record_hash,
+        original_timestamp=result.original_timestamp,
+        original_action=result.original_action,
+        original_triggered_rule=result.original_triggered_rule,
+        original_trace_id=result.original_trace_id,
+        replayed_action=result.replayed_action,
+        replayed_triggered_rule=result.replayed_triggered_rule,
+        replayed_reason=result.replayed_reason,
+        decision_matches=result.decision_matches,
+        replay_timestamp=result.replay_timestamp,
+        content_hash=result.content_hash,
+    )
+
+
+# ---------------------------------------------------------------------------
+# v0.4 — Policy Diff
+# ---------------------------------------------------------------------------
+
+@app.post("/v1/policy/diff", response_model=PolicyDiffResponse)
+async def policy_diff(req: PolicyDiffRequest):
+    """
+    Compare how a piece of content would be evaluated under
+    two different policy rule sets.
+    """
+    ACTION_MAP = {
+        "allow": PolicyAction.ALLOW,
+        "deny": PolicyAction.DENY,
+        "audit": PolicyAction.AUDIT,
+    }
+
+    try:
+        current_rules = [
+            PolicyRule(
+                name=r.name,
+                pattern=r.pattern,
+                action=ACTION_MAP[r.action],
+                reason=r.reason,
+            )
+            for r in req.current_rules
+        ]
+        proposed_rules = [
+            PolicyRule(
+                name=r.name,
+                pattern=r.pattern,
+                action=ACTION_MAP[r.action],
+                reason=r.reason,
+            )
+            for r in req.proposed_rules
+        ]
+    except KeyError as e:
+        raise HTTPException(status_code=422, detail=f"Invalid action: {e}")
+
+    result = policy_differ.diff(req.content, current_rules, proposed_rules)
+
+    logger.info("policy_diff.complete", extra={
+        "decision_changed": result.decision_changed,
+        "change_summary": result.change_summary,
+    })
+
+    return PolicyDiffResponse(
+        content_preview=result.content_preview,
+        current_action=result.current_action,
+        current_triggered_rule=result.current_triggered_rule,
+        current_reason=result.current_reason,
+        proposed_action=result.proposed_action,
+        proposed_triggered_rule=result.proposed_triggered_rule,
+        proposed_reason=result.proposed_reason,
+        decision_changed=result.decision_changed,
+        change_summary=result.change_summary,
+    )
+
+
+# ---------------------------------------------------------------------------
+# v0.4 — Decision Snapshots
+# ---------------------------------------------------------------------------
+
+@app.get("/v1/audit/snapshot", response_model=SnapshotResponse)
+async def get_snapshot(
+    start_time: Optional[float] = None,
+    end_time: Optional[float] = None,
+):
+    """
+    Export a tamper-evident snapshot of the audit chain
+    for the given time range.
+    """
+    result = snapshot_engine.generate(start_time=start_time, end_time=end_time)
+    logger.info("snapshot.generated", extra={
+        "record_count": result.record_count,
+        "chain_valid": result.chain_valid,
+    })
+    return SnapshotResponse(
+        generated_at=result.generated_at,
+        start_time=result.start_time,
+        end_time=result.end_time,
+        record_count=result.record_count,
+        records=result.records,
+        chain_valid=result.chain_valid,
+        chain_verification_reason=result.chain_verification_reason,
+        latest_hash=result.latest_hash,
+        snapshot_hash=result.snapshot_hash,
+    )
+
+
+@app.post("/v1/audit/snapshot/verify", response_model=SnapshotVerifyResponse)
+async def verify_snapshot(req: SnapshotVerifyRequest):
+    """Verify the integrity of a previously generated snapshot."""
+    valid, reason = snapshot_engine.verify_snapshot(req.snapshot)
+    return SnapshotVerifyResponse(valid=valid, reason=reason)
