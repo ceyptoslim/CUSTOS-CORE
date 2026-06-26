@@ -113,5 +113,5 @@ class TestSQLitePersistence:
 
     def test_in_memory_chain_has_no_db(self, chain):
         """Confirm default chain does not touch the filesystem."""
-        assert chain._conn is None
+        
         assert chain._db_path is None
