@@ -1,5 +1,8 @@
 """
 Tests for JWT authentication (custos/auth.py) — Issue #3
+
+Strategy: use FastAPI dependency_overrides to toggle auth enforcement
+per-test. No env var flipping, no module reload needed.
 """
 
 import os
@@ -11,16 +14,38 @@ import pytest
 import jwt as pyjwt
 from fastapi.testclient import TestClient
 
-from custos.auth import _JWT_SECRET, _JWT_ALGORITHM, create_token
+import main as app_module
+from custos.auth import _JWT_SECRET, _JWT_ALGORITHM, create_token, verify_token
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _enforce_auth(credentials=None):
+    """Dependency override that always runs real JWT verification."""
+    from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+    from fastapi import Request
+    # Re-use the real verify_token — just bypass the AUTH_DISABLED check
+    return verify_token(credentials)
 
 
 @pytest.fixture
-def client():
-    os.environ["AUTH_DISABLED"] = "0"
+def client_with_auth():
+    """TestClient where auth IS enforced regardless of AUTH_DISABLED env var."""
+    from main import app, optional_auth
+    # Override the optional_auth dependency to always enforce
+    app.dependency_overrides[optional_auth] = verify_token
+    with TestClient(app, raise_server_exceptions=False) as c:
+        yield c
+    app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def client_no_auth():
+    """TestClient where auth is disabled (normal CI mode)."""
     from main import app
-    c = TestClient(app, raise_server_exceptions=True)
-    yield c
-    os.environ["AUTH_DISABLED"] = "1"  # restore default for other tests
+    return TestClient(app)
 
 
 @pytest.fixture
@@ -33,10 +58,14 @@ def expired_token():
     payload = {
         "sub": "default",
         "iat": int(time.time()) - 7200,
-        "exp": int(time.time()) - 3600,  # already expired
+        "exp": int(time.time()) - 3600,
     }
     return pyjwt.encode(payload, _JWT_SECRET, algorithm=_JWT_ALGORITHM)
 
+
+# ---------------------------------------------------------------------------
+# Token creation tests (no HTTP needed)
+# ---------------------------------------------------------------------------
 
 class TestTokenCreation:
     def test_create_token_returns_string(self):
@@ -56,40 +85,44 @@ class TestTokenCreation:
         assert payload["exp"] > time.time()
 
 
+# ---------------------------------------------------------------------------
+# Auth enforcement tests (dependency override enables auth)
+# ---------------------------------------------------------------------------
+
 class TestAuthEnforcement:
-    def test_missing_token_returns_401(self, client):
-        r = client.post("/v1/evaluate", json={
+    def test_missing_token_returns_401(self, client_with_auth):
+        r = client_with_auth.post("/v1/evaluate", json={
             "client_id": "default",
             "content": "hello",
         })
         assert r.status_code == 401
 
-    def test_invalid_token_returns_401(self, client):
-        r = client.post(
+    def test_invalid_token_returns_401(self, client_with_auth):
+        r = client_with_auth.post(
             "/v1/evaluate",
             json={"client_id": "default", "content": "hello"},
             headers={"Authorization": "Bearer not.a.real.token"},
         )
         assert r.status_code == 401
 
-    def test_expired_token_returns_403(self, client, expired_token):
-        r = client.post(
+    def test_expired_token_returns_403(self, client_with_auth, expired_token):
+        r = client_with_auth.post(
             "/v1/evaluate",
             json={"client_id": "default", "content": "hello"},
             headers={"Authorization": f"Bearer {expired_token}"},
         )
         assert r.status_code == 403
 
-    def test_valid_token_allows_request(self, client, valid_token):
-        r = client.post(
+    def test_valid_token_allows_request(self, client_with_auth, valid_token):
+        r = client_with_auth.post(
             "/v1/evaluate",
             json={"client_id": "default", "content": "Summarize document"},
             headers={"Authorization": f"Bearer {valid_token}"},
         )
         assert r.status_code == 200
 
-    def test_valid_token_on_clean_content_returns_allow(self, client, valid_token):
-        r = client.post(
+    def test_valid_token_on_clean_content_returns_allow(self, client_with_auth, valid_token):
+        r = client_with_auth.post(
             "/v1/evaluate",
             json={"client_id": "default", "content": "What is the weather?"},
             headers={"Authorization": f"Bearer {valid_token}"},
@@ -98,12 +131,11 @@ class TestAuthEnforcement:
         assert data["allowed"] is True
         assert data["action"] == "allow"
 
-    def test_health_endpoint_requires_no_auth(self, client):
-        """Health and metrics must remain unauthenticated for load balancer probes."""
-        assert client.get("/health").status_code == 200
+    def test_health_endpoint_requires_no_auth(self, client_with_auth):
+        assert client_with_auth.get("/health").status_code == 200
 
-    def test_metrics_endpoint_requires_no_auth(self, client):
-        assert client.get("/metrics").status_code == 200
+    def test_metrics_endpoint_requires_no_auth(self, client_with_auth):
+        assert client_with_auth.get("/metrics").status_code == 200
 
-    def test_ready_endpoint_requires_no_auth(self, client):
-        assert client.get("/ready").status_code == 200
+    def test_ready_endpoint_requires_no_auth(self, client_with_auth):
+        assert client_with_auth.get("/ready").status_code == 200
