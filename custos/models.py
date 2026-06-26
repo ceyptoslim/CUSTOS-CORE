@@ -138,4 +138,3 @@ class SnapshotVerifyRequest(BaseModel):
 class SnapshotVerifyResponse(BaseModel):
     valid: bool
     reason: str
-    
