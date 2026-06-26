@@ -12,7 +12,7 @@ import time
 from typing import Optional
 
 import jwt
-from fastapi import HTTPException, Request, Security
+from fastapi import Depends, HTTPException, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 # ---------------------------------------------------------------------------
