@@ -1,0 +1,60 @@
+name: CUSTOS CI
+
+on:
+  push:
+    branches: [main, "ceyptoslim-patch-1"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Lint with ruff
+        run: |
+          pip install ruff==0.4.4
+          ruff check custos/ main.py
+
+      - name: Run tests
+        run: pytest tests/ -v --tb=short
+
+  docker:
+    name: Docker Build Check
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t custos-core:ci .
+
+      - name: Smoke test container
+        run: |
+          docker run -d --name custos-smoke -p 8000:8000 custos-core:ci
+          # Retry up to 30s; always stop container even on failure
+          trap "docker stop custos-smoke || true" EXIT
+          for i in $(seq 1 10); do
+            curl -sf http://localhost:8000/health && break
+            echo "Waiting for service... attempt $i"
+            sleep 3
+          done
+          curl -f http://localhost:8000/health
