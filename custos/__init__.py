@@ -2,15 +2,11 @@
 CUSTOS Core
 
 Policy-Governed AI Execution Firewall
-
-CUSTOS provides deterministic policy enforcement,
-auditability, observability, and governance controls
-for AI and automated systems.
 """
 
 __title__ = "custos"
 __description__ = "Policy-Governed AI Execution Firewall"
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 __author__ = "CUSTOS Security"
 __license__ = "Apache-2.0"
 
