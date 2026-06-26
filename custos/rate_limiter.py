@@ -7,7 +7,7 @@ dict mutation during iteration in get_all_quotas().
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Dict, Optional
+from typing import Dict
 
 
 @dataclass
