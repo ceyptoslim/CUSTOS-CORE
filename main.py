@@ -13,7 +13,7 @@ from fastapi.responses import PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from custos.audit import AuditChain
-from custos.auth import create_token, verify_token
+from custos.auth import verify_token
 from custos.models import (
     AuditRecordResponse,
     EvaluateRequest,
