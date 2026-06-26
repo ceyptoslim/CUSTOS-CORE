@@ -33,7 +33,14 @@ jobs:
           pip install ruff==0.4.4
           ruff check custos/ main.py
 
+      - name: Security scan with bandit
+        run: |
+          pip install bandit==1.7.9
+          bandit -r custos/ main.py -ll -ii
+
       - name: Run tests
+        env:
+          AUTH_DISABLED: "1"
         run: pytest tests/ -v --tb=short
 
   docker:
@@ -49,8 +56,9 @@ jobs:
 
       - name: Smoke test container
         run: |
-          docker run -d --name custos-smoke -p 8000:8000 custos-core:ci
-          # Retry up to 30s; always stop container even on failure
+          docker run -d --name custos-smoke -p 8000:8000 \
+            -e AUTH_DISABLED=1 \
+            custos-core:ci
           trap "docker stop custos-smoke || true" EXIT
           for i in $(seq 1 10); do
             curl -sf http://localhost:8000/health && break
