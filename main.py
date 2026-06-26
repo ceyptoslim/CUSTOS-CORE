@@ -3,13 +3,17 @@ CUSTOS Core -- FastAPI Runtime
 Exposes: POST /v1/evaluate, GET /health, GET /ready, GET /metrics, GET /v1/audit
 """
 
+import os
 import time
 from contextlib import asynccontextmanager
+from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import PlainTextResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from custos.audit import AuditChain
+from custos.auth import create_token, verify_token
 from custos.models import (
     AuditRecordResponse,
     EvaluateRequest,
@@ -29,7 +33,6 @@ rate_limiter = RateLimiter()
 audit_chain = AuditChain()
 validator = InputValidator()
 
-# Register default client
 rate_limiter.register(
     "default",
     QuotaConfig(requests_per_minute=60, requests_per_hour=1000, tokens_per_minute=100_000),
@@ -46,6 +49,24 @@ _metrics = {
     "custos_rate_limit_hits": 0,
     "custos_uptime_start": time.time(),
 }
+
+# ---------------------------------------------------------------------------
+# Auth dependency — checked at request time so AUTH_DISABLED env var works
+# in tests without module reload.
+# ---------------------------------------------------------------------------
+_bearer = HTTPBearer(auto_error=False)
+
+
+async def optional_auth(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
+) -> Optional[str]:
+    """
+    When AUTH_DISABLED=1: skip verification, return None.
+    Otherwise: run full JWT verification and return client_id.
+    """
+    if os.getenv("AUTH_DISABLED", "0") == "1":
+        return None
+    return verify_token(credentials)
 
 
 # ---------------------------------------------------------------------------
@@ -78,10 +99,6 @@ async def health():
 
 @app.get("/ready", response_model=ReadyResponse)
 async def ready():
-    """
-    Readiness probe -- Kubernetes calls this before routing traffic.
-    Checks that all subsystems are operational.
-    """
     checks = {
         "policy_engine": policy_engine.rule_count > 0,
         "rate_limiter": True,
@@ -96,7 +113,6 @@ async def ready():
 
 @app.get("/metrics", response_class=PlainTextResponse)
 async def metrics():
-    """Prometheus-compatible text exposition format."""
     uptime = round(time.time() - _metrics["custos_uptime_start"], 1)
     lines = [
         "# HELP custos_requests_total Total requests evaluated",
@@ -125,25 +141,24 @@ async def metrics():
 
 
 @app.post("/v1/evaluate", response_model=EvaluateResponse)
-async def evaluate(req: EvaluateRequest):
+async def evaluate(
+    req: EvaluateRequest,
+    _auth: Optional[str] = Depends(optional_auth),
+):
     _metrics["custos_requests_total"] += 1
 
-    # Validation
     val = validator.validate_request(req.client_id, req.content, req.token_count)
     if not val.valid:
         raise HTTPException(status_code=422, detail=val.error)
 
-    # Rate limiter
     allowed, msg = rate_limiter.check_and_consume(req.client_id, req.token_count)
     if not allowed:
         _metrics["custos_rate_limit_hits"] += 1
         audit_chain.record(req.client_id, "rate_limited", msg, req.content)
         raise HTTPException(status_code=429, detail=msg)
 
-    # Policy evaluation
     result: PolicyResult = policy_engine.evaluate(req.content)
 
-    # Metrics
     if result.allowed:
         if result.action.value == "audit":
             _metrics["custos_requests_audited"] += 1
@@ -152,7 +167,6 @@ async def evaluate(req: EvaluateRequest):
     else:
         _metrics["custos_requests_denied"] += 1
 
-    # Audit chain
     audit_entry = audit_chain.record(
         client_id=req.client_id,
         action=result.action.value,
@@ -173,12 +187,10 @@ async def evaluate(req: EvaluateRequest):
 
 @app.get("/v1/audit", response_model=list[AuditRecordResponse])
 async def get_audit_log(client_id: str = None):
-    """Return audit chain records. Optionally filter by client_id."""
     return audit_chain.get_records(client_id=client_id)
 
 
 @app.get("/v1/audit/verify")
 async def verify_audit_chain():
-    """Verify the integrity of the audit chain."""
     valid, reason = audit_chain.verify()
     return {"valid": valid, "reason": reason, "chain_length": audit_chain.length}
