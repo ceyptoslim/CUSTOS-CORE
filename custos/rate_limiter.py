@@ -7,7 +7,7 @@ dict mutation during iteration in get_all_quotas().
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Dict
+
 
 
 @dataclass
@@ -28,8 +28,8 @@ class QuotaState:
 
 class RateLimiter:
     def __init__(self):
-        self._quotas: Dict[str, QuotaConfig] = {}
-        self._state: Dict[str, QuotaState] = {}
+        self._quotas: dict[str, QuotaConfig] = {}
+        self._state: dict[str, QuotaState] = {}
         self._lock = threading.RLock()  # RLock prevents re-entrant deadlock
 
     def register(self, client_id: str, config: QuotaConfig) -> None:
@@ -71,7 +71,7 @@ class RateLimiter:
             state.token_count += tokens
             return True, "OK"
 
-    def get_all_quotas(self) -> Dict[str, dict]:
+    def get_all_quotas(self) -> dict[str, dict]:
         """
         FIX APPLIED: list(self._quotas.keys()) snapshot prevents
         RuntimeError from dict mutation during iteration.
