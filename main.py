@@ -1,6 +1,11 @@
 """
-CUSTOS Core -- FastAPI Runtime
+CUSTOS Core -- FastAPI Runtime v0.3
 Exposes: POST /v1/evaluate, GET /health, GET /ready, GET /metrics, GET /v1/audit
+
+v0.3 additions:
+- Structured JSON logging on every request
+- OpenTelemetry-compatible span on /v1/evaluate
+- Trace ID returned in EvaluateResponse and stored in audit chain
 """
 
 import os
@@ -14,6 +19,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from custos.audit import AuditChain
 from custos.auth import verify_token
+from custos.logging import configure_logging, get_logger
 from custos.models import (
     AuditRecordResponse,
     EvaluateRequest,
@@ -23,7 +29,14 @@ from custos.models import (
 )
 from custos.policy_engine import PolicyEngine, PolicyResult
 from custos.rate_limiter import QuotaConfig, RateLimiter
+from custos.tracing import tracer
 from custos.validation import InputValidator
+
+# ---------------------------------------------------------------------------
+# Logging — configure at import time
+# ---------------------------------------------------------------------------
+configure_logging(level=os.getenv("LOG_LEVEL", "INFO"))
+logger = get_logger("main")
 
 # ---------------------------------------------------------------------------
 # Global singletons
@@ -51,8 +64,7 @@ _metrics = {
 }
 
 # ---------------------------------------------------------------------------
-# Auth dependency — checked at request time so AUTH_DISABLED env var works
-# in tests without module reload.
+# Auth
 # ---------------------------------------------------------------------------
 _bearer = HTTPBearer(auto_error=False)
 
@@ -60,10 +72,6 @@ _bearer = HTTPBearer(auto_error=False)
 async def optional_auth(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
 ) -> Optional[str]:
-    """
-    When AUTH_DISABLED=1: skip verification, return None.
-    Otherwise: run full JWT verification and return client_id.
-    """
     if os.getenv("AUTH_DISABLED", "0") == "1":
         return None
     return verify_token(credentials)
@@ -74,13 +82,15 @@ async def optional_auth(
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logger.info("custos.startup", extra={"version": "0.3.0"})
     yield
+    logger.info("custos.shutdown")
 
 
 app = FastAPI(
     title="CUSTOS Core",
     description="Policy-Governed AI Execution Firewall",
-    version="0.1.0",
+    version="0.3.0",
     lifespan=lifespan,
 )
 
@@ -145,18 +155,38 @@ async def evaluate(
     req: EvaluateRequest,
     _auth: Optional[str] = Depends(optional_auth),
 ):
+    span = tracer.start_span("custos.evaluate")
+    span.set_attribute("client_id", req.client_id)
+
     _metrics["custos_requests_total"] += 1
 
+    # Validation
     val = validator.validate_request(req.client_id, req.content, req.token_count)
     if not val.valid:
+        span.set_status("ERROR")
+        tracer.finish_span(span)
+        logger.warning(
+            "evaluate.validation_failed",
+            extra={"client_id": req.client_id, "error": val.error,
+                   "trace_id": span.trace_id},
+        )
         raise HTTPException(status_code=422, detail=val.error)
 
+    # Rate limiter
     allowed, msg = rate_limiter.check_and_consume(req.client_id, req.token_count)
     if not allowed:
         _metrics["custos_rate_limit_hits"] += 1
-        audit_chain.record(req.client_id, "rate_limited", msg, req.content)
+        audit_chain.record(req.client_id, "rate_limited", msg, req.content,
+                          trace_id=span.trace_id)
+        span.set_status("RATE_LIMITED")
+        tracer.finish_span(span)
+        logger.warning(
+            "evaluate.rate_limited",
+            extra={"client_id": req.client_id, "trace_id": span.trace_id},
+        )
         raise HTTPException(status_code=429, detail=msg)
 
+    # Policy evaluation
     result: PolicyResult = policy_engine.evaluate(req.content)
 
     if result.allowed:
@@ -167,12 +197,33 @@ async def evaluate(
     else:
         _metrics["custos_requests_denied"] += 1
 
+    # Audit chain — includes trace_id for correlation
     audit_entry = audit_chain.record(
         client_id=req.client_id,
         action=result.action.value,
         reason=result.reason,
         content=req.content,
         triggered_rule=result.triggered_rule,
+        trace_id=span.trace_id,
+    )
+
+    # Finish span with full context
+    span.set_attribute("action", result.action.value)
+    span.set_attribute("triggered_rule", result.triggered_rule)
+    span.set_attribute("audit_record_hash", audit_entry.record_hash)
+    span.set_attribute("allowed", result.allowed)
+    tracer.finish_span(span)
+
+    logger.info(
+        "evaluate.complete",
+        extra={
+            "client_id": req.client_id,
+            "action": result.action.value,
+            "triggered_rule": result.triggered_rule,
+            "allowed": result.allowed,
+            "trace_id": span.trace_id,
+            "audit_record_hash": audit_entry.record_hash,
+        },
     )
 
     return EvaluateResponse(
@@ -182,6 +233,7 @@ async def evaluate(
         reason=result.reason,
         client_id=req.client_id,
         audit_record_hash=audit_entry.record_hash,
+        trace_id=span.trace_id,
     )
 
 
