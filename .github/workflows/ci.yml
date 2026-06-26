@@ -5,6 +5,7 @@ on:
     branches: [main, "ceyptoslim-patch-1"]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   test:
