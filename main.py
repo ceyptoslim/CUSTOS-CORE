@@ -1,10 +1,14 @@
 """
-CUSTOS Core -- FastAPI Runtime v0.4
-Exposes all v0.3 endpoints plus:
-- POST /v1/replay
-- POST /v1/policy/diff
-- GET  /v1/audit/snapshot
-- POST /v1/audit/snapshot/verify
+CUSTOS Core -- FastAPI Runtime v0.5
+Multi-tenant governance layer.
+
+v0.5 additions:
+- TenantManager: per-tenant policy, rate limiter, audit chain
+- POST /v1/tenants — register a tenant
+- GET  /v1/tenants — list all tenants
+- DELETE /v1/tenants/{tenant_id} — remove a tenant
+- tenant_id field on /v1/evaluate and /v1/replay
+- Per-tenant audit log and snapshot isolation
 """
 
 import os
@@ -16,7 +20,6 @@ from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from custos.audit import AuditChain
 from custos.auth import verify_token
 from custos.logging import configure_logging, get_logger
 from custos.models import (
@@ -32,14 +35,18 @@ from custos.models import (
     SnapshotResponse,
     SnapshotVerifyRequest,
     SnapshotVerifyResponse,
+    TenantListResponse,
+    TenantRegisterRequest,
+    TenantResponse,
 )
 from custos.policy_diff import PolicyDiffer
-from custos.policy_engine import PolicyAction, PolicyEngine, PolicyResult, PolicyRule
-from custos.rate_limiter import QuotaConfig, RateLimiter
+from custos.policy_engine import PolicyAction, PolicyResult, PolicyRule
 from custos.replay import ReplayEngine
 from custos.snapshot import SnapshotEngine
+from custos.tenant import TenantConfig, TenantManager
 from custos.tracing import tracer
 from custos.validation import InputValidator
+from custos.rate_limiter import QuotaConfig
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -50,18 +57,9 @@ logger = get_logger("main")
 # ---------------------------------------------------------------------------
 # Global singletons
 # ---------------------------------------------------------------------------
-policy_engine = PolicyEngine()
-rate_limiter = RateLimiter()
-audit_chain = AuditChain()
+tenant_manager = TenantManager()   # replaces individual singletons
 validator = InputValidator()
-replay_engine = ReplayEngine(audit_chain, policy_engine)
-snapshot_engine = SnapshotEngine(audit_chain)
 policy_differ = PolicyDiffer()
-
-rate_limiter.register(
-    "default",
-    QuotaConfig(requests_per_minute=60, requests_per_hour=1000, tokens_per_minute=100_000),
-)
 
 # ---------------------------------------------------------------------------
 # Metrics
@@ -94,7 +92,7 @@ async def optional_auth(
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("custos.startup", extra={"version": "0.4.0"})
+    logger.info("custos.startup", extra={"version": "0.5.0"})
     yield
     logger.info("custos.shutdown")
 
@@ -102,13 +100,13 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="CUSTOS Core",
     description="Policy-Governed AI Execution Firewall",
-    version="0.4.0",
+    version="0.5.0",
     lifespan=lifespan,
 )
 
 
 # ---------------------------------------------------------------------------
-# Existing routes (unchanged from v0.3)
+# Health / Ready / Metrics
 # ---------------------------------------------------------------------------
 
 @app.get("/health", response_model=HealthResponse)
@@ -121,10 +119,12 @@ async def health():
 
 @app.get("/ready", response_model=ReadyResponse)
 async def ready():
+    default_ctx = tenant_manager.get("default")
     checks = {
-        "policy_engine": policy_engine.rule_count > 0,
+        "policy_engine": default_ctx.policy_engine.rule_count > 0,
         "rate_limiter": True,
         "audit_chain": True,
+        "tenant_manager": tenant_manager.count > 0,
     }
     all_ready = all(checks.values())
     return ReadyResponse(
@@ -136,6 +136,8 @@ async def ready():
 @app.get("/metrics", response_class=PlainTextResponse)
 async def metrics():
     uptime = round(time.time() - _metrics["custos_uptime_start"], 1)
+    default_ctx = tenant_manager.get("default")
+    audit_length = default_ctx.audit_chain.length if default_ctx else 0
     lines = [
         "# HELP custos_requests_total Total requests evaluated",
         "# TYPE custos_requests_total counter",
@@ -152,15 +154,22 @@ async def metrics():
         "# HELP custos_rate_limit_hits Requests rejected by rate limiter",
         "# TYPE custos_rate_limit_hits counter",
         f"custos_rate_limit_hits {_metrics['custos_rate_limit_hits']}",
-        "# HELP custos_audit_chain_length Total audit records",
+        "# HELP custos_audit_chain_length Total audit records (default tenant)",
         "# TYPE custos_audit_chain_length gauge",
-        f"custos_audit_chain_length {audit_chain.length}",
+        f"custos_audit_chain_length {audit_length}",
+        "# HELP custos_tenant_count Registered tenants",
+        "# TYPE custos_tenant_count gauge",
+        f"custos_tenant_count {tenant_manager.count}",
         "# HELP custos_uptime_seconds Seconds since startup",
         "# TYPE custos_uptime_seconds gauge",
         f"custos_uptime_seconds {uptime}",
     ]
     return "\n".join(lines) + "\n"
 
+
+# ---------------------------------------------------------------------------
+# Evaluate — now tenant-aware
+# ---------------------------------------------------------------------------
 
 @app.post("/v1/evaluate", response_model=EvaluateResponse)
 async def evaluate(
@@ -169,24 +178,40 @@ async def evaluate(
 ):
     span = tracer.start_span("custos.evaluate")
     span.set_attribute("client_id", req.client_id)
+    span.set_attribute("tenant_id", req.tenant_id)
     _metrics["custos_requests_total"] += 1
 
+    # Validation
     val = validator.validate_request(req.client_id, req.content, req.token_count)
     if not val.valid:
         span.set_status("ERROR")
         tracer.finish_span(span)
         raise HTTPException(status_code=422, detail=val.error)
 
-    allowed, msg = rate_limiter.check_and_consume(req.client_id, req.token_count)
+    # Resolve tenant — falls back to default if unregistered
+    ctx = tenant_manager.get_or_default(req.tenant_id)
+
+    # Rate limiter — per tenant, uses client_id within tenant namespace
+    rate_key = f"{req.tenant_id}:{req.client_id}" if req.tenant_id != "default" else req.client_id
+
+    # Ensure rate key is registered for this tenant
+    if ctx.rate_limiter.get_all_quotas().get(rate_key) is None:
+        ctx.rate_limiter.register(
+            rate_key,
+            QuotaConfig(requests_per_minute=60, requests_per_hour=1000),
+        )
+
+    allowed, msg = ctx.rate_limiter.check_and_consume(rate_key, req.token_count)
     if not allowed:
         _metrics["custos_rate_limit_hits"] += 1
-        audit_chain.record(req.client_id, "rate_limited", msg, req.content,
-                           trace_id=span.trace_id)
+        ctx.audit_chain.record(req.client_id, "rate_limited", msg, req.content,
+                               trace_id=span.trace_id)
         span.set_status("RATE_LIMITED")
         tracer.finish_span(span)
         raise HTTPException(status_code=429, detail=msg)
 
-    result: PolicyResult = policy_engine.evaluate(req.content)
+    # Policy evaluation — per tenant engine
+    result: PolicyResult = ctx.policy_engine.evaluate(req.content)
 
     if result.allowed:
         if result.action.value == "audit":
@@ -196,7 +221,8 @@ async def evaluate(
     else:
         _metrics["custos_requests_denied"] += 1
 
-    audit_entry = audit_chain.record(
+    # Audit — per tenant chain
+    audit_entry = ctx.audit_chain.record(
         client_id=req.client_id,
         action=result.action.value,
         reason=result.reason,
@@ -207,11 +233,11 @@ async def evaluate(
 
     span.set_attribute("action", result.action.value)
     span.set_attribute("audit_record_hash", audit_entry.record_hash)
-    span.set_attribute("allowed", result.allowed)
     tracer.finish_span(span)
 
     logger.info("evaluate.complete", extra={
         "client_id": req.client_id,
+        "tenant_id": req.tenant_id,
         "action": result.action.value,
         "allowed": result.allowed,
         "trace_id": span.trace_id,
@@ -223,32 +249,76 @@ async def evaluate(
         triggered_rule=result.triggered_rule,
         reason=result.reason,
         client_id=req.client_id,
+        tenant_id=req.tenant_id,
         audit_record_hash=audit_entry.record_hash,
         trace_id=span.trace_id,
     )
 
 
+# ---------------------------------------------------------------------------
+# Audit — per tenant
+# ---------------------------------------------------------------------------
+
 @app.get("/v1/audit", response_model=list[AuditRecordResponse])
-async def get_audit_log(client_id: str = None):
-    return audit_chain.get_records(client_id=client_id)
+async def get_audit_log(
+    client_id: Optional[str] = None,
+    tenant_id: str = "default",
+):
+    ctx = tenant_manager.get_or_default(tenant_id)
+    return ctx.audit_chain.get_records(client_id=client_id)
 
 
 @app.get("/v1/audit/verify")
-async def verify_audit_chain():
-    valid, reason = audit_chain.verify()
-    return {"valid": valid, "reason": reason, "chain_length": audit_chain.length}
+async def verify_audit_chain(tenant_id: str = "default"):
+    ctx = tenant_manager.get_or_default(tenant_id)
+    valid, reason = ctx.audit_chain.verify()
+    return {"valid": valid, "reason": reason,
+            "chain_length": ctx.audit_chain.length,
+            "tenant_id": tenant_id}
 
 
 # ---------------------------------------------------------------------------
-# v0.4 — Replay Engine
+# Snapshot — per tenant
+# ---------------------------------------------------------------------------
+
+@app.get("/v1/audit/snapshot", response_model=SnapshotResponse)
+async def get_snapshot(
+    tenant_id: str = "default",
+    start_time: Optional[float] = None,
+    end_time: Optional[float] = None,
+):
+    ctx = tenant_manager.get_or_default(tenant_id)
+    engine = SnapshotEngine(ctx.audit_chain)
+    result = engine.generate(start_time=start_time, end_time=end_time)
+    return SnapshotResponse(
+        generated_at=result.generated_at,
+        start_time=result.start_time,
+        end_time=result.end_time,
+        record_count=result.record_count,
+        records=result.records,
+        chain_valid=result.chain_valid,
+        chain_verification_reason=result.chain_verification_reason,
+        latest_hash=result.latest_hash,
+        snapshot_hash=result.snapshot_hash,
+    )
+
+
+@app.post("/v1/audit/snapshot/verify", response_model=SnapshotVerifyResponse)
+async def verify_snapshot(req: SnapshotVerifyRequest):
+    ctx = tenant_manager.get("default")
+    engine = SnapshotEngine(ctx.audit_chain)
+    valid, reason = engine.verify_snapshot(req.snapshot)
+    return SnapshotVerifyResponse(valid=valid, reason=reason)
+
+
+# ---------------------------------------------------------------------------
+# Replay — per tenant
 # ---------------------------------------------------------------------------
 
 @app.post("/v1/replay", response_model=ReplayResponse)
 async def replay(req: ReplayRequest):
-    """
-    Reproduce a past policy decision given its audit record hash
-    and the original content string.
-    """
+    ctx = tenant_manager.get_or_default(req.tenant_id)
+    replay_engine = ReplayEngine(ctx.audit_chain, ctx.policy_engine)
     try:
         result = replay_engine.replay_by_hash(
             record_hash=req.record_hash,
@@ -257,18 +327,12 @@ async def replay(req: ReplayRequest):
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
 
-    # Record the replay itself in the audit chain
-    audit_chain.record(
+    ctx.audit_chain.record(
         client_id="system",
         action="replay",
         reason=f"Replayed record {req.record_hash[:16]}...",
         content=req.original_content,
     )
-
-    logger.info("replay.complete", extra={
-        "record_hash": req.record_hash,
-        "decision_matches": result.decision_matches,
-    })
 
     return ReplayResponse(
         original_record_hash=result.original_record_hash,
@@ -286,50 +350,31 @@ async def replay(req: ReplayRequest):
 
 
 # ---------------------------------------------------------------------------
-# v0.4 — Policy Diff
+# Policy Diff (stateless — no tenant context needed)
 # ---------------------------------------------------------------------------
 
 @app.post("/v1/policy/diff", response_model=PolicyDiffResponse)
 async def policy_diff(req: PolicyDiffRequest):
-    """
-    Compare how a piece of content would be evaluated under
-    two different policy rule sets.
-    """
     ACTION_MAP = {
         "allow": PolicyAction.ALLOW,
         "deny": PolicyAction.DENY,
         "audit": PolicyAction.AUDIT,
     }
-
     try:
         current_rules = [
-            PolicyRule(
-                name=r.name,
-                pattern=r.pattern,
-                action=ACTION_MAP[r.action],
-                reason=r.reason,
-            )
+            PolicyRule(name=r.name, pattern=r.pattern,
+                       action=ACTION_MAP[r.action], reason=r.reason)
             for r in req.current_rules
         ]
         proposed_rules = [
-            PolicyRule(
-                name=r.name,
-                pattern=r.pattern,
-                action=ACTION_MAP[r.action],
-                reason=r.reason,
-            )
+            PolicyRule(name=r.name, pattern=r.pattern,
+                       action=ACTION_MAP[r.action], reason=r.reason)
             for r in req.proposed_rules
         ]
     except KeyError as e:
         raise HTTPException(status_code=422, detail=f"Invalid action: {e}")
 
     result = policy_differ.diff(req.content, current_rules, proposed_rules)
-
-    logger.info("policy_diff.complete", extra={
-        "decision_changed": result.decision_changed,
-        "change_summary": result.change_summary,
-    })
-
     return PolicyDiffResponse(
         content_preview=result.content_preview,
         current_action=result.current_action,
@@ -344,38 +389,57 @@ async def policy_diff(req: PolicyDiffRequest):
 
 
 # ---------------------------------------------------------------------------
-# v0.4 — Decision Snapshots
+# v0.5 — Tenant Management
 # ---------------------------------------------------------------------------
 
-@app.get("/v1/audit/snapshot", response_model=SnapshotResponse)
-async def get_snapshot(
-    start_time: Optional[float] = None,
-    end_time: Optional[float] = None,
-):
-    """
-    Export a tamper-evident snapshot of the audit chain
-    for the given time range.
-    """
-    result = snapshot_engine.generate(start_time=start_time, end_time=end_time)
-    logger.info("snapshot.generated", extra={
-        "record_count": result.record_count,
-        "chain_valid": result.chain_valid,
-    })
-    return SnapshotResponse(
-        generated_at=result.generated_at,
-        start_time=result.start_time,
-        end_time=result.end_time,
-        record_count=result.record_count,
-        records=result.records,
-        chain_valid=result.chain_valid,
-        chain_verification_reason=result.chain_verification_reason,
-        latest_hash=result.latest_hash,
-        snapshot_hash=result.snapshot_hash,
+@app.post("/v1/tenants", response_model=TenantResponse)
+async def register_tenant(req: TenantRegisterRequest):
+    """Register a new tenant with isolated policy, rate limiter, and audit chain."""
+    if req.tenant_id == "default":
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot re-register the default tenant"
+        )
+    if tenant_manager.get(req.tenant_id):
+        raise HTTPException(
+            status_code=409,
+            detail=f"Tenant '{req.tenant_id}' already exists"
+        )
+
+    config = TenantConfig(
+        tenant_id=req.tenant_id,
+        quota=QuotaConfig(
+            requests_per_minute=req.requests_per_minute,
+            requests_per_hour=req.requests_per_hour,
+            tokens_per_minute=req.tokens_per_minute,
+        ),
+    )
+    tenant_manager.register(req.tenant_id, config)
+
+    logger.info("tenant.registered", extra={"tenant_id": req.tenant_id})
+
+    return TenantResponse(
+        tenant_id=req.tenant_id,
+        requests_per_minute=req.requests_per_minute,
+        requests_per_hour=req.requests_per_hour,
+        tokens_per_minute=req.tokens_per_minute,
     )
 
 
-@app.post("/v1/audit/snapshot/verify", response_model=SnapshotVerifyResponse)
-async def verify_snapshot(req: SnapshotVerifyRequest):
-    """Verify the integrity of a previously generated snapshot."""
-    valid, reason = snapshot_engine.verify_snapshot(req.snapshot)
-    return SnapshotVerifyResponse(valid=valid, reason=reason)
+@app.get("/v1/tenants", response_model=TenantListResponse)
+async def list_tenants():
+    """List all registered tenants."""
+    tenants = tenant_manager.list_tenants()
+    return TenantListResponse(tenants=tenants, count=len(tenants))
+
+
+@app.delete("/v1/tenants/{tenant_id}")
+async def delete_tenant(tenant_id: str):
+    """Remove a tenant. Cannot remove 'default'."""
+    if tenant_id == "default":
+        raise HTTPException(status_code=400, detail="Cannot delete the default tenant")
+    removed = tenant_manager.unregister(tenant_id)
+    if not removed:
+        raise HTTPException(status_code=404, detail=f"Tenant '{tenant_id}' not found")
+    logger.info("tenant.deleted", extra={"tenant_id": tenant_id})
+    return {"deleted": True, "tenant_id": tenant_id}
