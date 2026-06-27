@@ -11,7 +11,7 @@ which existing requests would be affected before going live.
 from dataclasses import dataclass
 from typing import Optional
 
-from custos.policy_engine import PolicyAction, PolicyEngine, PolicyResult, PolicyRule
+from custos.policy_engine import PolicyEngine, PolicyResult, PolicyRule
 
 
 @dataclass
