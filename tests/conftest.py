@@ -1,18 +1,18 @@
 """
-conftest.py — shared fixtures and dependency overrides for CUSTOS test suite.
+conftest.py — shared fixtures for CUSTOS test suite.
 
-Key design: the FastAPI app holds a global rate_limiter singleton.
-We override it per-test via FastAPI's dependency_overrides so each test
-starts with a clean, known-quota limiter. This prevents order-dependent flakiness.
+The app now uses TenantManager which owns all per-tenant state.
+We reset the default tenant's rate limiter before each test by
+re-registering the default tenant — giving every test a fresh quota bucket.
 """
 
 import pytest
 from fastapi.testclient import TestClient
 
 import main as app_module
-from custos.rate_limiter import QuotaConfig, RateLimiter
+from custos.rate_limiter import QuotaConfig
+from custos.tenant import TenantConfig
 
-# Default quota matching the production singleton in main.py
 DEFAULT_QUOTA = QuotaConfig(
     requests_per_minute=60,
     requests_per_hour=1000,
@@ -20,28 +20,21 @@ DEFAULT_QUOTA = QuotaConfig(
 )
 
 
-def _fresh_limiter() -> RateLimiter:
-    """Return a brand-new RateLimiter with the default client registered."""
-    rl = RateLimiter()
-    rl.register("default", DEFAULT_QUOTA)
-    return rl
-
-
 @pytest.fixture(autouse=True)
 def reset_rate_limiter():
     """
-    Replace the app's rate_limiter singleton before every test,
-    and restore it after. Works for both unit tests and API tests.
+    Re-register the default tenant before every test so each test
+    starts with a full, clean quota bucket.
     """
-    fresh = _fresh_limiter()
-    original = app_module.rate_limiter
-    app_module.rate_limiter = fresh
-    yield fresh
-    app_module.rate_limiter = original
+    app_module.tenant_manager.register(
+        "default",
+        TenantConfig(tenant_id="default", quota=DEFAULT_QUOTA),
+    )
+    yield
 
 
 @pytest.fixture
 def client(reset_rate_limiter):
-    """TestClient with a fresh rate limiter already in place."""
+    """TestClient with a fresh default-tenant rate limiter."""
     from main import app
     return TestClient(app)
