@@ -91,12 +91,15 @@ class TestEvaluateEndpoint:
         assert data["allowed"] is False
         assert data["action"] == "deny"
 
-    def test_unknown_client_returns_429(self, client):
+    def test_unknown_client_falls_back_to_default(self, client):
+        # v0.5: unregistered tenants fall back to the default tenant quota
+        # rather than being hard-rejected. Unknown client_id gets auto-registered.
         r = client.post("/v1/evaluate", json={
             "client_id": "nonexistent_client",
             "content": "Hello",
         })
-        assert r.status_code == 429
+        # Should succeed (200) — not 429 — because default tenant fallback applies
+        assert r.status_code == 200
 
     def test_empty_content_returns_422(self, client):
         r = client.post("/v1/evaluate", json={
@@ -140,3 +143,4 @@ class TestAuditEndpoint:
         r = client.get("/v1/audit/verify")
         assert r.status_code == 200
         assert r.json()["valid"] is True
+
