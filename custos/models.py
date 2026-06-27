@@ -1,6 +1,6 @@
 """
-CUSTOS Pydantic Models v0.4
-Added schemas for replay, policy diff, and snapshot endpoints.
+CUSTOS Pydantic Models v0.5
+Added tenant registration and management schemas.
 """
 
 from typing import Any, Optional
@@ -8,13 +8,14 @@ from pydantic import BaseModel, Field, field_validator
 
 
 # ---------------------------------------------------------------------------
-# Existing schemas (unchanged)
+# Existing schemas
 # ---------------------------------------------------------------------------
 
 class EvaluateRequest(BaseModel):
     client_id: str = Field(default="default", min_length=1, max_length=128)
     content: str = Field(..., min_length=1, max_length=32_768)
     token_count: int = Field(default=1, ge=1, le=100_000)
+    tenant_id: str = Field(default="default", min_length=1, max_length=64)
 
     @field_validator("client_id")
     @classmethod
@@ -30,6 +31,13 @@ class EvaluateRequest(BaseModel):
             raise ValueError("content must not be blank or whitespace only")
         return v
 
+    @field_validator("tenant_id")
+    @classmethod
+    def tenant_id_no_whitespace(cls, v: str) -> str:
+        if v != v.strip():
+            raise ValueError("tenant_id must not have leading/trailing whitespace")
+        return v
+
 
 class EvaluateResponse(BaseModel):
     allowed: bool
@@ -37,6 +45,7 @@ class EvaluateResponse(BaseModel):
     triggered_rule: Optional[str]
     reason: str
     client_id: str
+    tenant_id: str = "default"
     audit_record_hash: Optional[str] = None
     trace_id: Optional[str] = None
 
@@ -64,12 +73,13 @@ class AuditRecordResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# v0.4 — Replay schemas
+# v0.4 schemas (unchanged)
 # ---------------------------------------------------------------------------
 
 class ReplayRequest(BaseModel):
     record_hash: str = Field(..., min_length=64, max_length=64)
     original_content: str = Field(..., min_length=1, max_length=32_768)
+    tenant_id: str = Field(default="default", min_length=1, max_length=64)
 
 
 class ReplayResponse(BaseModel):
@@ -85,10 +95,6 @@ class ReplayResponse(BaseModel):
     replay_timestamp: float
     content_hash: str
 
-
-# ---------------------------------------------------------------------------
-# v0.4 — Policy diff schemas
-# ---------------------------------------------------------------------------
 
 class PolicyRuleRequest(BaseModel):
     name: str
@@ -115,10 +121,6 @@ class PolicyDiffResponse(BaseModel):
     change_summary: str
 
 
-# ---------------------------------------------------------------------------
-# v0.4 — Snapshot schemas
-# ---------------------------------------------------------------------------
-
 class SnapshotResponse(BaseModel):
     generated_at: float
     start_time: Optional[float]
@@ -138,3 +140,34 @@ class SnapshotVerifyRequest(BaseModel):
 class SnapshotVerifyResponse(BaseModel):
     valid: bool
     reason: str
+
+
+# ---------------------------------------------------------------------------
+# v0.5 — Tenant schemas
+# ---------------------------------------------------------------------------
+
+class TenantRegisterRequest(BaseModel):
+    tenant_id: str = Field(..., min_length=1, max_length=64)
+    requests_per_minute: int = Field(default=60, ge=1, le=10_000)
+    requests_per_hour: int = Field(default=1000, ge=1, le=100_000)
+    tokens_per_minute: int = Field(default=100_000, ge=1, le=10_000_000)
+
+    @field_validator("tenant_id")
+    @classmethod
+    def tenant_id_not_reserved(cls, v: str) -> str:
+        if v != v.strip():
+            raise ValueError("tenant_id must not have leading/trailing whitespace")
+        return v
+
+
+class TenantResponse(BaseModel):
+    tenant_id: str
+    requests_per_minute: int
+    requests_per_hour: int
+    tokens_per_minute: int
+    registered: bool = True
+
+
+class TenantListResponse(BaseModel):
+    tenants: list[str]
+    count: int
