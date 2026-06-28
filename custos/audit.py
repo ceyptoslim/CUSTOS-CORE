@@ -1,12 +1,15 @@
 """
-CUSTOS Audit Chain v0.3
+CUSTOS Audit Chain v1.0
 
-Append-only, hash-chained audit log with SQLite persistence.
-v0.3: each record now stores trace_id for OpenTelemetry correlation.
+Append-only, hash-chained audit log.
 
-Storage backends:
+Storage backends (selected via env var or constructor):
 - In-memory (default): fast, no deps, resets on restart
-- SQLite (AUDIT_DB_PATH env var): persists across restarts
+- SQLite (AUDIT_DB_PATH env var): dev/single-node persistence
+- PostgreSQL (DATABASE_URL env var): production-grade persistence
+
+The chain integrity model is backend-agnostic — verify() works
+identically regardless of which backend is active.
 """
 
 import hashlib
@@ -29,23 +32,210 @@ class AuditRecord:
     content_hash: str
     record_hash: str = ""
     previous_hash: str = ""
-    trace_id: Optional[str] = None      # v0.3: OpenTelemetry span correlation
+    trace_id: Optional[str] = None
 
     def to_dict(self) -> dict:
         return asdict(self)
 
 
+# ---------------------------------------------------------------------------
+# Backend implementations
+# ---------------------------------------------------------------------------
+
+class InMemoryBackend:
+    """Default backend. Fast, no dependencies. Resets on restart."""
+
+    def save(self, record: AuditRecord) -> None:
+        pass  # In-memory: records stored in AuditChain._records list only
+
+    def load_all(self) -> List[AuditRecord]:
+        return []
+
+    def close(self) -> None:
+        pass
+
+
+class SQLiteBackend:
+    """SQLite backend. Good for dev and single-node deployments."""
+
+    def __init__(self, db_path: str):
+        self._path = db_path
+        self._init()
+
+    def _init(self) -> None:
+        with sqlite3.connect(self._path) as conn:
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS audit_records (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp REAL NOT NULL,
+                    client_id TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    triggered_rule TEXT,
+                    reason TEXT NOT NULL,
+                    content_hash TEXT NOT NULL,
+                    record_hash TEXT NOT NULL,
+                    previous_hash TEXT NOT NULL,
+                    trace_id TEXT
+                )
+            """)
+            conn.commit()
+
+    def save(self, record: AuditRecord) -> None:
+        with sqlite3.connect(self._path) as conn:
+            conn.execute("""
+                INSERT INTO audit_records
+                (timestamp, client_id, action, triggered_rule, reason,
+                 content_hash, record_hash, previous_hash, trace_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                record.timestamp, record.client_id, record.action,
+                record.triggered_rule, record.reason, record.content_hash,
+                record.record_hash, record.previous_hash, record.trace_id,
+            ))
+            conn.commit()
+
+    def load_all(self) -> List[AuditRecord]:
+        with sqlite3.connect(self._path) as conn:
+            rows = conn.execute("""
+                SELECT timestamp, client_id, action, triggered_rule, reason,
+                       content_hash, record_hash, previous_hash, trace_id
+                FROM audit_records ORDER BY id ASC
+            """).fetchall()
+        return [
+            AuditRecord(
+                timestamp=r[0], client_id=r[1], action=r[2],
+                triggered_rule=r[3], reason=r[4], content_hash=r[5],
+                record_hash=r[6], previous_hash=r[7], trace_id=r[8],
+            )
+            for r in rows
+        ]
+
+    def close(self) -> None:
+        pass
+
+
+class PostgreSQLBackend:
+    """
+    PostgreSQL backend for production deployments.
+    Requires: pip install psycopg2-binary
+    Connection string via DATABASE_URL env var or constructor argument.
+
+    Example DATABASE_URL:
+        postgresql://user:password@localhost:5432/custos
+    """
+
+    def __init__(self, database_url: str):
+        try:
+            import psycopg2
+            import psycopg2.extras
+            self._psycopg2 = psycopg2
+        except ImportError:
+            raise RuntimeError(
+                "PostgreSQL backend requires psycopg2: "
+                "pip install psycopg2-binary"
+            )
+        self._url = database_url
+        self._init()
+
+    def _connect(self):
+        return self._psycopg2.connect(self._url)
+
+    def _init(self) -> None:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS audit_records (
+                        id SERIAL PRIMARY KEY,
+                        timestamp DOUBLE PRECISION NOT NULL,
+                        client_id TEXT NOT NULL,
+                        action TEXT NOT NULL,
+                        triggered_rule TEXT,
+                        reason TEXT NOT NULL,
+                        content_hash TEXT NOT NULL,
+                        record_hash TEXT NOT NULL,
+                        previous_hash TEXT NOT NULL,
+                        trace_id TEXT
+                    )
+                """)
+            conn.commit()
+
+    def save(self, record: AuditRecord) -> None:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO audit_records
+                    (timestamp, client_id, action, triggered_rule, reason,
+                     content_hash, record_hash, previous_hash, trace_id)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (
+                    record.timestamp, record.client_id, record.action,
+                    record.triggered_rule, record.reason, record.content_hash,
+                    record.record_hash, record.previous_hash, record.trace_id,
+                ))
+            conn.commit()
+
+    def load_all(self) -> List[AuditRecord]:
+        with self._connect() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT timestamp, client_id, action, triggered_rule, reason,
+                           content_hash, record_hash, previous_hash, trace_id
+                    FROM audit_records ORDER BY id ASC
+                """)
+                rows = cur.fetchall()
+        return [
+            AuditRecord(
+                timestamp=r[0], client_id=r[1], action=r[2],
+                triggered_rule=r[3], reason=r[4], content_hash=r[5],
+                record_hash=r[6], previous_hash=r[7], trace_id=r[8],
+            )
+            for r in rows
+        ]
+
+    def close(self) -> None:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# Backend factory
+# ---------------------------------------------------------------------------
+
+def _build_backend(
+    db_path: Optional[str] = None,
+    database_url: Optional[str] = None,
+):
+    """Select backend based on provided config or environment variables."""
+    url = database_url or os.getenv("DATABASE_URL")
+    path = db_path or os.getenv("AUDIT_DB_PATH")
+
+    if url:
+        return PostgreSQLBackend(url)
+    if path:
+        return SQLiteBackend(path)
+    return InMemoryBackend()
+
+
+# ---------------------------------------------------------------------------
+# AuditChain — backend-agnostic
+# ---------------------------------------------------------------------------
+
 class AuditChain:
     GENESIS_HASH = "0" * 64
 
-    def __init__(self, db_path: Optional[str] = None):
+    def __init__(
+        self,
+        db_path: Optional[str] = None,
+        database_url: Optional[str] = None,
+        _backend=None,  # For testing — inject a backend directly
+    ):
         self._records: List[AuditRecord] = []
         self._lock = threading.RLock()
+        self._backend = _backend or _build_backend(db_path, database_url)
         self._db_path = db_path or os.getenv("AUDIT_DB_PATH")
 
-        if self._db_path:
-            self._init_db()
-            self._load_from_db()
+        # Load existing records from backend on startup
+        for record in self._backend.load_all():
+            self._records.append(record)
 
     # ------------------------------------------------------------------
     # Public API
@@ -76,10 +266,7 @@ class AuditChain:
             )
             entry.record_hash = self._compute_record_hash(entry, previous_hash)
             self._records.append(entry)
-
-            if self._db_path:
-                self._persist(entry)
-
+            self._backend.save(entry)
             return entry
 
     def verify(self) -> tuple:
@@ -115,55 +302,9 @@ class AuditChain:
                 return self.GENESIS_HASH
             return self._records[-1].record_hash
 
-    # ------------------------------------------------------------------
-    # SQLite persistence
-    # ------------------------------------------------------------------
-
-    def _init_db(self) -> None:
-        with sqlite3.connect(self._db_path) as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS audit_records (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    timestamp REAL NOT NULL,
-                    client_id TEXT NOT NULL,
-                    action TEXT NOT NULL,
-                    triggered_rule TEXT,
-                    reason TEXT NOT NULL,
-                    content_hash TEXT NOT NULL,
-                    record_hash TEXT NOT NULL,
-                    previous_hash TEXT NOT NULL,
-                    trace_id TEXT
-                )
-            """)
-            conn.commit()
-
-    def _persist(self, record: AuditRecord) -> None:
-        with sqlite3.connect(self._db_path) as conn:
-            conn.execute("""
-                INSERT INTO audit_records
-                (timestamp, client_id, action, triggered_rule, reason,
-                 content_hash, record_hash, previous_hash, trace_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, (
-                record.timestamp, record.client_id, record.action,
-                record.triggered_rule, record.reason, record.content_hash,
-                record.record_hash, record.previous_hash, record.trace_id,
-            ))
-            conn.commit()
-
-    def _load_from_db(self) -> None:
-        with sqlite3.connect(self._db_path) as conn:
-            rows = conn.execute("""
-                SELECT timestamp, client_id, action, triggered_rule, reason,
-                       content_hash, record_hash, previous_hash, trace_id
-                FROM audit_records ORDER BY id ASC
-            """).fetchall()
-        for row in rows:
-            self._records.append(AuditRecord(
-                timestamp=row[0], client_id=row[1], action=row[2],
-                triggered_rule=row[3], reason=row[4], content_hash=row[5],
-                record_hash=row[6], previous_hash=row[7], trace_id=row[8],
-            ))
+    @property
+    def backend_type(self) -> str:
+        return type(self._backend).__name__
 
     # ------------------------------------------------------------------
     # Hashing helpers
