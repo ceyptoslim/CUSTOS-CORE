@@ -14,6 +14,25 @@ env:
   LOG_LEVEL: "INFO"
   AUTH_DISABLED: "0"
 
+# Database configuration.
+# Option A — SQLite (single-node, dev):
+#   env:
+#     AUDIT_DB_PATH: "/data/custos.db"
+#
+# Option B — PostgreSQL (production):
+#   Create a Secret first:
+#     kubectl create secret generic custos-db-secret \
+#       --from-literal=DATABASE_URL=postgresql://user:pass@host:5432/custos
+#   Then set:
+#   database:
+#     secretName: custos-db-secret
+#     secretKey: DATABASE_URL
+#
+# If neither is set, CUSTOS runs with in-memory audit storage (resets on restart).
+database:
+  secretName: ""
+  secretKey: DATABASE_URL
+
 resources:
   requests:
     cpu: "250m"
