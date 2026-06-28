@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: custos-config
+data:
+  LOG_LEVEL: "INFO"
+  CUSTOS_TRACING: "console"
