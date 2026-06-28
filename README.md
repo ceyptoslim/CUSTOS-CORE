@@ -140,6 +140,17 @@ Tests cover the policy engine, rate limiter, API endpoints, input validation, an
 
 ---
 
+## Known Limitations (v1.0)
+
+| Area | Status | Production Impact |
+|---|---|---|
+| Policy persistence | ⚠️ In-memory only | Tenant-specific policy customizations are **lost on pod restart**, including during Kubernetes rollouts, autoscaling events, or node rescheduling. Default hardcoded policies survive; anything registered via API does not. Fix tracked in v1.1. |
+| OTLP trace export | ⚠️ Console-only | Trace IDs are generated, hash-chained into audit records, and returned in API responses. Export is stdout-only — no Jaeger/Tempo/Grafana Tempo collector yet. Trace IDs in JSON logs are still usable for correlation. Fix tracked in v1.1. |
+
+**Operator guidance:** For Kubernetes deployments, treat policy rules as ephemeral until v1.1. Use the `/v1/policy` API on startup (via an init container or ConfigMap-driven bootstrap script) to re-register tenant policies after each pod start.
+
+---
+
 ## CI Status
 
 Every push runs `ruff` lint + `bandit` security scan + `pytest` + Docker build via GitHub Actions.
