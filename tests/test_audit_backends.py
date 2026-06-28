@@ -27,7 +27,7 @@ class TestInMemoryBackend:
             triggered_rule=None, reason="ok", content_hash="abc",
             record_hash="def", previous_hash="000",
         )
-        backend.save(record)  # should not raise
+        backend.save(record)
 
     def test_load_all_returns_empty(self):
         backend = InMemoryBackend()
@@ -38,7 +38,6 @@ class TestSQLiteBackend:
     def test_save_and_load(self):
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
-
         backend = SQLiteBackend(db_path)
         record = AuditRecord(
             timestamp=1.0, client_id="c1", action="allow",
@@ -54,7 +53,6 @@ class TestSQLiteBackend:
     def test_multiple_records_ordered(self):
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
-
         backend = SQLiteBackend(db_path)
         for i in range(3):
             backend.save(AuditRecord(
@@ -82,10 +80,8 @@ class TestAuditChainBackends:
     def test_sqlite_persists_across_instances(self):
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
-
         chain1 = AuditChain(db_path=db_path)
         chain1.record("c1", "allow", "ok", "content")
-
         chain2 = AuditChain(db_path=db_path)
         assert chain2.length == 1
         assert chain2.get_records()[0]["client_id"] == "c1"
@@ -93,11 +89,9 @@ class TestAuditChainBackends:
     def test_chain_verify_after_reload(self):
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
-
         chain1 = AuditChain(db_path=db_path)
         chain1.record("c1", "allow", "ok", "first")
         chain1.record("c1", "deny", "pii", "second")
-
         chain2 = AuditChain(db_path=db_path)
         valid, reason = chain2.verify()
         assert valid is True
@@ -105,10 +99,8 @@ class TestAuditChainBackends:
     def test_new_records_extend_reloaded_chain(self):
         with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
             db_path = f.name
-
         chain1 = AuditChain(db_path=db_path)
         chain1.record("c1", "allow", "ok", "before")
-
         chain2 = AuditChain(db_path=db_path)
         chain2.record("c1", "allow", "ok", "after")
         assert chain2.length == 2
@@ -116,7 +108,6 @@ class TestAuditChainBackends:
         assert valid is True
 
     def test_postgresql_backend_raises_without_psycopg2(self):
-        """PostgreSQL backend should raise RuntimeError if psycopg2 not installed."""
         import unittest.mock as mock
         with mock.patch.dict("sys.modules", {"psycopg2": None}):
             with pytest.raises((RuntimeError, ImportError)):
