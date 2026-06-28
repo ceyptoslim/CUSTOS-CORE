@@ -3,49 +3,40 @@ kind: Deployment
 metadata:
   name: {{ .Release.Name }}-custos
   labels:
-    app: {{ .Release.Name }}-custos
-    version: {{ .Chart.AppVersion }}
+    app: custos-core
+    chart: {{ .Chart.Name }}-{{ .Chart.Version }}
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
-      app: {{ .Release.Name }}-custos
+      app: custos-core
   template:
     metadata:
       labels:
-        app: {{ .Release.Name }}-custos
+        app: custos-core
     spec:
       containers:
-        - name: custos
+        - name: custos-core
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
-            - containerPort: {{ .Values.service.targetPort }}
+            - containerPort: 8000
           env:
-            - name: LOG_LEVEL
-              value: {{ .Values.env.logLevel | quote }}
-            - name: CUSTOS_TRACING
-              value: {{ .Values.env.tracing | quote }}
-            - name: CUSTOS_JWT_SECRET
-              value: {{ .Values.secrets.jwtSecret | quote }}
-            {{- if .Values.secrets.databaseUrl }}
-            - name: DATABASE_URL
-              value: {{ .Values.secrets.databaseUrl | quote }}
+            {{- range $key, $val := .Values.env }}
+            - name: {{ $key }}
+              value: {{ $val | quote }}
             {{- end }}
           livenessProbe:
             httpGet:
-              path: {{ .Values.livenessProbe.path }}
-              port: {{ .Values.service.targetPort }}
-            initialDelaySeconds: {{ .Values.livenessProbe.initialDelaySeconds }}
-            periodSeconds: {{ .Values.livenessProbe.periodSeconds }}
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 15
           readinessProbe:
             httpGet:
-              path: {{ .Values.readinessProbe.path }}
-              port: {{ .Values.service.targetPort }}
-            initialDelaySeconds: {{ .Values.readinessProbe.initialDelaySeconds }}
-            periodSeconds: {{ .Values.readinessProbe.periodSeconds }}
+              path: /ready
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
