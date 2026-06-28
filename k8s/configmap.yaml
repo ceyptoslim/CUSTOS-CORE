@@ -5,3 +5,7 @@ metadata:
 data:
   LOG_LEVEL: "INFO"
   AUTH_DISABLED: "0"
+  # AUDIT_DB_PATH: "/data/custos.db"   # SQLite (single-node)
+  # DATABASE_URL is intentionally not here — pass via Secret (see below)
+  # kubectl create secret generic custos-db-secret \
+  #   --from-literal=DATABASE_URL=postgresql://user:pass@host:5432/custos
