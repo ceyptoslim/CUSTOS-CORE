@@ -78,6 +78,9 @@ Kubernetes readiness probe. Returns per-subsystem status.
 ### `GET /metrics`
 Prometheus-compatible metrics exposition.
 
+### `GET /v1/info`
+Version, audit backend type, tenant count, and uptime.
+
 ### `GET /v1/audit`
 Full audit chain. Filter by client: `?client_id=default`
 
@@ -97,7 +100,7 @@ Tests cover the policy engine, rate limiter, API endpoints, input validation, an
 
 ---
 
-## What Is Implemented (v0.2)
+## What Is Implemented (v1.0)
 
 | Component | Status |
 |---|---|
@@ -106,36 +109,43 @@ Tests cover the policy engine, rate limiter, API endpoints, input validation, an
 | Input validation layer | ✅ |
 | Hash-chained audit ledger (tamper-evident) | ✅ |
 | SQLite audit persistence (survives restarts) | ✅ |
+| PostgreSQL audit backend (production-grade) | ✅ |
 | JWT authentication on /v1/evaluate | ✅ |
+| Multi-tenant governance (isolated per tenant) | ✅ |
+| Replay engine (POST /v1/replay) | ✅ |
+| Policy diff (POST /v1/policy/diff) | ✅ |
+| Decision snapshots (GET /v1/audit/snapshot) | ✅ |
+| Structured JSON logging | ✅ |
+| OpenTelemetry-compatible tracing | ✅ |
 | Prometheus metrics | ✅ |
 | Grafana dashboard (auto-provisioned) | ✅ |
 | Docker Compose stack | ✅ |
-| GitHub Actions CI (lint + test + build) | ✅ |
-| Bandit security scanning in CI | ✅ |
-| `/health` and `/ready` endpoints | ✅ |
+| Kubernetes manifests (k8s/) | ✅ |
+| Helm chart (charts/custos/) | ✅ |
+| GitHub Actions CI (ruff + bandit + pytest + docker) | ✅ |
+| `/health`, `/ready`, `/v1/info` endpoints | ✅ |
 
 ---
 
 ## Roadmap
 
-| Version | Focus |
-|---|---|
-| v0.1 | Stable Core ← *current* |
-| v0.2 | Authentication + Persistent Audit (SQLite) |
-| v0.3 | Observability (OpenTelemetry) |
-| v0.4 | Replay Engine |
-| v0.5 | Multi-tenant Governance |
-| v1.0 | Enterprise Release Candidate |
+| Version | Focus | Status |
+|---|---|---|
+| v0.1 | Stable Core | ✅ Shipped |
+| v0.2 | Authentication + Persistent Audit | ✅ Shipped |
+| v0.3 | Observability | ✅ Shipped |
+| v0.4 | Replay Engine | ✅ Shipped |
+| v0.5 | Multi-tenant Governance | ✅ Shipped |
+| v1.0 | Enterprise Release Candidate | ✅ Current |
 
 ---
 
 ## CI Status
 
-Every push runs `ruff` lint + `pytest` + Docker build via GitHub Actions.
+Every push runs `ruff` lint + `bandit` security scan + `pytest` + Docker build via GitHub Actions.
 
 ---
 
 ## License
 
 Apache 2.0 — see [LICENSE](LICENSE)
-
