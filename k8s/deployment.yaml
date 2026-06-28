@@ -14,49 +14,32 @@ spec:
     metadata:
       labels:
         app: custos-core
+        version: "1.0.0"
     spec:
       containers:
         - name: custos-core
           image: custos-core:1.0.0
           ports:
             - containerPort: 8000
-          env:
-            - name: LOG_LEVEL
-              value: "INFO"
-            - name: CUSTOS_TRACING
-              value: "console"
-            - name: DATABASE_URL
-              valueFrom:
-                secretKeyRef:
-                  name: custos-secrets
-                  key: database-url
-                  optional: true
-            - name: CUSTOS_JWT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: custos-secrets
-                  key: jwt-secret
+          envFrom:
+            - configMapRef:
+                name: custos-config
           livenessProbe:
             httpGet:
               path: /health
               port: 8000
             initialDelaySeconds: 10
             periodSeconds: 15
-            failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /ready
               port: 8000
             initialDelaySeconds: 5
             periodSeconds: 10
-            failureThreshold: 3
           resources:
             requests:
-              memory: "128Mi"
-              cpu: "100m"
+              cpu: "250m"
+              memory: "256Mi"
             limits:
+              cpu: "1000m"
               memory: "512Mi"
-              cpu: "500m"
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 1000
