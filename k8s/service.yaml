@@ -8,10 +8,7 @@ spec:
   selector:
     app: custos-core
   ports:
-    - name: http
+    - protocol: TCP
       port: 80
-      targetPort: 8000
-    - name: metrics
-      port: 9090
       targetPort: 8000
   type: ClusterIP
