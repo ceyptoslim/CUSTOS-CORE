@@ -1,14 +1,12 @@
 """
-CUSTOS Core -- FastAPI Runtime v0.5
-Multi-tenant governance layer.
+CUSTOS Core -- FastAPI Runtime v1.0
+Enterprise Release Candidate.
 
-v0.5 additions:
-- TenantManager: per-tenant policy, rate limiter, audit chain
-- POST /v1/tenants — register a tenant
-- GET  /v1/tenants — list all tenants
-- DELETE /v1/tenants/{tenant_id} — remove a tenant
-- tenant_id field on /v1/evaluate and /v1/replay
-- Per-tenant audit log and snapshot isolation
+v1.0 additions:
+- PostgreSQL audit backend support
+- X-CUSTOS-Version response header on all endpoints
+- /v1/info endpoint — version and backend info
+- Kubernetes-ready health and readiness probes
 """
 
 import os
@@ -16,7 +14,7 @@ import time
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -41,12 +39,14 @@ from custos.models import (
 )
 from custos.policy_diff import PolicyDiffer
 from custos.policy_engine import PolicyAction, PolicyResult, PolicyRule
+from custos.rate_limiter import QuotaConfig
 from custos.replay import ReplayEngine
 from custos.snapshot import SnapshotEngine
 from custos.tenant import TenantConfig, TenantManager
 from custos.tracing import tracer
 from custos.validation import InputValidator
-from custos.rate_limiter import QuotaConfig
+
+VERSION = "1.0.0"
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -57,7 +57,7 @@ logger = get_logger("main")
 # ---------------------------------------------------------------------------
 # Global singletons
 # ---------------------------------------------------------------------------
-tenant_manager = TenantManager()   # replaces individual singletons
+tenant_manager = TenantManager()
 validator = InputValidator()
 policy_differ = PolicyDiffer()
 
@@ -92,7 +92,7 @@ async def optional_auth(
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("custos.startup", extra={"version": "0.5.0"})
+    logger.info("custos.startup", extra={"version": VERSION})
     yield
     logger.info("custos.shutdown")
 
@@ -100,13 +100,23 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="CUSTOS Core",
     description="Policy-Governed AI Execution Firewall",
-    version="0.5.0",
+    version=VERSION,
     lifespan=lifespan,
 )
 
 
 # ---------------------------------------------------------------------------
-# Health / Ready / Metrics
+# Version header middleware
+# ---------------------------------------------------------------------------
+@app.middleware("http")
+async def add_version_header(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-CUSTOS-Version"] = VERSION
+    return response
+
+
+# ---------------------------------------------------------------------------
+# Health / Ready / Metrics / Info
 # ---------------------------------------------------------------------------
 
 @app.get("/health", response_model=HealthResponse)
@@ -167,8 +177,22 @@ async def metrics():
     return "\n".join(lines) + "\n"
 
 
+@app.get("/v1/info")
+async def info():
+    """Version and backend information."""
+    default_ctx = tenant_manager.get("default")
+    return {
+        "version": VERSION,
+        "audit_backend": default_ctx.audit_chain.backend_type,
+        "tenant_count": tenant_manager.count,
+        "uptime_seconds": round(
+            time.time() - _metrics["custos_uptime_start"], 1
+        ),
+    }
+
+
 # ---------------------------------------------------------------------------
-# Evaluate — now tenant-aware
+# Evaluate
 # ---------------------------------------------------------------------------
 
 @app.post("/v1/evaluate", response_model=EvaluateResponse)
@@ -181,20 +205,19 @@ async def evaluate(
     span.set_attribute("tenant_id", req.tenant_id)
     _metrics["custos_requests_total"] += 1
 
-    # Validation
     val = validator.validate_request(req.client_id, req.content, req.token_count)
     if not val.valid:
         span.set_status("ERROR")
         tracer.finish_span(span)
         raise HTTPException(status_code=422, detail=val.error)
 
-    # Resolve tenant — falls back to default if unregistered
     ctx = tenant_manager.get_or_default(req.tenant_id)
+    rate_key = (
+        f"{req.tenant_id}:{req.client_id}"
+        if req.tenant_id != "default"
+        else req.client_id
+    )
 
-    # Rate limiter — per tenant, uses client_id within tenant namespace
-    rate_key = f"{req.tenant_id}:{req.client_id}" if req.tenant_id != "default" else req.client_id
-
-    # Ensure rate key is registered for this tenant
     if ctx.rate_limiter.get_all_quotas().get(rate_key) is None:
         ctx.rate_limiter.register(
             rate_key,
@@ -204,13 +227,14 @@ async def evaluate(
     allowed, msg = ctx.rate_limiter.check_and_consume(rate_key, req.token_count)
     if not allowed:
         _metrics["custos_rate_limit_hits"] += 1
-        ctx.audit_chain.record(req.client_id, "rate_limited", msg, req.content,
-                               trace_id=span.trace_id)
+        ctx.audit_chain.record(
+            req.client_id, "rate_limited", msg, req.content,
+            trace_id=span.trace_id,
+        )
         span.set_status("RATE_LIMITED")
         tracer.finish_span(span)
         raise HTTPException(status_code=429, detail=msg)
 
-    # Policy evaluation — per tenant engine
     result: PolicyResult = ctx.policy_engine.evaluate(req.content)
 
     if result.allowed:
@@ -221,7 +245,6 @@ async def evaluate(
     else:
         _metrics["custos_requests_denied"] += 1
 
-    # Audit — per tenant chain
     audit_entry = ctx.audit_chain.record(
         client_id=req.client_id,
         action=result.action.value,
@@ -256,7 +279,7 @@ async def evaluate(
 
 
 # ---------------------------------------------------------------------------
-# Audit — per tenant
+# Audit
 # ---------------------------------------------------------------------------
 
 @app.get("/v1/audit", response_model=list[AuditRecordResponse])
@@ -272,13 +295,17 @@ async def get_audit_log(
 async def verify_audit_chain(tenant_id: str = "default"):
     ctx = tenant_manager.get_or_default(tenant_id)
     valid, reason = ctx.audit_chain.verify()
-    return {"valid": valid, "reason": reason,
-            "chain_length": ctx.audit_chain.length,
-            "tenant_id": tenant_id}
+    return {
+        "valid": valid,
+        "reason": reason,
+        "chain_length": ctx.audit_chain.length,
+        "tenant_id": tenant_id,
+        "backend": ctx.audit_chain.backend_type,
+    }
 
 
 # ---------------------------------------------------------------------------
-# Snapshot — per tenant
+# Snapshot
 # ---------------------------------------------------------------------------
 
 @app.get("/v1/audit/snapshot", response_model=SnapshotResponse)
@@ -312,7 +339,7 @@ async def verify_snapshot(req: SnapshotVerifyRequest):
 
 
 # ---------------------------------------------------------------------------
-# Replay — per tenant
+# Replay
 # ---------------------------------------------------------------------------
 
 @app.post("/v1/replay", response_model=ReplayResponse)
@@ -350,7 +377,7 @@ async def replay(req: ReplayRequest):
 
 
 # ---------------------------------------------------------------------------
-# Policy Diff (stateless — no tenant context needed)
+# Policy Diff
 # ---------------------------------------------------------------------------
 
 @app.post("/v1/policy/diff", response_model=PolicyDiffResponse)
@@ -389,12 +416,11 @@ async def policy_diff(req: PolicyDiffRequest):
 
 
 # ---------------------------------------------------------------------------
-# v0.5 — Tenant Management
+# Tenant Management
 # ---------------------------------------------------------------------------
 
 @app.post("/v1/tenants", response_model=TenantResponse)
 async def register_tenant(req: TenantRegisterRequest):
-    """Register a new tenant with isolated policy, rate limiter, and audit chain."""
     if req.tenant_id == "default":
         raise HTTPException(
             status_code=400,
@@ -405,7 +431,6 @@ async def register_tenant(req: TenantRegisterRequest):
             status_code=409,
             detail=f"Tenant '{req.tenant_id}' already exists"
         )
-
     config = TenantConfig(
         tenant_id=req.tenant_id,
         quota=QuotaConfig(
@@ -415,9 +440,7 @@ async def register_tenant(req: TenantRegisterRequest):
         ),
     )
     tenant_manager.register(req.tenant_id, config)
-
     logger.info("tenant.registered", extra={"tenant_id": req.tenant_id})
-
     return TenantResponse(
         tenant_id=req.tenant_id,
         requests_per_minute=req.requests_per_minute,
@@ -428,18 +451,20 @@ async def register_tenant(req: TenantRegisterRequest):
 
 @app.get("/v1/tenants", response_model=TenantListResponse)
 async def list_tenants():
-    """List all registered tenants."""
     tenants = tenant_manager.list_tenants()
     return TenantListResponse(tenants=tenants, count=len(tenants))
 
 
 @app.delete("/v1/tenants/{tenant_id}")
 async def delete_tenant(tenant_id: str):
-    """Remove a tenant. Cannot remove 'default'."""
     if tenant_id == "default":
-        raise HTTPException(status_code=400, detail="Cannot delete the default tenant")
+        raise HTTPException(
+            status_code=400, detail="Cannot delete the default tenant"
+        )
     removed = tenant_manager.unregister(tenant_id)
     if not removed:
-        raise HTTPException(status_code=404, detail=f"Tenant '{tenant_id}' not found")
+        raise HTTPException(
+            status_code=404, detail=f"Tenant '{tenant_id}' not found"
+        )
     logger.info("tenant.deleted", extra={"tenant_id": tenant_id})
     return {"deleted": True, "tenant_id": tenant_id}
