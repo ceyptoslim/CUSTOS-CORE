@@ -24,6 +24,17 @@ spec:
           envFrom:
             - configMapRef:
                 name: custos-config
+          env:
+            # Mount DATABASE_URL from a Kubernetes Secret (not ConfigMap).
+            # Create with:
+            #   kubectl create secret generic custos-db-secret \
+            #     --from-literal=DATABASE_URL=postgresql://user:pass@host:5432/custos
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: custos-db-secret
+                  key: DATABASE_URL
+                  optional: true   # falls back to in-memory if secret absent
           livenessProbe:
             httpGet:
               path: /health
