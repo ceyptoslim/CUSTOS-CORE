@@ -11,27 +11,13 @@ service:
   targetPort: 8000
 
 env:
-  logLevel: INFO
-  tracing: console
-
-secrets:
-  databaseUrl: ""
-  jwtSecret: "dev-secret-change-in-production"
+  LOG_LEVEL: "INFO"
+  AUTH_DISABLED: "0"
 
 resources:
   requests:
-    memory: "128Mi"
-    cpu: "100m"
+    cpu: "250m"
+    memory: "256Mi"
   limits:
+    cpu: "1000m"
     memory: "512Mi"
-    cpu: "500m"
-
-livenessProbe:
-  path: /health
-  initialDelaySeconds: 10
-  periodSeconds: 15
-
-readinessProbe:
-  path: /ready
-  initialDelaySeconds: 5
-  periodSeconds: 10
