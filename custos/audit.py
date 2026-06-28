@@ -7,9 +7,6 @@ Storage backends (selected via env var or constructor):
 - In-memory (default): fast, no deps, resets on restart
 - SQLite (AUDIT_DB_PATH env var): dev/single-node persistence
 - PostgreSQL (DATABASE_URL env var): production-grade persistence
-
-The chain integrity model is backend-agnostic — verify() works
-identically regardless of which backend is active.
 """
 
 import hashlib
@@ -38,15 +35,11 @@ class AuditRecord:
         return asdict(self)
 
 
-# ---------------------------------------------------------------------------
-# Backend implementations
-# ---------------------------------------------------------------------------
-
 class InMemoryBackend:
     """Default backend. Fast, no dependencies. Resets on restart."""
 
     def save(self, record: AuditRecord) -> None:
-        pass  # In-memory: records stored in AuditChain._records list only
+        pass
 
     def load_all(self) -> List[AuditRecord]:
         return []
@@ -119,9 +112,6 @@ class PostgreSQLBackend:
     PostgreSQL backend for production deployments.
     Requires: pip install psycopg2-binary
     Connection string via DATABASE_URL env var or constructor argument.
-
-    Example DATABASE_URL:
-        postgresql://user:password@localhost:5432/custos
     """
 
     def __init__(self, database_url: str):
@@ -196,28 +186,18 @@ class PostgreSQLBackend:
         pass
 
 
-# ---------------------------------------------------------------------------
-# Backend factory
-# ---------------------------------------------------------------------------
-
 def _build_backend(
     db_path: Optional[str] = None,
     database_url: Optional[str] = None,
 ):
-    """Select backend based on provided config or environment variables."""
     url = database_url or os.getenv("DATABASE_URL")
     path = db_path or os.getenv("AUDIT_DB_PATH")
-
     if url:
         return PostgreSQLBackend(url)
     if path:
         return SQLiteBackend(path)
     return InMemoryBackend()
 
-
-# ---------------------------------------------------------------------------
-# AuditChain — backend-agnostic
-# ---------------------------------------------------------------------------
 
 class AuditChain:
     GENESIS_HASH = "0" * 64
@@ -226,20 +206,15 @@ class AuditChain:
         self,
         db_path: Optional[str] = None,
         database_url: Optional[str] = None,
-        _backend=None,  # For testing — inject a backend directly
+        _backend=None,
     ):
         self._records: List[AuditRecord] = []
         self._lock = threading.RLock()
         self._backend = _backend or _build_backend(db_path, database_url)
         self._db_path = db_path or os.getenv("AUDIT_DB_PATH")
 
-        # Load existing records from backend on startup
         for record in self._backend.load_all():
             self._records.append(record)
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
 
     def record(
         self,
@@ -305,10 +280,6 @@ class AuditChain:
     @property
     def backend_type(self) -> str:
         return type(self._backend).__name__
-
-    # ------------------------------------------------------------------
-    # Hashing helpers
-    # ------------------------------------------------------------------
 
     @staticmethod
     def _hash_content(content: str) -> str:
