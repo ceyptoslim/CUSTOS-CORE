@@ -14,7 +14,7 @@ Format: [version] — date — summary
 - Kubernetes manifests (k8s/deployment.yaml, service.yaml, configmap.yaml)
 - Helm chart (charts/custos/) for one-command cluster deployment
 - X-CUSTOS-Version response header on all API responses
-- OpenAPI schema export (docs/openapi.json auto-generated)
+- /v1/info endpoint — version and backend info
 - CHANGELOG.md (this file)
 
 ### Changed
