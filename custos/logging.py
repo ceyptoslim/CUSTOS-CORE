@@ -8,7 +8,7 @@ log aggregators (Datadog, Loki, CloudWatch, etc).
 Usage:
     from custos.logging import get_logger
     logger = get_logger(__name__)
-    logger.info("evaluate.allow", client_id="default", action="allow")
+    logger.info("evaluate.allow", extra={"client_id": "default", "action": "allow"})
 """
 
 import json
