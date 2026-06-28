@@ -129,13 +129,22 @@ async def health():
 
 @app.get("/ready", response_model=ReadyResponse)
 async def ready():
-    default_ctx = tenant_manager.get("default")
-    checks = {
-        "policy_engine": default_ctx.policy_engine.rule_count > 0,
-        "rate_limiter": True,
-        "audit_chain": True,
-        "tenant_manager": tenant_manager.count > 0,
-    }
+    try:
+        default_ctx = tenant_manager.get("default")
+        checks = {
+            "policy_engine": default_ctx is not None and default_ctx.policy_engine.rule_count > 0,
+            "rate_limiter": True,
+            "audit_chain": default_ctx is not None,
+            "tenant_manager": tenant_manager.count > 0,
+        }
+    except Exception as exc:
+        logger.warning("ready.check_failed", extra={"error": str(exc)})
+        checks = {
+            "policy_engine": False,
+            "rate_limiter": False,
+            "audit_chain": False,
+            "tenant_manager": False,
+        }
     all_ready = all(checks.values())
     return ReadyResponse(
         status="ready" if all_ready else "not_ready",
