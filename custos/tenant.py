@@ -1,5 +1,5 @@
 """
-CUSTOS Tenant Manager v0.5
+CUSTOS Tenant Manager v1.0
 
 Manages per-tenant policy engines, rate limiters, and audit chains.
 Each tenant is completely isolated — exhausting one tenant's quota,
@@ -8,6 +8,9 @@ has zero effect on any other tenant.
 
 Tenant ID format: any non-empty string, max 64 chars.
 The "default" tenant is always pre-registered with standard settings.
+
+Note: tenant policy customizations are in-memory only and reset
+on restart. Persistent policy storage is tracked in issue #20.
 """
 
 import threading
