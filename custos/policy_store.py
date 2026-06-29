@@ -15,11 +15,9 @@ On startup, TenantManager loads rules from the store before
 serving any requests.
 """
 
-import json
 import os
 import sqlite3
 import threading
-from dataclasses import asdict, dataclass
 from typing import List, Optional
 
 from custos.policy_engine import PolicyAction, PolicyRule
