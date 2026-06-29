@@ -6,10 +6,16 @@ Each /v1/evaluate call produces a trace span containing
 client_id, action, triggered_rule, and audit_record_hash.
 
 Backends:
-- Console (default, dev mode): prints spans as JSON to stdout
+- Console (default): prints spans as JSON to stdout
+- OTLP (production): set OTEL_EXPORTER_OTLP_ENDPOINT to export
+  to Jaeger, Grafana Tempo, or Honeycomb. Closes issue #21.
 - NoOp (disabled): set CUSTOS_TRACING=disabled
-- OTLP (v1.1): set OTEL_EXPORTER_OTLP_ENDPOINT to export
-  to Jaeger, Grafana Tempo, or Honeycomb. Tracked in issue #21.
+
+OTLP export requires opentelemetry packages:
+    pip install opentelemetry-sdk opentelemetry-exporter-otlp-proto-grpc
+
+Example:
+    OTEL_EXPORTER_OTLP_ENDPOINT=http://jaeger:4317 uvicorn main:app
 """
 
 import json
@@ -66,6 +72,56 @@ class ConsoleExporter:
         print(json.dumps({"otel.span": span.to_dict()}, default=str), flush=True)
 
 
+class OTLPExporter:
+    """
+    Exports spans to a real OTLP collector (Jaeger, Grafana Tempo, Honeycomb).
+    Requires: pip install opentelemetry-sdk opentelemetry-exporter-otlp-proto-grpc
+    Set OTEL_EXPORTER_OTLP_ENDPOINT env var to your collector endpoint.
+    """
+
+    def __init__(self, endpoint: str):
+        try:
+            from opentelemetry import trace
+            from opentelemetry.sdk.trace import TracerProvider
+            from opentelemetry.sdk.trace.export import BatchSpanProcessor
+            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+                OTLPSpanExporter,
+            )
+            from opentelemetry.sdk.resources import Resource
+
+            resource = Resource.create({"service.name": "custos-core"})
+            provider = TracerProvider(resource=resource)
+            exporter = OTLPSpanExporter(endpoint=endpoint, insecure=True)
+            provider.add_span_processor(BatchSpanProcessor(exporter))
+            trace.set_tracer_provider(provider)
+            self._tracer = trace.get_tracer("custos")
+            self._trace = trace
+            self._available = True
+        except ImportError:
+            print(
+                "WARNING: opentelemetry packages not installed. "
+                "Falling back to console exporter. "
+                "Run: pip install opentelemetry-sdk "
+                "opentelemetry-exporter-otlp-proto-grpc",
+                flush=True,
+            )
+            self._available = False
+            self._console = ConsoleExporter()
+
+    def export(self, span: Span) -> None:
+        if not self._available:
+            self._console.export(span)
+            return
+
+        with self._tracer.start_as_current_span(span.name) as otel_span:
+            for key, value in span.attributes.items():
+                otel_span.set_attribute(key, str(value) if value is not None else "")
+            if span.status != "OK":
+                otel_span.set_status(
+                    self._trace.StatusCode.ERROR, span.status
+                )
+
+
 class NoOpExporter:
     """Discards all spans. Used when tracing is disabled."""
 
@@ -75,7 +131,7 @@ class NoOpExporter:
 
 class Tracer:
     """
-    Minimal tracer. Creates spans and exports them on end().
+    Minimal tracer. Creates spans and exports them on finish().
     Thread-safe for use in async FastAPI handlers.
     """
 
@@ -86,6 +142,9 @@ class Tracer:
         mode = os.getenv("CUSTOS_TRACING", "console").lower()
         if mode == "disabled":
             return NoOpExporter()
+        endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+        if endpoint:
+            return OTLPExporter(endpoint)
         return ConsoleExporter()
 
     def start_span(self, name: str) -> Span:
@@ -96,5 +155,5 @@ class Tracer:
         self._exporter.export(span)
 
 
-# Module-level singleton — import and use directly
+# Module-level singleton
 tracer = Tracer()
