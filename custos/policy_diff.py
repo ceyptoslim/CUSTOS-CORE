@@ -1,4 +1,3 @@
-"""
 CUSTOS Policy Diff v0.4
 
 Given content and two policy rule sets, shows how the
