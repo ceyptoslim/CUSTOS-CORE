@@ -1,6 +1,7 @@
 """
-CUSTOS Pydantic Models v0.5
-Added tenant registration and management schemas.
+CUSTOS Pydantic Models v1.0
+Schemas for all request/response models across evaluate,
+audit, replay, policy diff, snapshots, and tenant management.
 """
 
 from typing import Any, Optional
