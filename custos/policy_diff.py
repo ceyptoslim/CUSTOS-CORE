@@ -1,3 +1,4 @@
+"""
 CUSTOS Policy Diff v1.0
 Given content and two policy rule sets, shows how the
 decision differs between them.
