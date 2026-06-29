@@ -39,7 +39,7 @@ The Docker image runs as a non-root `custos` user.
 **5. Input validation before policy evaluation**
 All requests pass through `InputValidator` before reaching the policy engine, preventing oversized or malformed payloads from reaching core logic.
 
-## Known Limitations (MVP)
+## Known Limitations
 
 - Policy engine uses regex matching. Sophisticated adversaries may craft inputs that bypass rules. Production upgrade: replace with OPA.
 - Metrics counters are not atomic. Under extreme concurrent load, counts may drift slightly.
