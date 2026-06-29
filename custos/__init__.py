@@ -6,7 +6,7 @@ Policy-Governed AI Execution Firewall
 
 __title__ = "custos"
 __description__ = "Policy-Governed AI Execution Firewall"
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 __author__ = "CUSTOS Security"
 __license__ = "Apache-2.0"
 
