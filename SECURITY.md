@@ -12,7 +12,8 @@
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Email: security@custos-core.dev (replace with your actual contact)
+Email: heathtavares@retool.com 
+
 
 Include:
 - Description of the vulnerability
