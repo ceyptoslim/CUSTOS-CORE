@@ -4,7 +4,9 @@
 
 | Version | Supported |
 |---------|-----------|
-| 0.1.x   | ✅ Yes    |
+| 1.0.x   | ✅ Yes    |
+| 0.5.x   | ✅ Yes    |
+| < 0.5   | ❌ No     |
 
 ## Reporting a Vulnerability
 
@@ -41,4 +43,4 @@ All requests pass through `InputValidator` before reaching the policy engine, pr
 
 - Policy engine uses regex matching. Sophisticated adversaries may craft inputs that bypass rules. Production upgrade: replace with OPA.
 - Metrics counters are not atomic. Under extreme concurrent load, counts may drift slightly.
-- Audit chain is in-memory only. Restart loses history. Production upgrade: persist to SQLite/PostgreSQL.
+  
