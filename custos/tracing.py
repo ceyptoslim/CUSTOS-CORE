@@ -1,5 +1,5 @@
 """
-CUSTOS OpenTelemetry Tracing
+CUSTOS OpenTelemetry Tracing v1.1
 
 Lightweight tracing layer for CUSTOS requests.
 Each /v1/evaluate call produces a trace span containing
@@ -7,10 +7,9 @@ client_id, action, triggered_rule, and audit_record_hash.
 
 Backends:
 - Console (default, dev mode): prints spans as JSON to stdout
-- OTLP (production): set OTEL_EXPORTER_OTLP_ENDPOINT env var
-
-Upgrade path: swap ConsoleSpanExporter for OTLPSpanExporter
-when connecting to Jaeger, Tempo, or Honeycomb.
+- NoOp (disabled): set CUSTOS_TRACING=disabled
+- OTLP (v1.1): set OTEL_EXPORTER_OTLP_ENDPOINT to export
+  to Jaeger, Grafana Tempo, or Honeycomb. Tracked in issue #21.
 """
 
 import json
