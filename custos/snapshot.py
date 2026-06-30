@@ -1,5 +1,5 @@
 """
-CUSTOS Decision Snapshots v1.1
+CUSTOS Decision Snapshots v1.0
 
 Exports a tamper-evident snapshot of the audit chain
 for a given time range, suitable for compliance review.
