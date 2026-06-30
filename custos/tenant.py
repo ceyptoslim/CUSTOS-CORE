@@ -9,8 +9,9 @@ has zero effect on any other tenant.
 Tenant ID format: any non-empty string, max 64 chars.
 The "default" tenant is always pre-registered with standard settings.
 
-Note: tenant policy customizations are in-memory only and reset
-on restart. Persistent policy storage is tracked in issue #20.
+Note: tenant policy customizations can be persisted
+via PolicyStore (custos/policy_store.py). Set
+POLICY_DB_PATH or DATABASE_URL env var to activate.
 """
 
 import threading
