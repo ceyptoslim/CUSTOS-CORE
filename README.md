@@ -6,6 +6,11 @@
 CUSTOS evaluates every request against configurable policy rules before it reaches your AI model or automated system. Each decision is logged to a hash-chained audit ledger, making your governance posture auditable, reproducible, and tamper-evident.
 
 ---
+Zero Third-Party Risk: Runs 100% self-hosted inside your VPC or Kubernetes clusters via Helm—your prompt data never leaves your environment.
+
+Cryptographic Defensibility: Instantly generate tamper-evident snapshots to prove your AI compliance posture to auditors (SOC 2 / HIPAA / ISO 42001).
+
+Precedence-Enforced Safety: Hardcoded regulatory DENY policies take absolute priority over volatile, non-deterministic LLM behavior
 
 ## What CUSTOS Does
 
