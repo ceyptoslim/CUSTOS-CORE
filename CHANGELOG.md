@@ -1,7 +1,19 @@
 # CUSTOS Core — Changelog
+---
+## [1.1.0] — Policy Persistence + OTLP Export
 
-All notable changes are documented here.
-Format: [version] — date — summary
+### Added
+- custos/policy_store.py — pluggable policy rule storage
+- InMemoryPolicyBackend, SQLitePolicyBackend, PostgreSQLPolicyBackend
+- Policy rules survive pod restarts via POLICY_DB_PATH or DATABASE_URL
+- OTLPExporter in custos/tracing.py — export to Jaeger, Tempo, Honeycomb
+- Set OTEL_EXPORTER_OTLP_ENDPOINT to activate OTLP export
+- Graceful fallback to console if packages not installed
+- 26 new tests (176 total)
+
+### Closes
+- Issue #20 — policy persistence across restarts
+- Issue #21 — OTLP trace export
 
 ---
 
