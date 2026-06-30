@@ -1,4 +1,5 @@
 # CUSTOS Core
+![CI](https://github.com/ceyptoslim/CUSTOS-CORE/actions/workflows/ci.yml/badge.svg)
 
 **A policy-governed execution layer that sits between AI systems and production resources, enforcing deterministic decisions and producing verifiable audit evidence.**
 
