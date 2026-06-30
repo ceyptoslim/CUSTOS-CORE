@@ -6,7 +6,7 @@
 CUSTOS evaluates every request against configurable policy rules before it reaches your AI model or automated system. Each decision is logged to a hash-chained audit ledger, making your governance posture auditable, reproducible, and tamper-evident.
 
 ---
-##Enterprise Benefits
+### WHY CUSTOS-CORE ?
 
 Zero Third-Party Risk: Runs 100% self-hosted inside your VPC or Kubernetes clusters via Helm—your prompt data never leaves your environment.
 
