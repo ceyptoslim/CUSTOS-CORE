@@ -10,6 +10,11 @@ services:
       - "8000:8000"
     environment:
       - ENV=production
+      # DEV ONLY: disables JWT auth so the Quickstart curl examples in
+      # README.md work with zero setup. Never set this in a real deployment
+      # -- instead set CUSTOS_JWT_SECRET and issue tokens via
+      # custos.auth.create_token(). See README "Authentication" section.
+      - AUTH_DISABLED=1
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s

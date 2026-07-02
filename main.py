@@ -1,6 +1,11 @@
 """
-CUSTOS Core -- FastAPI Runtime v1.0
-Enterprise Release Candidate.
+CUSTOS Core -- FastAPI Runtime v1.1
+
+v1.1 additions:
+- Tenant policy rules persist across restarts via PolicyStore
+  (POST/GET /v1/tenants/{tenant_id}/policy), closing issue #20
+- OTLP trace export to a real collector via OTEL_EXPORTER_OTLP_ENDPOINT,
+  closing issue #21 (see custos/tracing.py)
 
 v1.0 additions:
 - PostgreSQL audit backend support
@@ -27,6 +32,9 @@ from custos.models import (
     HealthResponse,
     PolicyDiffRequest,
     PolicyDiffResponse,
+    PolicyRuleAddResponse,
+    PolicyRuleListResponse,
+    PolicyRuleRequest,
     ReadyResponse,
     ReplayRequest,
     ReplayResponse,
@@ -39,6 +47,7 @@ from custos.models import (
 )
 from custos.policy_diff import PolicyDiffer
 from custos.policy_engine import PolicyAction, PolicyResult, PolicyRule
+from custos.policy_store import PolicyStore
 from custos.rate_limiter import QuotaConfig
 from custos.replay import ReplayEngine
 from custos.snapshot import SnapshotEngine
@@ -46,7 +55,7 @@ from custos.tenant import TenantConfig, TenantManager
 from custos.tracing import tracer
 from custos.validation import InputValidator
 
-VERSION = "1.0.0"
+VERSION = "1.1.1"
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -57,7 +66,8 @@ logger = get_logger("main")
 # ---------------------------------------------------------------------------
 # Global singletons
 # ---------------------------------------------------------------------------
-tenant_manager = TenantManager()
+policy_store = PolicyStore()
+tenant_manager = TenantManager(policy_store=policy_store)
 validator = InputValidator()
 policy_differ = PolicyDiffer()
 
@@ -193,6 +203,7 @@ async def info():
     return {
         "version": VERSION,
         "audit_backend": default_ctx.audit_chain.backend_type,
+        "policy_backend": tenant_manager.policy_backend,
         "tenant_count": tenant_manager.count,
         "uptime_seconds": round(
             time.time() - _metrics["custos_uptime_start"], 1
@@ -421,6 +432,60 @@ async def policy_diff(req: PolicyDiffRequest):
         proposed_reason=result.proposed_reason,
         decision_changed=result.decision_changed,
         change_summary=result.change_summary,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Tenant Policy Rules (v1.1 -- persists across restarts, closes #20)
+# ---------------------------------------------------------------------------
+
+_ACTION_MAP = {
+    "allow": PolicyAction.ALLOW,
+    "deny": PolicyAction.DENY,
+    "audit": PolicyAction.AUDIT,
+}
+
+
+@app.post("/v1/tenants/{tenant_id}/policy", response_model=PolicyRuleAddResponse)
+async def add_tenant_policy_rule(tenant_id: str, req: PolicyRuleRequest):
+    """
+    Add a custom policy rule for a tenant. The rule is applied immediately
+    and persisted via PolicyStore, so it survives pod restarts, rollouts,
+    and autoscaling events when a durable backend (POLICY_DB_PATH or
+    DATABASE_URL) is configured.
+    """
+    try:
+        action = _ACTION_MAP[req.action]
+    except KeyError:
+        raise HTTPException(status_code=422, detail=f"Invalid action: {req.action}")
+
+    rule = PolicyRule(
+        name=req.name, pattern=req.pattern, action=action, reason=req.reason
+    )
+    tenant_manager.add_policy_rule(tenant_id, rule)
+    total = len(tenant_manager.list_policy_rules(tenant_id))
+
+    logger.info("policy.rule_added", extra={
+        "tenant_id": tenant_id, "rule_name": req.name,
+    })
+
+    return PolicyRuleAddResponse(
+        tenant_id=tenant_id, rule=req, total_custom_rules=total
+    )
+
+
+@app.get("/v1/tenants/{tenant_id}/policy", response_model=PolicyRuleListResponse)
+async def list_tenant_policy_rules(tenant_id: str):
+    """List custom (persisted) policy rules for a tenant. Excludes defaults."""
+    rules = tenant_manager.list_policy_rules(tenant_id)
+    rule_requests = [
+        PolicyRuleRequest(
+            name=r.name, pattern=r.pattern, action=r.action.value, reason=r.reason
+        )
+        for r in rules
+    ]
+    return PolicyRuleListResponse(
+        tenant_id=tenant_id, rules=rule_requests, count=len(rule_requests)
     )
 
 

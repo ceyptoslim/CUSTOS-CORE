@@ -75,9 +75,27 @@ curl -X POST http://localhost:8000/v1/evaluate \
   "triggered_rule": null,
   "reason": "No policy violations detected",
   "client_id": "default",
+  "tenant_id": "default",
   "audit_record_hash": "a3f9c2..."
 }
 ```
+
+> The Quickstart `docker compose up` stack sets `AUTH_DISABLED=1` so this
+> works with zero setup. Production deployments have JWT auth **on by
+> default** — see [Authentication](#authentication) below.
+
+### `POST /v1/tenants/{tenant_id}/policy`
+Add a custom policy rule for a tenant. Persisted via `PolicyStore` — survives
+restarts when `POLICY_DB_PATH` or `DATABASE_URL` is configured. Closes #20.
+
+```bash
+curl -X POST http://localhost:8000/v1/tenants/default/policy \
+  -H "Content-Type: application/json" \
+  -d '{"name": "block_competitor_name", "pattern": "(?i)acme-competitor", "action": "deny", "reason": "Competitor mention policy"}'
+```
+
+### `GET /v1/tenants/{tenant_id}/policy`
+List custom (non-default) policy rules currently active for a tenant.
 
 ### `GET /health`
 Service status and uptime.
@@ -99,6 +117,29 @@ Cryptographic integrity check of the entire audit chain.
 
 ---
 
+## Authentication
+
+JWT auth is **on by default** for `/v1/evaluate`. Set `CUSTOS_JWT_SECRET` to a
+strong secret in production and issue tokens with `custos.auth.create_token()`:
+
+```python
+from custos.auth import create_token
+token = create_token(client_id="my-service")
+```
+
+```bash
+curl -X POST http://localhost:8000/v1/evaluate \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"client_id": "my-service", "content": "Summarize this document"}'
+```
+
+For local development only, set `AUTH_DISABLED=1` to skip token verification
+entirely (this is what `docker-compose.yml` does for the Quickstart above).
+Never set `AUTH_DISABLED=1` in a production deployment.
+
+---
+
 ## Running Tests
 
 ```bash
@@ -110,7 +151,7 @@ Tests cover the policy engine, rate limiter, API endpoints, input validation, an
 
 ---
 
-## What Is Implemented (v1.0)
+## What Is Implemented (v1.1)
 
 | Component | Status |
 |---|---|
@@ -122,11 +163,12 @@ Tests cover the policy engine, rate limiter, API endpoints, input validation, an
 | PostgreSQL audit backend (production-grade) | ✅ |
 | JWT authentication on /v1/evaluate | ✅ |
 | Multi-tenant governance (isolated per tenant) | ✅ |
+| Tenant policy rule API + persistence (`/v1/tenants/{id}/policy`) | ✅ |
 | Replay engine (POST /v1/replay) | ✅ |
 | Policy diff (POST /v1/policy/diff) | ✅ |
 | Decision snapshots (GET /v1/audit/snapshot) | ✅ |
 | Structured JSON logging | ✅ |
-| OpenTelemetry-compatible tracing | ✅ |
+| OpenTelemetry tracing — console by default, OTLP export optional | ✅ |
 | Prometheus metrics | ✅ |
 | Grafana dashboard (auto-provisioned) | ✅ |
 | Docker Compose stack | ✅ |
@@ -146,13 +188,20 @@ Tests cover the policy engine, rate limiter, API endpoints, input validation, an
 | v0.3 | Observability | ✅ Shipped |
 | v0.4 | Replay Engine | ✅ Shipped |
 | v0.5 | Multi-tenant Governance | ✅ Shipped |
-| v1.0 | Enterprise Release Candidate | ✅ Current |
+| v1.0 | Enterprise Release Candidate | ✅ Shipped |
+| v1.1 | Policy Persistence + OTLP Export | ✅ Current |
 
 ---
 
+## Known Limitations (v1.1)
 
+| Area | Status | Notes |
+|---|---|---|
+| Tenant policy persistence | ✅ Available, opt-in | Custom rules added via `POST /v1/tenants/{id}/policy` survive restarts **only** when `POLICY_DB_PATH` or `DATABASE_URL` is set. With the default in-memory backend, custom rules are still lost on restart — this is expected for local/dev use. |
+| OTLP trace export | ✅ Available, opt-in | Set `OTEL_EXPORTER_OTLP_ENDPOINT` and install `opentelemetry-sdk` + `opentelemetry-exporter-otlp-proto-grpc`. Without the endpoint set (or without the packages installed), tracing gracefully falls back to console JSON output — trace IDs still appear in logs and API responses either way. |
+| Policy engine | ⚠️ Regex-based | Sufficient for MVP/PII/prompt-injection patterns. Sophisticated adversaries may craft inputs that bypass rules. Production upgrade path: OPA integration (tracked as a future focus area). |
 
-**Operator guidance:** For Kubernetes deployments, treat policy rules as ephemeral until v1.1. Use the `/v1/policy` API on startup (via an init container or ConfigMap-driven bootstrap script) to re-register tenant policies after each pod start.
+**Operator guidance:** For Kubernetes deployments where policy customization matters, set `POLICY_DB_PATH` (SQLite, single replica) or `DATABASE_URL` (PostgreSQL, multi-replica) so rules registered via the API survive rollouts, autoscaling, and rescheduling.
 
 ---
 

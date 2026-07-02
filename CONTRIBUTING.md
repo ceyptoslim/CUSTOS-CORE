@@ -51,4 +51,9 @@ refactor: move models to custos/models.py
 - Multi-cloud deployment configs
 - Enterprise SSO
 
-Focus areas for contributions: audit persistence, OPA integration, structured logging, multi-tenant client management.
+Focus areas for contributions (as of v1.1):
+- OPA integration to replace regex-based policy matching
+- Policy version registry with rollback
+- RS256 / JWKS auth upgrade for multi-tenant production use
+- Distributed rate limiting for multi-replica deployments (current limiter is per-pod)
+- OTLP export test coverage against a real collector (current tests only cover the graceful-fallback path)

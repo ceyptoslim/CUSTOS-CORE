@@ -1,5 +1,50 @@
 # CUSTOS Core — Changelog
 ---
+## [1.1.1] — Policy Persistence Integration Fix
+
+### Fixed
+- **Policy rules are now actually persisted.** v1.1.0 shipped `custos/policy_store.py`
+  with full unit test coverage and closed issue #20, but `TenantManager` never
+  called it — custom tenant policy rules were still lost on every restart in
+  practice. This release wires `PolicyStore` into `TenantManager`: rules are
+  loaded on tenant registration and the tenant list itself is restored from
+  the store on startup.
+- Added `POST /v1/tenants/{tenant_id}/policy` and `GET /v1/tenants/{tenant_id}/policy`
+  — until this release there was no API surface to actually register a
+  tenant-specific policy rule in the first place.
+- `tests/test_policy_store.py` only exercised `PolicyStore` in isolation; added
+  `tests/test_policy_persistence.py` with end-to-end tests that simulate a
+  restart (new `TenantManager` instance, same durable backend) and prove a
+  custom rule and its tenant are both restored.
+- Fixed `tests/conftest.py` to disable auth via a FastAPI dependency override
+  instead of relying on an external `AUTH_DISABLED` env var — `pytest tests/ -v`
+  now passes out of the box, matching the README's documented instructions.
+- Fixed `docker-compose.yml` Quickstart stack returning 401 on the README's own
+  `/v1/evaluate` example (JWT auth is on by default; the dev stack now sets
+  `AUTH_DISABLED=1` explicitly, with a comment warning against doing this in
+  production).
+- Synced version strings that had drifted after the v1.1.0 release: `main.py`
+  (`VERSION`), `charts/custos/Chart.yaml` (had a malformed `1.10`),
+  `charts/custos/values.yaml` image tag, and `k8s/deployment.yaml` image tag
+  and labels all now read `1.1.0`/`1.1.1` consistently.
+- Rewrote `.env.example` to document the environment variables the app
+  actually reads (`CUSTOS_JWT_SECRET`, `POLICY_DB_PATH`, `AUDIT_DB_PATH`,
+  `DATABASE_URL`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `CUSTOS_TRACING`, etc.) —
+  it previously only listed placeholder vars that didn't match the code.
+- 185 tests passing (up from 176 in v1.1.0; +9 new tests in
+  tests/test_policy_persistence.py covering restart-survival and the new
+  policy rule endpoints). The 2 existing version-header tests were fixed
+  in place to assert against `VERSION` instead of a hardcoded string.
+
+### Docs
+- README: Roadmap and "What Is Implemented" now say v1.1, added an
+  Authentication section, added a Known Limitations section that accurately
+  distinguishes "available but opt-in" from "not yet built."
+- ARCHITECTURE.md, SECURITY.md, CONTRIBUTING.md refreshed to match current
+  package structure and supported versions (see those files for detail).
+
+---
+
 ## [1.1.0] — Policy Persistence + OTLP Export
 
 ### Added

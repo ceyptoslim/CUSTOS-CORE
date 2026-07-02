@@ -147,7 +147,7 @@ Genesis Hash (64 zeros)
 
 To tamper with Record 1, an attacker would need to recompute every subsequent hash in the chain — which is detectable because the final hash would not match.
 
-**Current limitation:** The chain is in-memory only. A restart clears it. Persistence to SQLite/PostgreSQL is planned for v0.2.
+**Persistence:** In-memory by default (dev/test). Set `AUDIT_DB_PATH` for SQLite or `DATABASE_URL` for PostgreSQL to survive restarts — shipped in v0.2 (SQLite) and v1.0 (PostgreSQL). All backends implement the same `verify()` chain-integrity check.
 
 ---
 
@@ -175,7 +175,7 @@ The `/metrics` endpoint exposes Prometheus-format counters:
 
 Grafana is pre-provisioned with a dashboard that auto-loads on `docker compose up`. No manual configuration required.
 
-OpenTelemetry tracing is planned for v0.3.
+Tracing (`custos/tracing.py`) exports spans to console JSON by default. Set `OTEL_EXPORTER_OTLP_ENDPOINT` to export to a real collector (Jaeger, Tempo, Honeycomb) — shipped in v0.3 (console + correlation) and extended with real OTLP export in v1.1.
 
 ---
 
@@ -185,53 +185,81 @@ OpenTelemetry tracing is planned for v0.3.
 CUSTOS-CORE/
 ├── main.py                          # FastAPI app, routes, singletons
 ├── custos/
-│   ├── __init__.py                  # Package metadata
-│   ├── policy_engine.py             # Rule evaluation logic
-│   ├── rate_limiter.py              # Per-client quota enforcement
-│   ├── audit.py                     # Hash-chained audit ledger
+│   ├── __init__.py                  # Package metadata (__version__)
+│   ├── auth.py                      # JWT verification + dev create_token() helper
+│   ├── policy_engine.py             # Rule evaluation logic (DEFAULT_RULES, PolicyEngine)
+│   ├── policy_store.py              # Pluggable persistence for tenant custom policy rules
+│   ├── policy_diff.py               # Compare decisions under current vs. proposed rules
+│   ├── rate_limiter.py              # Per-client quota enforcement (sliding windows)
+│   ├── audit.py                     # Hash-chained audit ledger, pluggable backends
+│   ├── replay.py                    # Reproduce a historical decision by record hash
+│   ├── snapshot.py                  # Compliance-export snapshots of the audit chain
+│   ├── tenant.py                    # TenantManager — per-tenant isolation + policy restore
+│   ├── tracing.py                   # Console + OTLP span export
+│   ├── logging.py                   # Structured JSON logging setup
 │   ├── models.py                    # Pydantic request/response schemas
-│   └── validation.py               # Input validation layer
-├── tests/
-│   ├── test_policy_engine.py        # Policy engine unit tests
-│   ├── test_rate_limiter.py         # Rate limiter unit tests
-│   └── test_api.py                  # API integration tests
+│   └── validation.py                # Input validation layer
+├── tests/                           # One test file per custos/ module, plus:
+│   ├── test_api.py                  # /v1/evaluate + /v1/audit integration tests
+│   ├── test_tenant.py                # Tenant isolation + tenant API tests
+│   └── test_policy_persistence.py   # End-to-end proof rules survive a restart
 ├── observability/
 │   ├── prometheus.yml               # Prometheus scrape config
 │   └── grafana/
 │       ├── dashboards/custos.json   # Pre-built Grafana dashboard
 │       └── provisioning/            # Auto-provisioning config
-├── .github/workflows/ci.yml         # GitHub Actions CI
-├── Dockerfile                       # Container definition
-├── docker-compose.yml               # Full stack (API + Prometheus + Grafana)
+├── k8s/                              # Kubernetes manifests (deployment, service, configmap)
+├── charts/custos/                    # Helm chart for one-command cluster deployment
+├── .github/workflows/ci.yml         # GitHub Actions CI (ruff + bandit + pytest + docker)
+├── Dockerfile                       # Container definition (non-root user)
+├── docker-compose.yml               # Full local stack (API + Prometheus + Grafana)
 └── requirements.txt                 # Python dependencies
 ```
 
 ---
 
-## Planned Roadmap
+## Version History
+
+### v0.1 — Stable Core
+- Policy engine, rate limiter, input validation, in-memory audit chain
+- Prometheus metrics, Docker Compose stack with Prometheus + Grafana
 
 ### v0.2 — Authentication + Persistent Audit
-- JWT or API-key authentication on `/v1/evaluate`
+- JWT authentication on `/v1/evaluate` (`custos/auth.py`)
 - SQLite-backed audit persistence (survives restarts)
 - Structured error responses
 
 ### v0.3 — Observability
-- OpenTelemetry tracing end-to-end
-- Structured JSON logging
+- OpenTelemetry-style tracing end-to-end (console export)
+- Structured JSON logging (`custos/logging.py`)
 - Trace correlation between audit records and spans
 
 ### v0.4 — Replay Engine
-- Reproduce any historical decision from the audit chain
+- Reproduce any historical decision from the audit chain (`custos/replay.py`)
 - Policy diff: show how a decision would change under a new policy version
-- Decision snapshots for compliance exports
+- Decision snapshots for compliance exports (`custos/snapshot.py`)
 
 ### v0.5 — Multi-tenant Governance
-- Per-tenant policy namespaces
-- Tenant isolation in rate limiting and audit chain
-- Policy version registry with rollback
+- Per-tenant policy, rate-limiter, and audit chain isolation (`custos/tenant.py`)
+- `POST/GET/DELETE /v1/tenants` — tenant lifecycle API
 
 ### v1.0 — Enterprise Release Candidate
-- PostgreSQL for audit persistence
+- PostgreSQL backend for audit persistence
 - Kubernetes manifests and Helm chart
-- Security scanning in CI (Bandit, dependency audit)
-- Stable public API with versioning
+- Security scanning in CI (Bandit)
+- Stable public API with `X-CUSTOS-Version` header and `/v1/info`
+
+### v1.1 — Policy Persistence + OTLP Export
+- `custos/policy_store.py` — pluggable storage (in-memory / SQLite / PostgreSQL)
+  for tenant-specific custom policy rules, wired into `TenantManager` so both
+  the tenant and its rules are restored on startup (`POLICY_DB_PATH` /
+  `DATABASE_URL`). `POST/GET /v1/tenants/{tenant_id}/policy` exposes it.
+- `OTLPExporter` in `custos/tracing.py` — real trace export to Jaeger, Tempo,
+  or Honeycomb via `OTEL_EXPORTER_OTLP_ENDPOINT`, with graceful console
+  fallback if the optional `opentelemetry` packages aren't installed.
+
+## Planned (Not Yet Built)
+- OPA integration to replace regex-based policy matching
+- Policy version registry with rollback
+- RS256 / JWKS auth for multi-tenant production use
+- Distributed (multi-replica) rate limiting — current limiter is per-pod

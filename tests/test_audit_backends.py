@@ -117,19 +117,22 @@ class TestAuditChainBackends:
 class TestVersionHeader:
     def test_version_header_present(self):
         from fastapi.testclient import TestClient
-        from main import app
-        client = TestClient(app)
+        import main as app_module
+        client = TestClient(app_module.app)
         resp = client.get("/health")
         assert "X-CUSTOS-Version" in resp.headers
-        assert resp.headers["X-CUSTOS-Version"] == "1.0.0"
+        # Assert against the app's own VERSION constant rather than a
+        # hardcoded string, so this test doesn't break on every version bump.
+        assert resp.headers["X-CUSTOS-Version"] == app_module.VERSION
 
     def test_info_endpoint(self):
         from fastapi.testclient import TestClient
-        from main import app
-        client = TestClient(app)
+        import main as app_module
+        client = TestClient(app_module.app)
         resp = client.get("/v1/info")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["version"] == "1.0.0"
+        assert data["version"] == app_module.VERSION
         assert "audit_backend" in data
+        assert "policy_backend" in data
         assert "tenant_count" in data

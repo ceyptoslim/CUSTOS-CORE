@@ -172,3 +172,19 @@ class TenantResponse(BaseModel):
 class TenantListResponse(BaseModel):
     tenants: list[str]
     count: int
+
+# ---------------------------------------------------------------------------
+# v1.1 — Tenant policy rule management (closes #20)
+# ---------------------------------------------------------------------------
+
+class PolicyRuleAddResponse(BaseModel):
+    tenant_id: str
+    rule: PolicyRuleRequest
+    total_custom_rules: int
+
+
+class PolicyRuleListResponse(BaseModel):
+    tenant_id: str
+    rules: list[PolicyRuleRequest]
+    count: int
+
