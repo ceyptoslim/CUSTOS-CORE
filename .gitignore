@@ -30,3 +30,6 @@ grafana-data/
 # OS
 .DS_Store
 Thumbs.db
+.coverage
+htmlcov/
+coverage.xml

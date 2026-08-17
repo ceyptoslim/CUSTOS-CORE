@@ -9,25 +9,31 @@ on:
 
 jobs:
   test:
-    name: Lint & Test
+    name: Lint & Test (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: ${{ matrix.python-version }}
 
       - name: Cache pip
         uses: actions/cache@v4
         with:
           path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          key: ${{ runner.os }}-pip-${{ matrix.python-version }}-${{ hashFiles('requirements.txt') }}
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          pip install -r requirements.txt
+          pip install pytest-cov coverage
 
       - name: Lint with ruff
         run: |
@@ -39,10 +45,35 @@ jobs:
           pip install bandit==1.7.9
           bandit -r custos/ main.py -ll -ii
 
-      - name: Run tests
+      - name: Dependency audit with pip-audit
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt --strict
+
+      - name: Run tests with coverage
         env:
           AUTH_DISABLED: "1"
-        run: pytest tests/ -v --tb=short
+        run: |
+          pytest tests/ -v --tb=short \
+            --cov=custos --cov=main \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            --cov-report=html
+
+      - name: Upload coverage XML artifact
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage.xml
+          retention-days: 30
+
+      - name: Verify minimum coverage threshold
+        if: matrix.python-version == '3.12'
+        env:
+          AUTH_DISABLED: "1"
+        run: |
+          pytest tests/ --cov=custos --cov=main --cov-report=term-missing --cov-fail-under=80
 
   docker:
     name: Docker Build Check

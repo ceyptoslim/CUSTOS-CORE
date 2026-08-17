@@ -2,6 +2,9 @@
 https://youtu.be/5xzmC5jI8Z8?si=WS09_EzQxETXYlvz
 
 ![CI](https://github.com/ceyptoslim/CUSTOS-CORE/actions/workflows/ci.yml/badge.svg)
+![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue)
+![Coverage](https://img.shields.io/badge/coverage-≥80%25-brightgreen)
+![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 
 **A policy-governed execution layer that sits between AI systems and production resources, enforcing deterministic decisions and producing verifiable audit evidence.**
 
@@ -143,11 +146,11 @@ Never set `AUTH_DISABLED=1` in a production deployment.
 ## Running Tests
 
 ```bash
-pip install -r requirements.txt
-pytest tests/ -v
+pip install -r requirements.txt -r requirements-dev.txt
+pytest tests/ -v --cov=custos --cov=main --cov-report=term-missing
 ```
 
-Tests cover the policy engine, rate limiter, API endpoints, input validation, and audit chain. Exact pass count is confirmed in CI on every push.
+Tests cover the policy engine, rate limiter, API endpoints, input validation, audit chain, replay, snapshots, tracing, and tenant management. CI runs the full suite across Python 3.10, 3.11, and 3.12 with a minimum 80% coverage threshold.
 
 ---
 
@@ -199,7 +202,7 @@ Tests cover the policy engine, rate limiter, API endpoints, input validation, an
 |---|---|---|
 | Tenant policy persistence | ✅ Available, opt-in | Custom rules added via `POST /v1/tenants/{id}/policy` survive restarts **only** when `POLICY_DB_PATH` or `DATABASE_URL` is set. With the default in-memory backend, custom rules are still lost on restart — this is expected for local/dev use. |
 | OTLP trace export | ✅ Available, opt-in | Set `OTEL_EXPORTER_OTLP_ENDPOINT` and install `opentelemetry-sdk` + `opentelemetry-exporter-otlp-proto-grpc`. Without the endpoint set (or without the packages installed), tracing gracefully falls back to console JSON output — trace IDs still appear in logs and API responses either way. |
-| Policy engine | ⚠️ Regex-based | Sufficient for MVP/PII/prompt-injection patterns. Sophisticated adversaries may craft inputs that bypass rules. Production upgrade path: OPA integration (tracked as a future focus area). |
+| Policy engine | ⚠️ Regex-based | Hardened regex patterns with Luhn validation for credit cards and expanded prompt injection detection. Adversarial test suite covers bypass attempts. Production upgrade path: OPA integration (tracked as a future focus area). |
 
 **Operator guidance:** For Kubernetes deployments where policy customization matters, set `POLICY_DB_PATH` (SQLite, single replica) or `DATABASE_URL` (PostgreSQL, multi-replica) so rules registered via the API survive rollouts, autoscaling, and rescheduling.
 
@@ -207,7 +210,7 @@ Tests cover the policy engine, rate limiter, API endpoints, input validation, an
 
 ## CI Status
 
-Every push runs `ruff` lint + `bandit` security scan + `pytest` + Docker build via GitHub Actions.
+Every push runs `ruff` lint + `bandit` security scan + `pip-audit` dependency check + `pytest` with coverage (≥80% threshold) across Python 3.10/3.11/3.12 + Docker build via GitHub Actions.
 
 ---
 

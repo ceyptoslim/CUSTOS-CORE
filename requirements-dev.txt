@@ -1,0 +1,7 @@
+# Development / CI dependencies (not required for runtime)
+-r requirements.txt
+pytest-cov==5.0.0
+coverage==7.5.3
+pip-audit==2.7.3
+ruff==0.4.4
+bandit==1.7.9
