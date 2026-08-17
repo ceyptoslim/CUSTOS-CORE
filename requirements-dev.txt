@@ -1,5 +1,6 @@
 # Development / CI dependencies (not required for runtime)
 -r requirements.txt
+pytest==9.0.3
 pytest-cov==5.0.0
 coverage==7.5.3
 pip-audit==2.7.3

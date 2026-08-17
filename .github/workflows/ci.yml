@@ -32,8 +32,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
-          pip install pytest-cov coverage
+          pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Lint with ruff
         run: |
