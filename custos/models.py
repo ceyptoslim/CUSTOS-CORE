@@ -1,6 +1,6 @@
 """
-CUSTOS Pydantic Models v1.0
-Schemas for all request/response models across evaluate,
+CUSTOS Pydantic Models v1.2
+Schemas for all request/response models across evaluate, execute,
 audit, replay, policy diff, snapshots, and tenant management.
 """
 
@@ -188,3 +188,73 @@ class PolicyRuleListResponse(BaseModel):
     rules: list[PolicyRuleRequest]
     count: int
 
+
+# ---------------------------------------------------------------------------
+# v1.2 — Execution Enforcement schemas
+# ---------------------------------------------------------------------------
+
+class ExecuteRequest(BaseModel):
+    """Request to evaluate AND execute against a downstream target.
+
+    If the policy engine returns ALLOW, the content is forwarded to the
+    target_url. If DENY, the request is blocked and never reaches the target.
+    """
+    client_id: str = Field(default="default", min_length=1, max_length=128)
+    content: str = Field(..., min_length=1, max_length=32_768)
+    tenant_id: str = Field(default="default", min_length=1, max_length=64)
+    token_count: int = Field(default=1, ge=1, le=100_000)
+    target_url: str = Field(..., min_length=1, max_length=2048)
+    target_method: str = Field(default="POST", pattern="^(GET|POST|PUT|PATCH|DELETE)$")
+    target_headers: Optional[dict[str, str]] = Field(default=None)
+    target_timeout: float = Field(default=10.0, ge=1.0, le=60.0)
+
+    @field_validator("client_id")
+    @classmethod
+    def client_id_no_whitespace(cls, v: str) -> str:
+        if v != v.strip():
+            raise ValueError("client_id must not have leading/trailing whitespace")
+        return v
+
+    @field_validator("content")
+    @classmethod
+    def content_not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("content must not be blank or whitespace only")
+        return v
+
+    @field_validator("target_url")
+    @classmethod
+    def target_url_must_be_https(cls, v: str) -> str:
+        if not v.startswith("https://"):
+            raise ValueError("target_url must use HTTPS")
+        return v
+
+
+class ExecuteResponse(BaseModel):
+    """Response from the execution firewall.
+
+    If denied: `forwarded` is False, `status_code` is None.
+    If allowed and forwarded: `forwarded` is True, `status_code` is the
+    downstream response code.
+    If allowed but circuit open: `forwarded` is False, `circuit_open` is True.
+    """
+    allowed: bool
+    action: str
+    triggered_rule: Optional[str]
+    reason: str
+    client_id: str
+    tenant_id: str = "default"
+    forwarded: bool = False
+    status_code: Optional[int] = None
+    response_preview: Optional[str] = None
+    circuit_open: bool = False
+    audit_record_hash: Optional[str] = None
+    trace_id: Optional[str] = None
+
+
+class CircuitBreakerStatus(BaseModel):
+    state: str  # closed, open, half_open
+    failure_count: int
+    failure_threshold: int
+    last_failure_time: Optional[float] = None
+    reset_timeout: float

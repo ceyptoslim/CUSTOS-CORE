@@ -1,19 +1,5 @@
 """
-CUSTOS Core
-
-Policy-Governed AI Execution Firewall
+CUSTOS Core — Policy-Governed AI Execution Firewall
 """
-
-__title__ = "custos"
-__description__ = "Policy-Governed AI Execution Firewall"
-__version__ = "1.1.1"
-__author__ = "CUSTOS Security"
-__license__ = "Apache-2.0"
-
-__all__ = [
-    "__title__",
-    "__description__",
-    "__version__",
-    "__author__",
-    "__license__",
-]
+__version__ = "1.2.0"
+__all__ = ["__version__"]

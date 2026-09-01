@@ -4,7 +4,7 @@ metadata:
   name: custos-core
   labels:
     app: custos-core
-    version: "1.1.1"
+    version: "1.2.0"
 spec:
   replicas: 2
   selector:
@@ -14,11 +14,11 @@ spec:
     metadata:
       labels:
         app: custos-core
-        version: "1.1.1"
+        version: "1.2.0"
     spec:
       containers:
         - name: custos-core
-          image: custos-core:1.1.1
+          image: custos-core:1.2.0
           ports:
             - containerPort: 8000
           envFrom:
