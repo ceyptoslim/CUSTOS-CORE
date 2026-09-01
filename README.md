@@ -3,7 +3,7 @@ https://youtu.be/5xzmC5jI8Z8?si=WS09_EzQxETXYlvz
 
 ![CI](https://github.com/ceyptoslim/CUSTOS-CORE/actions/workflows/ci.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue)
-![Coverage](https://img.shields.io/badge/coverage-≥80%25-brightgreen)
+![Coverage](https://img.shields.io/badge/coverage-90%25-brightgreen)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue)
 
 **A policy-governed execution layer that sits between AI systems and production resources, enforcing deterministic decisions and producing verifiable audit evidence.**
@@ -100,6 +100,47 @@ curl -X POST http://localhost:8000/v1/tenants/default/policy \
 ### `GET /v1/tenants/{tenant_id}/policy`
 List custom (non-default) policy rules currently active for a tenant.
 
+
+### `POST /v1/execute`
+**The enforcement boundary.** Unlike `/v1/evaluate` (which returns a decision as
+metadata), `/v1/execute` physically blocks denied requests from reaching the
+downstream target.
+
+```bash
+curl -X POST http://localhost:8000/v1/execute \
+  -H "Content-Type: application/json" \
+  -d '{
+    "client_id": "default",
+    "content": "Summarize this document",
+    "target_url": "https://api.openai.com/v1/chat/completions",
+    "target_method": "POST"
+  }'
+```
+
+If the policy engine returns **DENY**, the target is never contacted — the
+response is `403 Forbidden` with the triggered rule and reason.
+
+If **ALLOW**, the content is forwarded to `target_url` via HTTPS and the
+downstream response (status code + 500-char preview) is returned.
+
+| Denied Response | Forwarded Response |
+|-----------------|-------------------|
+| `403` + rule + reason | `200` + downstream status + preview |
+
+**SSRF protection**: Private IPs (10.x, 172.16-31.x, 192.168.x, 127.x),
+IPv6 loopback (::1), non-HTTPS targets, and privileged ports are blocked.
+Optional hostname allowlist via `CUSTOS_TARGET_ALLOWLIST` env var.
+
+**Circuit breaker**: Opens after 5 consecutive downstream failures (configurable).
+Returns `503` when open. Auto-half-opens after 30s. Manual reset via
+`POST /v1/execute/circuit/reset`.
+
+### `GET /v1/execute/circuit`
+Current circuit breaker state (closed/open/half_open).
+
+### `POST /v1/execute/circuit/reset`
+Manually reset the circuit breaker.
+
 ### `GET /health`
 Service status and uptime.
 
@@ -154,7 +195,7 @@ Tests cover the policy engine, rate limiter, API endpoints, input validation, au
 
 ---
 
-## What Is Implemented (v1.1)
+## What Is Implemented (v1.2)
 
 | Component | Status |
 |---|---|
@@ -192,11 +233,22 @@ Tests cover the policy engine, rate limiter, API endpoints, input validation, au
 | v0.4 | Replay Engine | ✅ Shipped |
 | v0.5 | Multi-tenant Governance | ✅ Shipped |
 | v1.0 | Enterprise Release Candidate | ✅ Shipped |
-| v1.1 | Policy Persistence + OTLP Export | ✅ Current |
+| v1.2 | Policy Persistence + OTLP Export | ✅ Current |
 
 ---
 
-## Known Limitations (v1.1)
+## Known Limitations
+
+### Execution Layer (v1.2.0)
+- SSRF check validates IP literals but does not resolve hostnames to IPs
+  before checking (DNS rebinding attack vector). Production deployments
+  should add DNS resolution + IP validation.
+- Circuit breaker is global, not per-target. Per-target breakers would
+  be more granular but add complexity.
+- No live integration test against a real downstream service exists yet.
+  All forwarding tests use mocked HTTP clients.
+- HTTP adapter uses sync `httpx.Client`. Async client would scale better
+  under high concurrency. (v1.2)
 
 | Area | Status | Notes |
 |---|---|---|

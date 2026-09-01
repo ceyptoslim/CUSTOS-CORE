@@ -26,36 +26,49 @@ The difference:
 ## System Components
 
 ```
-┌─────────────────────────────────────────────────────┐
-│                    CUSTOS Core                       │
-│                                                     │
-│  ┌─────────────┐   ┌─────────────┐                  │
-│  │  FastAPI    │   │  Prometheus │                  │
-│  │  Runtime    │──▶│  Metrics    │                  │
-│  │  (main.py)  │   │  /metrics   │                  │
-│  └──────┬──────┘   └─────────────┘                  │
-│         │                                           │
-│  ┌──────▼──────┐                                    │
-│  │  Input      │  custos/validation.py              │
-│  │  Validator  │                                    │
-│  └──────┬──────┘                                    │
-│         │                                           │
-│  ┌──────▼──────┐                                    │
-│  │  Rate       │  custos/rate_limiter.py            │
-│  │  Limiter    │                                    │
-│  └──────┬──────┘                                    │
-│         │                                           │
-│  ┌──────▼──────┐                                    │
-│  │  Policy     │  custos/policy_engine.py           │
-│  │  Engine     │                                    │
-│  └──────┬──────┘                                    │
-│         │                                           │
-│  ┌──────▼──────┐                                    │
-│  │  Audit      │  custos/audit.py                   │
-│  │  Chain      │                                    │
-│  └─────────────┘                                    │
-└─────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│                      CUSTOS Core v1.2                      │
+│                                                            │
+│  ┌─────────────┐   ┌─────────────┐                         │
+│  │  FastAPI    │   │  Prometheus │                         │
+│  │  Runtime    │──▶│  Metrics    │                         │
+│  │  (main.py)  │   │  /metrics   │                         │
+│  └──────┬──────┘   └─────────────┘                         │
+│         │                                                  │
+│  ┌──────▼──────┐                                           │
+│  │  Input      │  custos/validation.py                     │
+│  │  Validator  │                                           │
+│  └──────┬──────┘                                           │
+│         │                                                  │
+│  ┌──────▼──────┐                                           │
+│  │  Rate       │  custos/rate_limiter.py                   │
+│  │  Limiter    │                                           │
+│  └──────┬──────┘                                           │
+│         │                                                  │
+│  ┌──────▼──────┐                                           │
+│  │  Policy     │  custos/policy_engine.py                   │
+│  │  Engine     │                                           │
+│  └──────┬──────┘                                           │
+│         │                                                  │
+│  ┌──────▼──────┐      ┌──────────────┐                     │
+│  │  Audit      │      │  Execution   │  custos/firewall.py │
+│  │  Chain      │◀────│  Firewall    │──▶ custos/execution  │
+│  │  audit.py   │      │  (v1.2)      │     (HTTP adapter    │
+│  └─────────────┘      └──────┬───────┘      + SSRF + CB)    │
+│                              │                             │
+│                              ▼                             │
+│                    ┌─────────────────┐                       │
+│                    │  Downstream     │  HTTPS target         │
+│                    │  Target (API)   │  (only if ALLOW)      │
+│                    └─────────────────┘                       │
+└──────────────────────────────────────────────────────────┘
 ```
+
+**The critical v1.2 addition:** The Execution Firewall physically blocks
+denied requests from reaching the downstream target. Prior to v1.2,
+CUSTOS returned a policy decision as metadata — the caller could ignore
+it. Now, `/v1/execute` sits in the request path and blocks at the
+network level. A DENY means the target is never contacted.
 
 ---
 
@@ -263,3 +276,14 @@ CUSTOS-CORE/
 - Policy version registry with rollback
 - RS256 / JWKS auth for multi-tenant production use
 - Distributed (multi-replica) rate limiting — current limiter is per-pod
+
+### v1.2 — Execution Enforcement Layer
+- HTTP Execution Adapter with SSRF protection (custos/execution.py)
+- Execution Firewall orchestrator — fail-closed enforcement (custos/firewall.py)
+- POST /v1/execute — physically blocks denied requests from reaching targets
+- Circuit breaker (opens after N downstream failures, auto-half-open)
+- SSRF protection (private IPs, loopback, non-HTTPS, privileged ports blocked)
+- GET /v1/execute/circuit — circuit breaker status
+- POST /v1/execute/circuit/reset — manual circuit reset
+- 40 new tests (296 total), 90% coverage
+- Closes the #1 gap: CUSTOS is now a firewall, not just a decision API
