@@ -50,7 +50,7 @@ _BLOCKED_PREFIXES = [
     "172.31.",    # private
     "192.168.",   # private
     "169.254.",   # link-local
-    "0.0.0.0",    # unspecified
+    "0.0.0.0",    # unspecified  # nosec B104
     "::1",        # IPv6 loopback
     "fc00:",      # IPv6 private
     "fe80:",      # IPv6 link-local
