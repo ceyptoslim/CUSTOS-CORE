@@ -27,6 +27,7 @@ from typing import Optional
 
 from custos.audit import AuditChain
 from custos.policy_engine import PolicyEngine, PolicyRule
+from custos.policy_factory import create_policy_engine
 from custos.policy_store import PolicyStore
 from custos.rate_limiter import QuotaConfig, RateLimiter
 
@@ -94,7 +95,7 @@ class TenantManager:
             persisted_rules = self._policy_store.load(tenant_id)
             self._custom_rules[tenant_id] = list(persisted_rules)
 
-            engine = PolicyEngine()
+            engine = create_policy_engine()  # Factory: regex (default), opa, or hybrid
             for rule in persisted_rules:
                 engine.add_rule(rule)
 
