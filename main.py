@@ -593,10 +593,7 @@ async def delete_tenant(tenant_id: str):
 # no degraded behavior, no accidental exposure.
 
 try:
-    try:
-        from custos_enterprise.enterprise_router import mount_enterprise_routes
-    except ImportError:
-        from custos.enterprise_router import mount_enterprise_routes
+    from custos_enterprise.enterprise_router import mount_enterprise_routes
     mount_enterprise_routes(
         app=app,
         tenant_manager=tenant_manager,
