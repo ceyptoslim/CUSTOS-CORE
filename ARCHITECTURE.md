@@ -67,7 +67,7 @@ The difference:
 **The critical v1.2 addition:** The Execution Firewall physically blocks
 denied requests from reaching the downstream target. Prior to v1.2,
 CUSTOS returned a policy decision as metadata — the caller could ignore
-it. Now, `/v1/execute` sits in the request path and blocks at the
+it. Now, `/v1/execute` (enterprise) sits in the request path and blocks at the
 network level. A DENY means the target is never contacted.
 
 ---
@@ -277,13 +277,13 @@ CUSTOS-CORE/
 - RS256 / JWKS auth for multi-tenant production use
 - Distributed (multi-replica) rate limiting — current limiter is per-pod
 
-### v1.2 — Execution Enforcement Layer
-- HTTP Execution Adapter with SSRF protection (custos/execution.py)
-- Execution Firewall orchestrator — fail-closed enforcement (custos/firewall.py)
-- POST /v1/execute — physically blocks denied requests from reaching targets
+### v1.2 — Execution Enforcement Layer (Enterprise)
+- HTTP Execution Adapter with SSRF protection (custos/execution.py) — public component
+- Execution Firewall orchestrator — fail-closed enforcement (custos/firewall.py) — public component
+- POST /v1/execute — physically blocks denied requests from reaching targets — enterprise router
 - Circuit breaker (opens after N downstream failures, auto-half-open)
 - SSRF protection (private IPs, loopback, non-HTTPS, privileged ports blocked)
-- GET /v1/execute/circuit — circuit breaker status
-- POST /v1/execute/circuit/reset — manual circuit reset
-- 40 new tests (296 total), 90% coverage
+- GET /v1/execute/circuit — circuit breaker status — enterprise router
+- POST /v1/execute/circuit/reset — manual circuit reset — enterprise router
+- Components are public and importable; /v1/execute endpoint assembly is in custos-enterprise
 - Closes the #1 gap: CUSTOS is now a firewall, not just a decision API

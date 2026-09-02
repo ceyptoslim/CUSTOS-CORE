@@ -38,7 +38,7 @@ routing through a resolver that pins the resolved IP.
 - Opens after 5 consecutive downstream failures (configurable)
 - Auto-transitions to half-open after 30s (configurable)
 - When open, requests are blocked (503) without contacting the target
-- Manual reset available via `POST /v1/execute/circuit/reset`
+- Manual reset available via `POST /v1/execute/circuit/reset` (enterprise endpoint)
 
 ### Fail-Closed Design
 The execution firewall never forwards on any error:

@@ -26,7 +26,7 @@ Verified implementation:
 | Feature | Status | Evidence |
 |---------|--------|----------|
 | `/v1/evaluate` policy decision API | ✅ Implemented | `main.py:239` — FastAPI endpoint, regex-based policy engine |
-| `/v1/execute` enforcement firewall | ✅ Implemented | `main.py:577` — blocks target on DENY, forwards on ALLOW |
+| `/v1/execute` enforcement firewall | 🔒 Enterprise | Assembled by `custos-enterprise` router — components (`execution.py`, `firewall.py`) are public |
 | JWT authentication (HS256) | ✅ Implemented | `custos/auth.py` — `CUSTOS_JWT_SECRET`, `verify_token()`, `auth_enabled()` |
 | Tenant authorization binding | ✅ Implemented | `main.py:244,589` — JWT `sub` compared to `req.client_id`, cross-tenant = 403 |
 | Rate limiting | ✅ Implemented | `custos/rate_limiter.py` — `QuotaConfig`, `RateLimiter`, per-tenant quotas |
@@ -88,8 +88,8 @@ Verified implementation:
 
 Features available in the enterprise tier, verified as implemented in the codebase but gated behind enterprise licensing:
 
-### CUSTOS-CORE Enterprise
-- `/v1/execute` enforcement firewall (blocks/forwards targets)
+### CUSTOS-CORE Enterprise (Private Repo)
+- `/v1/execute` enforcement firewall (blocks/forwards targets) — assembled by `custos-enterprise` router
 - DNS-rebinding SSRF protection (`getaddrinfo` resolution)
 - Per-target circuit breaker (not global)
 - Production fail-closed authentication
