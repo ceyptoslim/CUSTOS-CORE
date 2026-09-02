@@ -593,7 +593,10 @@ async def delete_tenant(tenant_id: str):
 # no degraded behavior, no accidental exposure.
 
 try:
-    from custos.enterprise_router import mount_enterprise_routes
+    try:
+        from custos_enterprise.enterprise_router import mount_enterprise_routes
+    except ImportError:
+        from custos.enterprise_router import mount_enterprise_routes
     mount_enterprise_routes(
         app=app,
         tenant_manager=tenant_manager,
@@ -606,4 +609,4 @@ try:
     )
     logger.info("enterprise.routes.mounted", extra={"endpoints": ["/v1/execute", "/v1/execute/circuit", "/v1/execute/circuit/reset"]})
 except ImportError:
-    logger.info("enterprise.routes.not_available", extra={"reason": "custos.enterprise_router not installed — public-only deployment"})
+    logger.info("enterprise.routes.not_available", extra={"reason": "custos-enterprise not installed — public-only deployment"})
