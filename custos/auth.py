@@ -6,6 +6,11 @@ Uses HS256 by default. Secret loaded from environment variable CUSTOS_JWT_SECRET
 
 Upgrade path: swap to RS256 with JWKS endpoint for production multi-tenant use.
 """
+# Copyright (C) 2024-2026 FroLife Productions
+# Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0)
+# See LICENSE file for details. Commercial license available upon request.
+
+
 
 import os
 import time

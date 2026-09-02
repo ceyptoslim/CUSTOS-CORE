@@ -1,0 +1,135 @@
+# CUSTOS-CORE Licensing
+
+## Open Source Core — AGPL-3.0
+
+CUSTOS-CORE is licensed under the **GNU Affero General Public License v3.0** (AGPL-3.0).
+
+This means:
+- ✅ You can use, modify, and distribute the code
+- ✅ You can deploy it internally
+- ❌ If you deploy it as a **network service** (SaaS, API, cloud), you MUST open-source all modifications
+- ❌ You cannot rebrand and sell it as a closed-source product
+
+### Why AGPL-3.0?
+
+AGPL-3.0 closes the "SaaS loophole" that Apache 2.0 and MIT leave open.
+Without AGPL, a competitor could fork this repo, build a hosted service,
+and never contribute back. With AGPL, anyone who deploys as a service
+must share their changes with the community.
+
+### Commercial License
+
+For organizations that want to use CUSTOS-CORE without AGPL obligations
+(no open-sourcing required), a commercial license is available.
+
+Contact: FroLife Productions
+
+---
+
+## What's Open Source (AGPL-3.0)
+
+The following components are in this public repository and licensed under AGPL-3.0:
+
+| Component | Status |
+|-----------|--------|
+| /v1/evaluate policy decision API | Open Source |
+| Regex-based policy engine | Open Source |
+| JWT authentication (HS256) | Open Source |
+| Rate limiting | Open Source |
+| Hash-chained audit trail | Open Source |
+| Input validation | Open Source |
+| Tenant manager | Open Source |
+| SQLite audit backend | Open Source |
+| Docker deployment | Open Source |
+| OPA hybrid policy engine | Open Source |
+| Rego policy definitions | Open Source |
+| Policy factory (regex/opa/hybrid) | Open Source |
+| CI pipeline (ruff, bandit, pip-audit, OPA integration) | Open Source |
+| Test suite (329 tests) | Open Source |
+
+---
+
+## What's Commercial (Private — Not on GitHub)
+
+The following are proprietary, maintained in private Base44 applications:
+
+| Component | Location |
+|-----------|----------|
+| /v1/execute enforcement firewall | Private repo (planned) |
+| SSRF DNS-rebinding protection | Private repo (planned) |
+| Per-target circuit breaker | Private repo (planned) |
+| Production fail-closed auth | Private repo (planned) |
+| Tenant authorization binding | Private repo (planned) |
+| PostgreSQL audit backend | Private repo (planned) |
+| OTLP/OpenTelemetry tracing | Private repo (planned) |
+| Kubernetes/Helm deployment | Private repo (planned) |
+| Policy diff/replay/snapshot | Private repo (planned) |
+| Multi-tenant policy persistence | Private repo (planned) |
+
+**Base44 Applications (already private):**
+
+| Application | Purpose |
+|-------------|---------|
+| CUSTOS-CORE Media Bridge | Media governance dashboard, YouTube management |
+| QueryForge | Business ops, CRM, policy management, agent registry |
+| InsightFlow | Audit logging, YouTube upload workflow, credential management |
+| DeployFlow | Deployment platform, template/plugin marketplace |
+
+---
+
+## Trademark Notice
+
+"CUSTOS", "CUSTOS-CORE", "LORL", and "LORL-9.1" are product names of
+FroLife Productions. The open-source license covers the code, not the brand.
+You may not use these names to endorse or promote derived products without
+written permission.
+
+---
+
+## Contributor License Agreement (CLA)
+
+All contributors must agree to the CLA before contributions are accepted.
+The CLA ensures that CUSTOS-CORE can offer a commercial dual-license.
+
+By contributing, you grant FroLife Productions a perpetual, worldwide,
+non-exclusive, royalty-free license to use, modify, and distribute your
+contribution under both the AGPL-3.0 and a commercial license.
+
+This allows us to:
+1. Keep the open-source version under AGPL
+2. Offer a commercial license to enterprise customers
+3. Protect the project from being locked down by a single contributor
+
+---
+
+## Summary
+
+```
+┌─────────────────────────────────────────────────┐
+│  PUBLIC (GitHub — AGPL-3.0)                     │
+│  ┌─────────────────────────────────────────┐    │
+│  │ CUSTOS-CORE: Policy engine, evaluate    │    │
+│  │ API, JWT auth, rate limiting, audit     │    │
+│  │ chain, OPA hybrid, tests, CI            │    │
+│  └─────────────────────────────────────────┘    │
+│  ┌─────────────────────────────────────────┐    │
+│  │ LORL-9.1: Agents, event ledger,         │    │
+│  │ identity, treaty engine, OPA client     │    │
+│  └─────────────────────────────────────────┘    │
+├─────────────────────────────────────────────────┤
+│  PRIVATE (Base44 apps + enterprise repo)        │
+│  ┌─────────────────────────────────────────┐    │
+│  │ Enterprise: /v1/execute, SSRF, K8s,    │    │
+│  │ PostgreSQL, OTLP, circuit breaker,      │    │
+│  │ tenant binding, fail-closed auth        │    │
+│  └─────────────────────────────────────────┘    │
+│  ┌─────────────────────────────────────────┐    │
+│  │ Commercial apps: Media Bridge,          │    │
+│  │ QueryForge, InsightFlow, DeployFlow    │    │
+│  └─────────────────────────────────────────┘    │
+├─────────────────────────────────────────────────┤
+│  PROTECTED (Trademark + CLA)                    │
+│  "CUSTOS" "CUSTOS-CORE" "LORL" brand names     │
+│  Contributor License Agreement for all PRs      │
+└─────────────────────────────────────────────────┘
+```

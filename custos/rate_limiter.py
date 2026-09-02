@@ -3,6 +3,11 @@ CUSTOS Rate Limiter
 Near production-ready. Key fix applied: list(self._quotas.keys()) prevents
 dict mutation during iteration in get_all_quotas().
 """
+# Copyright (C) 2024-2026 FroLife Productions
+# Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0)
+# See LICENSE file for details. Commercial license available upon request.
+
+
 
 import threading
 import time

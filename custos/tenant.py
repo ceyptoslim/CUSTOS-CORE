@@ -20,6 +20,11 @@ rollouts, autoscaling events, and node rescheduling whenever a durable
 PolicyStore backend is configured (POLICY_DB_PATH or DATABASE_URL).
 With the default in-memory backend, behavior is unchanged (ephemeral).
 """
+# Copyright (C) 2024-2026 FroLife Productions
+# Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0)
+# See LICENSE file for details. Commercial license available upon request.
+
+
 
 import threading
 from dataclasses import dataclass, field

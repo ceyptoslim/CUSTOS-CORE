@@ -14,6 +14,11 @@ The PolicyStore is the single source of truth for rules.
 On startup, TenantManager loads rules from the store before
 serving any requests.
 """
+# Copyright (C) 2024-2026 FroLife Productions
+# Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0)
+# See LICENSE file for details. Commercial license available upon request.
+
+
 
 import os
 import sqlite3

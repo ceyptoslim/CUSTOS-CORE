@@ -18,6 +18,11 @@ Fail-closed design:
 - The audit chain records what happened: allowed, denied, blocked,
   forwarded, failed, circuit_open.
 """
+# Copyright (C) 2024-2026 FroLife Productions
+# Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0)
+# See LICENSE file for details. Commercial license available upon request.
+
+
 
 import time
 import logging
