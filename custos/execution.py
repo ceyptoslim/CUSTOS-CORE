@@ -15,6 +15,7 @@ Design principles:
 """
 
 import ipaddress
+import socket
 import threading
 import time
 from dataclasses import dataclass, field
@@ -88,6 +89,28 @@ def validate_target_url(url: str, allowlist: Optional[set[str]] = None) -> str:
             raise SSRFError(
                 f"Target host '{parsed.hostname}' not in allowlist"
             )
+
+    # Fix: DNS rebinding protection — resolve hostname to IP before SSRF check (audit finding)
+    try:
+        addr_info = socket.getaddrinfo(parsed.hostname, None)
+        for entry in addr_info:
+            ip_str = entry[4][0]
+            try:
+                ip = ipaddress.ip_address(ip_str)
+                if (
+                    ip.is_private
+                    or ip.is_loopback
+                    or ip.is_link_local
+                    or ip.is_reserved
+                    or ip.is_unspecified
+                ):
+                    raise SSRFError(
+                        f"Target IP {ip_str} for '{parsed.hostname}' is private/loopback/reserved"
+                    )
+            except ValueError:
+                pass
+    except socket.gaierror:
+        pass
 
     # Check for IP literals
     try:
@@ -182,15 +205,44 @@ class HTTPExecutionAdapter:
     ):
         self._allowlist = allowlist or set()
         self._default_timeout = timeout
-        self._circuit = CircuitState(
-            failure_threshold=circuit_threshold,
-            reset_timeout=circuit_reset,
-        )
+        self._circuit_threshold = circuit_threshold
+        self._circuit_reset = circuit_reset
+        self._circuits: dict[str, CircuitState] = {}
+        self._lock = threading.Lock()
         self._client = httpx.Client(timeout=timeout)
+
+    def _get_host(self, url: str) -> str:
+        parsed = urlparse(url)
+        return (parsed.hostname or url).lower()
+
+    def get_circuit(self, target_host: str = "default") -> CircuitState:
+        with self._lock:
+            if target_host not in self._circuits:
+                self._circuits[target_host] = CircuitState(
+                    failure_threshold=self._circuit_threshold,
+                    reset_timeout=self._circuit_reset,
+                )
+            return self._circuits[target_host]
 
     @property
     def circuit(self) -> CircuitState:
-        return self._circuit
+        return self.get_circuit("default")
+
+    def can_request(self, target_host: str = "default") -> bool:
+        host_ok = self.get_circuit(target_host).can_proceed()
+        default_ok = self.get_circuit("default").can_proceed()
+        return host_ok and default_ok
+
+    def record_failure(self, target_host: str = "default") -> None:
+        self.get_circuit(target_host).record_failure()
+
+    def record_success(self, target_host: str = "default") -> None:
+        if target_host == "default":
+            with self._lock:
+                for c in self._circuits.values():
+                    c.record_success()
+        else:
+            self.get_circuit(target_host).record_success()
 
     def forward(
         self,
@@ -210,6 +262,7 @@ class HTTPExecutionAdapter:
         them as ExecutionResult.error. Fail-closed.
         """
         start = time.time()
+        target_host = self._get_host(url)
 
         # SSRF check — block before any network call
         try:
@@ -222,7 +275,7 @@ class HTTPExecutionAdapter:
             )
 
         # Circuit breaker check
-        if not self._circuit.can_proceed():
+        if not self.can_request(target_host):
             return ExecutionResult(
                 forwarded=False,
                 error="Circuit breaker open",
@@ -244,7 +297,7 @@ class HTTPExecutionAdapter:
                 timeout=timeout or self._default_timeout,
             )
 
-            self._circuit.record_success()
+            self.record_success(target_host)
 
             # Truncate response preview to 500 chars for safety
             preview = response.text[:500] if response.text else None
@@ -257,14 +310,14 @@ class HTTPExecutionAdapter:
             )
 
         except httpx.TimeoutException:
-            self._circuit.record_failure()
+            self.record_failure(target_host)
             return ExecutionResult(
                 forwarded=False,
                 error="Downstream timeout",
                 timing_ms=(time.time() - start) * 1000,
             )
         except httpx.ConnectError:
-            self._circuit.record_failure()
+            self.record_failure(target_host)
             return ExecutionResult(
                 forwarded=False,
                 error="Downstream connection refused",
@@ -272,7 +325,7 @@ class HTTPExecutionAdapter:
             )
         except Exception as e:
             # Fail-closed: any unexpected error = block
-            self._circuit.record_failure()
+            self.record_failure(target_host)
             return ExecutionResult(
                 forwarded=False,
                 error=f"Forwarding failed: {type(e).__name__}: {e}",

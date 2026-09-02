@@ -131,6 +131,39 @@ class TestAuthEnforcement:
         assert data["allowed"] is True
         assert data["action"] == "allow"
 
+    def test_cross_client_access_denied(self, client_with_auth):
+        token = create_token("alice")
+        r = client_with_auth.post(
+            "/v1/evaluate",
+            json={"client_id": "bob", "content": "hello"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert r.status_code == 403
+        assert "Client identity does not match request client_id" in r.json()["detail"]
+
+    def test_same_client_access_allowed(self, client_with_auth):
+        token = create_token("alice")
+        r = client_with_auth.post(
+            "/v1/evaluate",
+            json={"client_id": "alice", "content": "hello"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert r.status_code == 200
+
+    def test_production_disables_auth_bypass(self, monkeypatch):
+        monkeypatch.setenv("CUSTOS_ENV", "production")
+        monkeypatch.setenv("AUTH_DISABLED", "1")
+        import main as app_module
+        # Remove the test auth override so real auth runs
+        saved = app_module.app.dependency_overrides.pop(app_module.optional_auth, None)
+        try:
+            with TestClient(app_module.app, raise_server_exceptions=False) as client:
+                r = client.post("/v1/evaluate", json={"client_id": "alice", "content": "hello"})
+                assert r.status_code == 401
+        finally:
+            if saved is not None:
+                app_module.app.dependency_overrides[app_module.optional_auth] = saved
+
     def test_health_endpoint_requires_no_auth(self, client_with_auth):
         assert client_with_auth.get("/health").status_code == 200
 

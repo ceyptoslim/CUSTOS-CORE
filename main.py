@@ -23,7 +23,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from custos.auth import verify_token
+from custos.auth import auth_enabled, verify_token
 from custos.logging import configure_logging, get_logger
 from custos.models import (
     AuditRecordResponse,
@@ -113,7 +113,7 @@ _bearer = HTTPBearer(auto_error=False)
 async def optional_auth(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
 ) -> Optional[str]:
-    if os.getenv("AUTH_DISABLED", "0") == "1":
+    if not auth_enabled():
         return None
     return verify_token(credentials)
 
@@ -241,6 +241,11 @@ async def evaluate(
     req: EvaluateRequest,
     _auth: Optional[str] = Depends(optional_auth),
 ):
+    if _auth is not None and _auth != req.client_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Client identity does not match request client_id",
+        )
     span = tracer.start_span("custos.evaluate")
     span.set_attribute("client_id", req.client_id)
     span.set_attribute("tenant_id", req.tenant_id)
@@ -581,6 +586,11 @@ async def execute(
     contacted. This is the enforcement boundary — unlike /v1/evaluate
     which only returns a decision, /v1/execute physically blocks.
     """
+    if _auth is not None and _auth != req.client_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Client identity does not match request client_id",
+        )
     _metrics["custos_requests_total"] += 1
 
     ctx = tenant_manager.get_or_default(req.tenant_id)

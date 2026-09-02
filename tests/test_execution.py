@@ -201,7 +201,7 @@ class TestHTTPExecutionAdapter:
             result = adapter.forward("https://api.example.com/v1", content="hello")
         assert result.forwarded is False
         assert "timeout" in result.error.lower()
-        assert adapter.circuit.failure_count == 1
+        assert adapter.get_circuit("api.example.com").failure_count == 1
 
     def test_forward_connection_error_records_failure(self):
         adapter = HTTPExecutionAdapter(circuit_threshold=1)
@@ -216,8 +216,8 @@ class TestHTTPExecutionAdapter:
     def test_circuit_open_blocks_forward(self):
         adapter = HTTPExecutionAdapter(circuit_threshold=1)
         # Force circuit open
-        adapter.circuit.record_failure()
-        assert adapter.circuit.state == "open"
+        adapter.get_circuit("api.example.com").record_failure()
+        assert adapter.get_circuit("api.example.com").state == "open"
 
         result = adapter.forward("https://api.example.com/v1", content="hello")
         assert result.forwarded is False

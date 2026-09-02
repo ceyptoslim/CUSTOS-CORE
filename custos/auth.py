@@ -15,6 +15,10 @@ import jwt
 from fastapi import HTTPException, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from custos.logging import get_logger
+
+logger = get_logger("auth")
+
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
@@ -84,5 +88,15 @@ def verify_token(
 # ---------------------------------------------------------------------------
 
 def auth_enabled() -> bool:
-    """Return True unless AUTH_DISABLED=1 is set (dev/test convenience only)."""
+    """Return True unless AUTH_DISABLED=1 is set (dev/test convenience only).
+
+    If CUSTOS_ENV=production and AUTH_DISABLED=1, log a critical warning and
+    override to require auth.
+    """
+    env = os.getenv("CUSTOS_ENV", "development").lower()
+    if env == "production" and os.getenv("AUTH_DISABLED", "0") == "1":
+        logger.critical(
+            "AUTH_DISABLED=1 is set in production environment! Overriding to require authentication."
+        )
+        return True
     return os.getenv("AUTH_DISABLED", "0") != "1"
