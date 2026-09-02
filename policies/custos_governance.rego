@@ -13,18 +13,19 @@ import future.keywords.in
 import future.keywords.if
 
 # ---------------------------------------------------------------------------
-# Default: deny if no rule explicitly allows
+# Default: allow is FALSE unless explicitly granted by the allow rule below.
+# This ensures a non-empty deny set results in allow=false (deny wins).
 # ---------------------------------------------------------------------------
 
-default allow := true
+default allow := false
 
 # ---------------------------------------------------------------------------
 # Deny rules — same patterns as regex engine
 # ---------------------------------------------------------------------------
 
 deny contains "SSN pattern detected" if {
-    contains(input.content, "ssn")
-    regex.match(`\b(?!000|666|9\d{2})\d{3}[- .]\d{2}[- .]\d{4}\b`, input.content)
+    contains(lower(input.content), "ssn")
+    regex.match(`\d{3}[- .]\d{2}[- .]\d{4}`, input.content)
 }
 
 deny contains "SSN pattern detected (compact format)" if {
