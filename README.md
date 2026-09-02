@@ -38,8 +38,7 @@ Verified implementation:
 | PostgreSQL audit backend | ✅ Implemented | `custos/audit.py:110` — `PostgreSQLBackend` with `psycopg2` |
 | OTLP/OpenTelemetry tracing | ✅ Implemented | `custos/tracing.py` — `opentelemetry-sdk`, `opentelemetry-exporter-otlp-proto-grpc` |
 | Docker deployment | ✅ Implemented | `Dockerfile`, `docker-compose.yml` |
-| Kubernetes manifests | ✅ Implemented | `k8s/configmap.yaml`, `k8s/deployment.yaml`, `k8s/service.yaml` |
-| Helm chart | ✅ Implemented | `charts/custos/Chart.yaml`, `values.yaml`, templates/ |
+| Kubernetes/Helm deployment | 🔒 Enterprise | Moved to `custos-enterprise` (private). Public repo ships Docker/Docker Compose. |
 | Prometheus metrics | ✅ Implemented | `main.py:192` — `/metrics` endpoint |
 
 **Policy engine:** Regex-based pattern matching with Luhn validation. This is NOT OPA/Rego. OPA integration lives in LORL-9.1 (see below).
@@ -96,7 +95,7 @@ Features available in the enterprise tier, verified as implemented in the codeba
 - Tenant authorization binding (cross-tenant = 403)
 - PostgreSQL audit backend
 - OTLP/OpenTelemetry tracing
-- Kubernetes/Helm deployment
+- Kubernetes/Helm deployment (see `custos-enterprise` — private repo)
 - Multi-tenant policy persistence
 - Policy diff/replay/snapshot
 

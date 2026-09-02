@@ -221,8 +221,7 @@ CUSTOS-CORE/
 │   └── grafana/
 │       ├── dashboards/custos.json   # Pre-built Grafana dashboard
 │       └── provisioning/            # Auto-provisioning config
-├── k8s/                              # Kubernetes manifests (deployment, service, configmap)
-├── charts/custos/                    # Helm chart for one-command cluster deployment
+├── (k8s/ + charts/ → custos-enterprise)  # K8s/Helm moved to the private enterprise repo
 ├── .github/workflows/ci.yml         # GitHub Actions CI (ruff + bandit + pytest + docker)
 ├── Dockerfile                       # Container definition (non-root user)
 ├── docker-compose.yml               # Full local stack (API + Prometheus + Grafana)
@@ -258,7 +257,7 @@ CUSTOS-CORE/
 
 ### v1.0 — Enterprise Release Candidate
 - PostgreSQL backend for audit persistence
-- Kubernetes manifests and Helm chart
+- Kubernetes manifests and Helm chart (moved to `custos-enterprise` in the public/private split)
 - Security scanning in CI (Bandit)
 - Stable public API with `X-CUSTOS-Version` header and `/v1/info`
 
