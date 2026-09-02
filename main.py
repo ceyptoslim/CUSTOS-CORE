@@ -47,9 +47,6 @@ from custos.models import (
     SnapshotVerifyRequest,
     SnapshotVerifyResponse,
     TenantListResponse,
-    ExecuteRequest,
-    ExecuteResponse,
-    CircuitBreakerStatus,
     TenantRegisterRequest,
     TenantResponse,
 )
@@ -62,7 +59,6 @@ from custos.snapshot import SnapshotEngine
 from custos.tenant import TenantConfig, TenantManager
 from custos.tracing import tracer
 from custos.execution import HTTPExecutionAdapter
-from custos.firewall import ExecutionFirewall
 from custos.validation import InputValidator
 
 VERSION = "1.3.1"
@@ -586,121 +582,28 @@ async def delete_tenant(tenant_id: str):
 
 
 # ---------------------------------------------------------------------------
-# v1.2 — Execution Enforcement (/v1/execute)
+
 # ---------------------------------------------------------------------------
+# Enterprise Routes — /v1/execute (conditionally loaded)
+# ---------------------------------------------------------------------------
+# The /v1/execute endpoints are enterprise features assembled by the
+# custos-enterprise package. When the enterprise router module is
+# installed, /v1/execute is available. When absent (public-only
+# deployment), the endpoints are simply not registered — no stubs,
+# no degraded behavior, no accidental exposure.
 
-@app.post("/v1/execute", response_model=ExecuteResponse)
-async def execute(
-    req: ExecuteRequest,
-    _auth: Optional[str] = Depends(optional_auth),
-):
-    """Execute a request through the firewall.
-
-    If the policy engine returns ALLOW, the content is forwarded to the
-    target_url. If DENY, the request is blocked and the target is never
-    contacted. This is the enforcement boundary — unlike /v1/evaluate
-    which only returns a decision, /v1/execute physically blocks.
-    """
-    if _auth is not None and _auth != req.client_id:
-        raise HTTPException(
-            status_code=403,
-            detail="Client identity does not match request client_id",
-        )
-    _metrics["custos_requests_total"] += 1
-
-    ctx = tenant_manager.get_strict(req.tenant_id)
-    if ctx is None:
-        raise HTTPException(status_code=403, detail=f"Unknown tenant: {req.tenant_id}")
-    rate_key = (
-        f"{req.tenant_id}:{req.client_id}"
-        if req.tenant_id != "default"
-        else req.client_id
-    )
-
-    if ctx.rate_limiter.get_all_quotas().get(rate_key) is None:
-        ctx.rate_limiter.register(
-            rate_key,
-            QuotaConfig(requests_per_minute=60, requests_per_hour=1000),
-        )
-
-    firewall = ExecutionFirewall(
-        policy_engine=ctx.policy_engine,
-        rate_limiter=ctx.rate_limiter,
-        audit_chain=ctx.audit_chain,
+try:
+    from custos.enterprise_router import mount_enterprise_routes
+    mount_enterprise_routes(
+        app=app,
+        tenant_manager=tenant_manager,
         validator=validator,
-        execution_adapter=execution_adapter,
         tracer=tracer,
+        execution_adapter=execution_adapter,
+        metrics=_metrics,
+        version=VERSION,
+        optional_auth=optional_auth,
     )
-
-    result = firewall.enforce(
-        client_id=req.client_id,
-        content=req.content,
-        tenant_id=req.tenant_id,
-        token_count=req.token_count,
-        target_url=req.target_url,
-        target_method=req.target_method,
-        target_headers=req.target_headers,
-        target_timeout=req.target_timeout,
-        rate_key=rate_key,
-    )
-
-    if result.forwarded:
-        _metrics["custos_executions_forwarded"] += 1
-        _metrics["custos_requests_allowed"] += 1
-    else:
-        _metrics["custos_executions_blocked"] += 1
-        if result.action == "deny":
-            _metrics["custos_requests_denied"] += 1
-        elif result.action == "rate_limited":
-            _metrics["custos_rate_limit_hits"] += 1
-        elif result.circuit_open:
-            _metrics["custos_circuit_open"] += 1
-
-    status_code = 200 if result.forwarded else (
-        403 if result.action in ("deny", "audit") and not result.forwarded
-        else 429 if result.action == "rate_limited"
-        else 503 if result.circuit_open
-        else 502  # forward failed
-    )
-
-    from fastapi.responses import JSONResponse
-    response = JSONResponse(
-        status_code=status_code,
-        content=ExecuteResponse(
-            allowed=result.allowed,
-            action=result.action,
-            triggered_rule=result.triggered_rule,
-            reason=result.reason,
-            client_id=req.client_id,
-            tenant_id=req.tenant_id,
-            forwarded=result.forwarded,
-            status_code=result.status_code,
-            response_preview=result.response_preview,
-            circuit_open=result.circuit_open,
-            audit_record_hash=result.audit_record_hash,
-            trace_id=result.trace_id,
-        ).model_dump(),
-    )
-    response.headers["X-CUSTOS-Version"] = VERSION
-    return response
-
-
-@app.get("/v1/execute/circuit", response_model=CircuitBreakerStatus)
-async def circuit_status():
-    """Get the current circuit breaker state."""
-    c = execution_adapter.circuit
-    return CircuitBreakerStatus(
-        state=c.state,
-        failure_count=c.failure_count,
-        failure_threshold=c.failure_threshold,
-        last_failure_time=c.last_failure_time if c.last_failure_time else None,
-        reset_timeout=c.reset_timeout,
-    )
-
-
-@app.post("/v1/execute/circuit/reset")
-async def circuit_reset():
-    """Manually reset the circuit breaker (admin operation)."""
-    execution_adapter.circuit.record_success()
-    logger.info("circuit.reset", extra={"manual": True})
-    return {"reset": True, "state": execution_adapter.circuit.state}
+    logger.info("enterprise.routes.mounted", extra={"endpoints": ["/v1/execute", "/v1/execute/circuit", "/v1/execute/circuit/reset"]})
+except ImportError:
+    logger.info("enterprise.routes.not_available", extra={"reason": "custos.enterprise_router not installed — public-only deployment"})
