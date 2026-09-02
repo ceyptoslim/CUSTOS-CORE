@@ -42,6 +42,55 @@ The following components are in this public repository and licensed under AGPL-3
 | SQLite audit backend | Open Source |
 | Docker deployment | Open Source |
 | OPA hybrid policy engine | Open Source |
+| OPA pure mode (fail-closed) | Open Source |
+| Hybrid mode (graceful fallback) | Open Source |
+
+---
+
+## OPA Failure Semantics — Critical Documentation
+
+The two OPA modes have **materially different failure semantics**. This must be
+understood before selecting a production deployment mode.
+
+### Pure OPA Mode (`CUSTOS_POLICY_ENGINE=opa`)
+
+**Fail-closed.** If the OPA server is unavailable, CUSTOS returns DENY for
+all requests — including clean content. This is the restrictive, secure default.
+
+Use this when: OPA is part of the authoritative production security boundary
+and you would rather block everything than allow something without policy review.
+
+### Hybrid Mode (`CUSTOS_POLICY_ENGINE=hybrid`)
+
+**Graceful fallback to regex.** If the OPA server is unavailable, CUSTOS
+preserves the local regex engine's decision. The regex engine always runs
+first; OPA only runs as a second-pass for content the regex engine allowed.
+
+Use this when: availability is prioritized and the regex engine is an
+acceptable emergency enforcement layer.
+
+**Hybrid does NOT fail closed.** A request that the regex engine allows
+will be allowed even if OPA is unreachable. This is by design — the regex
+engine provides baseline protection (SSN, credit cards, prompt injection)
+without any external dependency.
+
+### Decision Matrix
+
+| Scenario | Pure OPA | Hybrid |
+|----------|----------|--------|
+| OPA healthy, content clean | ALLOW | ALLOW |
+| OPA healthy, content violates | DENY | DENY |
+| OPA healthy, custom tenant rule | DENY | DENY |
+| OPA down, content clean | **DENY** | ALLOW (regex) |
+| OPA down, content violates regex | **DENY** | DENY (regex) |
+| OPA returns malformed response | **DENY** | regex result (fallback) |
+| OPA down, content is clean | **DENY** | ALLOW (regex) |
+
+### Deployment Recommendation
+
+- If OPA is part of your authoritative production security boundary → use `opa`
+- If availability is prioritized and regex is acceptable as emergency enforcement → use `hybrid`
+- If you have no OPA server → use `regex` (default, no external dependency)
 | Rego policy definitions | Open Source |
 | Policy factory (regex/opa/hybrid) | Open Source |
 | CI pipeline (ruff, bandit, pip-audit, OPA integration) | Open Source |

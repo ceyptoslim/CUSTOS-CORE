@@ -5,7 +5,7 @@ When CUSTOS_POLICY_ENGINE=hybrid, this engine:
 1. Runs the regex-based engine (fast, local, always available)
 2. If regex DENIES → return immediately (no need to query OPA)
 3. If regex ALLOWS → query OPA for additional policy checks
-4. If OPA is unavailable → return regex result (don't block on infra failure)
+4. If OPA is unavailable → return regex result (graceful fallback, NOT fail-closed)
 
 This gives you the speed and reliability of regex for known patterns
 (SSN, credit cards, prompt injection) PLUS the flexibility of OPA for
