@@ -1,271 +1,194 @@
-# CUSTOS Core
-https://youtu.be/5xzmC5jI8Z8?si=WS09_EzQxETXYlvz
+# CUSTOS Platform
 
-![CI](https://github.com/ceyptoslim/CUSTOS-CORE/actions/workflows/ci.yml/badge.svg)
-![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue)
-![Coverage](https://img.shields.io/badge/coverage-90%25-brightgreen)
-![License](https://img.shields.io/badge/license-Apache%202.0-blue)
+## Overview
 
-**A policy-governed execution layer that sits between AI systems and production resources, enforcing deterministic decisions and producing verifiable audit evidence.**
+A multi-layer AI governance platform composed of:
 
-CUSTOS evaluates every request against configurable policy rules before it reaches your AI model or automated system. Each decision is logged to a hash-chained audit ledger, making your governance posture auditable, reproducible, and tamper-evident.
+1. **CUSTOS-CORE** — execution-governance and security foundation (open source)
+2. **LORL-9.1** — governed agent orchestration layer (open source)
+3. **Base44 applications** — application-specific workflows, integrations, operational interfaces, and commercial services built on top of that foundation (proprietary)
+4. **External services** — YouTube/Google OAuth and other third-party integrations (application layer)
 
----
-### WHY CUSTOS-CORE ?
-
-Zero Third-Party Risk: Runs 100% self-hosted inside your VPC or Kubernetes clusters via Helm—your prompt data never leaves your environment.
-
-Cryptographic Defensibility: Instantly generate tamper-evident snapshots to prove your AI compliance posture to auditors (SOC 2 / HIPAA / ISO 42001).
-
-Precedence-Enforced Safety: Hardcoded regulatory DENY policies take absolute priority over volatile, non-deterministic LLM behavior
-
-## What CUSTOS Does
-
-```
-Incoming Request
-      │
-      ▼
- Input Validation  ──── malformed/oversized? ──→ 422
-      │
-      ▼
- Rate Limiter      ──── quota exceeded? ──→ 429
-      │
-      ▼
- Policy Engine     ──── deny rule matched? ──→ blocked
-      │
-      ▼
- Audit Chain       ──── hash-chained record written
-      │
-      ▼
- Response          ──── allowed | denied | flagged
-```
+CUSTOS-CORE and LORL-9.1 provide the open-core governance and agent infrastructure. The Base44 applications provide application-specific workflows, integrations, operational interfaces, and commercial services built on top of that foundation.
 
 ---
 
-## Quickstart
+## Open Source Core
 
-```bash
-git clone https://github.com/ceyptoslim/CUSTOS-CORE.git
-cd CUSTOS-CORE
-docker compose up --build
-```
+### CUSTOS-CORE
 
-| Service    | URL                   |
-|------------|-----------------------|
-| CUSTOS API | http://localhost:8000 |
-| Prometheus | http://localhost:9090 |
-| Grafana    | http://localhost:3000 |
+[github.com/ceyptoslim/CUSTOS-CORE](https://github.com/ceyptoslim/CUSTOS-CORE)
 
-Grafana login: `admin` / `custos_admin`
+**Commit:** `9394f0f` on `main` | **Tests:** 303 | **Coverage:** 90%
 
----
+Verified implementation:
 
-## Core Endpoints
+| Feature | Status | Evidence |
+|---------|--------|----------|
+| `/v1/evaluate` policy decision API | ✅ Implemented | `main.py:239` — FastAPI endpoint, regex-based policy engine |
+| `/v1/execute` enforcement firewall | ✅ Implemented | `main.py:577` — blocks target on DENY, forwards on ALLOW |
+| JWT authentication (HS256) | ✅ Implemented | `custos/auth.py` — `CUSTOS_JWT_SECRET`, `verify_token()`, `auth_enabled()` |
+| Tenant authorization binding | ✅ Implemented | `main.py:244,589` — JWT `sub` compared to `req.client_id`, cross-tenant = 403 |
+| Rate limiting | ✅ Implemented | `custos/rate_limiter.py` — `QuotaConfig`, `RateLimiter`, per-tenant quotas |
+| Hash-chained audit trail | ✅ Implemented | `custos/audit.py` — SHA-256 `content_hash`, `record_hash`, `previous_hash` |
+| Input validation | ✅ Implemented | `custos/validation.py` — SSN, credit card, prompt injection, PII patterns |
+| SSRF protection (DNS-rebinding) | ✅ Implemented | `custos/execution.py:93` — `getaddrinfo()` resolves hostname to IP before check |
+| Per-target circuit breaker | ✅ Implemented | `custos/execution.py:210` — `dict[str, CircuitState]` keyed by target host |
+| Production fail-closed auth | ✅ Implemented | `custos/auth.py:96` — `CUSTOS_ENV=production` overrides `AUTH_DISABLED=1` |
+| PostgreSQL audit backend | ✅ Implemented | `custos/audit.py:110` — `PostgreSQLBackend` with `psycopg2` |
+| OTLP/OpenTelemetry tracing | ✅ Implemented | `custos/tracing.py` — `opentelemetry-sdk`, `opentelemetry-exporter-otlp-proto-grpc` |
+| Docker deployment | ✅ Implemented | `Dockerfile`, `docker-compose.yml` |
+| Kubernetes manifests | ✅ Implemented | `k8s/configmap.yaml`, `k8s/deployment.yaml`, `k8s/service.yaml` |
+| Helm chart | ✅ Implemented | `charts/custos/Chart.yaml`, `values.yaml`, templates/ |
+| Prometheus metrics | ✅ Implemented | `main.py:192` — `/metrics` endpoint |
 
-### `POST /v1/evaluate`
-Evaluate a request against active policies and rate limits.
+**Policy engine:** Regex-based pattern matching with Luhn validation. This is NOT OPA/Rego. OPA integration lives in LORL-9.1 (see below).
 
-```bash
-curl -X POST http://localhost:8000/v1/evaluate \
-  -H "Content-Type: application/json" \
-  -d '{"client_id": "default", "content": "Summarize this document"}'
-```
+**Audit trail:** Tamper-evident hash-chained. NOT WORM/immutable storage. Events are append-only with SHA-256 content hashes and chained record hashes, but the storage backend (SQLite/PostgreSQL) is not write-once-read-many.
 
-```json
-{
-  "allowed": true,
-  "action": "allow",
-  "triggered_rule": null,
-  "reason": "No policy violations detected",
-  "client_id": "default",
-  "tenant_id": "default",
-  "audit_record_hash": "a3f9c2..."
-}
-```
+**Authentication vs. authorization:** JWT handles authentication (who are you). Tenant authorization binding (JWT `sub` = `client_id`) handles authorization (can you access this tenant's resources). These are separate concerns, both implemented.
 
-> The Quickstart `docker compose up` stack sets `AUTH_DISABLED=1` so this
-> works with zero setup. Production deployments have JWT auth **on by
-> default** — see [Authentication](#authentication) below.
+### LORL-9.1
 
-### `POST /v1/tenants/{tenant_id}/policy`
-Add a custom policy rule for a tenant. Persisted via `PolicyStore` — survives
-restarts when `POLICY_DB_PATH` or `DATABASE_URL` is configured. Closes #20.
+[github.com/ceyptoslim/LORL-9.1](https://github.com/ceyptoslim/LORL-9.1)
 
-```bash
-curl -X POST http://localhost:8000/v1/tenants/default/policy \
-  -H "Content-Type: application/json" \
-  -d '{"name": "block_competitor_name", "pattern": "(?i)acme-competitor", "action": "deny", "reason": "Competitor mention policy"}'
-```
+**Commit:** `ff3979d` on `main` | **Tests:** 77 | **Coverage:** 93%
 
-### `GET /v1/tenants/{tenant_id}/policy`
-List custom (non-default) policy rules currently active for a tenant.
+Verified implementation:
 
+| Feature | Status | Evidence |
+|---------|--------|----------|
+| LiteratureAgent | ✅ Implemented | `lorl/agents/literature_agent.py` — deterministic |
+| SkepticAgent | ✅ Implemented | `lorl/agents/skeptic_agent.py` — deterministic |
+| AuditorAgent | ✅ Implemented | `lorl/agents/auditor_agent.py` — deterministic |
+| BaseAgent | ✅ Implemented | `lorl/agents/base_agent.py` — abstract base |
+| Ollama/Llama3 integration | ✅ Implemented | `lorl/agents/ollama_client.py` — async HTTP, model="llama3", `/api/generate` |
+| EventLedger | ✅ Implemented | `lorl/core/ledger.py` — SHA-256 content hash, append-only, SQLite, `verify_integrity()` |
+| Ed25519 identity | ✅ Implemented | `lorl/core/identity.py` — `Ed25519PrivateKey`, `Ed25519PublicKey`, `create()`, `verify()` |
+| Treaty engine | ✅ Implemented | `lorl/core/treaty_engine.py` — state machine: PROPOSED → ACCEPTED/REJECTED → EXPIRED/CANCELLED |
+| CUSTOS governance client | ✅ Implemented | `lorl/governance/custos_client.py` — calls CUSTOS `/v1/evaluate` with JWT HS256 |
+| Governed executor | ✅ Implemented | `lorl/governance/governed_executor.py` — wraps agent + CUSTOS eval + event ledger |
+| OPA/Rego policy enforcement | ✅ Implemented | `lorl/governance/opa_client.py` — async HTTP to OPA server, `/v1/data/lorl/governance/allow` |
+| Policy enforcer | ✅ Implemented | `lorl/governance/policy_enforcer.py` — `check_treaty_proposal()`, `check_agent_decision()` |
 
-### `POST /v1/execute`
-**The enforcement boundary.** Unlike `/v1/evaluate` (which returns a decision as
-metadata), `/v1/execute` physically blocks denied requests from reaching the
-downstream target.
+**API endpoints:** `/health`, `/ready`, `/api/v1/labs` (register + list), `/api/v1/treaties` (propose, accept, reject, list), `/api/v1/audit`, `/api/v1/agents/execute`, `/api/v1/agents/governed-execute`
 
-```bash
-curl -X POST http://localhost:8000/v1/execute \
-  -H "Content-Type: application/json" \
-  -d '{
-    "client_id": "default",
-    "content": "Summarize this document",
-    "target_url": "https://api.openai.com/v1/chat/completions",
-    "target_method": "POST"
-  }'
-```
+**OPA fail mode:** OPA client fails OPEN — if OPA server is unavailable, returns `(True, [])` with a warning log. This is a permissive best-effort layer.
 
-If the policy engine returns **DENY**, the target is never contacted — the
-response is `403 Forbidden` with the triggered rule and reason.
+**CUSTOS fail mode:** CUSTOS client fails CLOSED — if CUSTOS server is unavailable, returns `{"allowed": False}`. The GovernedExecutor flags the result as `ungoverned: True` and logs to the event ledger, but does NOT block the agent's response from being returned.
 
-If **ALLOW**, the content is forwarded to `target_url` via HTTPS and the
-downstream response (status code + 500-char preview) is returned.
+**Key distinction:** CUSTOS-CORE uses a regex-based policy engine. LORL-9.1 has OPA/Rego enforcement as a separate governance layer. CUSTOS-CORE is NOT "OPA-powered." The correct framing is:
 
-| Denied Response | Forwarded Response |
-|-----------------|-------------------|
-| `403` + rule + reason | `200` + downstream status + preview |
-
-**SSRF protection**: Private IPs (10.x, 172.16-31.x, 192.168.x, 127.x),
-IPv6 loopback (::1), non-HTTPS targets, and privileged ports are blocked.
-Optional hostname allowlist via `CUSTOS_TARGET_ALLOWLIST` env var.
-
-**Circuit breaker**: Opens after 5 consecutive downstream failures (configurable).
-Returns `503` when open. Auto-half-opens after 30s. Manual reset via
-`POST /v1/execute/circuit/reset`.
-
-### `GET /v1/execute/circuit`
-Current circuit breaker state (closed/open/half_open).
-
-### `POST /v1/execute/circuit/reset`
-Manually reset the circuit breaker.
-
-### `GET /health`
-Service status and uptime.
-
-### `GET /ready`
-Kubernetes readiness probe. Returns per-subsystem status.
-
-### `GET /metrics`
-Prometheus-compatible metrics exposition.
-
-### `GET /v1/info`
-Version, audit backend type, tenant count, and uptime.
-
-### `GET /v1/audit`
-Full audit chain. Filter by client: `?client_id=default`
-
-### `GET /v1/audit/verify`
-Cryptographic integrity check of the entire audit chain.
+- CUSTOS-CORE: core policy/governance primitives (regex-based)
+- LORL-9.1: OPA-backed agent governance integration (separate layer)
 
 ---
 
-## Authentication
+## Enterprise Capabilities
 
-JWT auth is **on by default** for `/v1/evaluate`. Set `CUSTOS_JWT_SECRET` to a
-strong secret in production and issue tokens with `custos.auth.create_token()`:
+Features available in the enterprise tier, verified as implemented in the codebase but gated behind enterprise licensing:
 
-```python
-from custos.auth import create_token
-token = create_token(client_id="my-service")
-```
+### CUSTOS-CORE Enterprise
+- `/v1/execute` enforcement firewall (blocks/forwards targets)
+- DNS-rebinding SSRF protection (`getaddrinfo` resolution)
+- Per-target circuit breaker (not global)
+- Production fail-closed authentication
+- Tenant authorization binding (cross-tenant = 403)
+- PostgreSQL audit backend
+- OTLP/OpenTelemetry tracing
+- Kubernetes/Helm deployment
+- Multi-tenant policy persistence
+- Policy diff/replay/snapshot
 
-```bash
-curl -X POST http://localhost:8000/v1/evaluate \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"client_id": "my-service", "content": "Summarize this document"}'
-```
-
-For local development only, set `AUTH_DISABLED=1` to skip token verification
-entirely (this is what `docker-compose.yml` does for the Quickstart above).
-Never set `AUTH_DISABLED=1` in a production deployment.
-
----
-
-## Running Tests
-
-```bash
-pip install -r requirements.txt -r requirements-dev.txt
-pytest tests/ -v --cov=custos --cov=main --cov-report=term-missing
-```
-
-Tests cover the policy engine, rate limiter, API endpoints, input validation, audit chain, replay, snapshots, tracing, and tenant management. CI runs the full suite across Python 3.10, 3.11, and 3.12 with a minimum 80% coverage threshold.
+### LORL-9.1 Enterprise
+- Ollama/Llama3 integration (zero-cost local inference)
+- CUSTOS governance wiring (CustosClient + GovernedExecutor)
+- OPA/Rego policy enforcement
+- Governed agent execution API endpoint
 
 ---
 
-## What Is Implemented (v1.2)
+## Applications
 
-| Component | Status |
-|---|---|
-| Policy engine (regex rules, DENY/AUDIT/ALLOW) | ✅ |
-| Rate limiter (per-client, per-minute/hour/token) | ✅ |
-| Input validation layer | ✅ |
-| Hash-chained audit ledger (tamper-evident) | ✅ |
-| SQLite audit persistence (survives restarts) | ✅ |
-| PostgreSQL audit backend (production-grade) | ✅ |
-| JWT authentication on /v1/evaluate | ✅ |
-| Multi-tenant governance (isolated per tenant) | ✅ |
-| Tenant policy rule API + persistence (`/v1/tenants/{id}/policy`) | ✅ |
-| Replay engine (POST /v1/replay) | ✅ |
-| Policy diff (POST /v1/policy/diff) | ✅ |
-| Decision snapshots (GET /v1/audit/snapshot) | ✅ |
-| Structured JSON logging | ✅ |
-| OpenTelemetry tracing — console by default, OTLP export optional | ✅ |
-| Prometheus metrics | ✅ |
-| Grafana dashboard (auto-provisioned) | ✅ |
-| Docker Compose stack | ✅ |
-| Kubernetes manifests (k8s/) | ✅ |
-| Helm chart (charts/custos/) | ✅ |
-| GitHub Actions CI (ruff + bandit + pytest + docker) | ✅ |
-| `/health`, `/ready`, `/v1/info` endpoints | ✅ |
+Base44-hosted applications providing operational interfaces, workflows, and commercial services. These are proprietary, not on GitHub.
 
----
+### CUSTOS-CORE Media Bridge
+Media governance and YouTube management dashboard.
+- Channel management (5 channels)
+- Agent task orchestration (20 running tasks: Trend Spotter, SEO Optimizer, Comment Moderator, Competitor Analyst, Playlist Manager)
+- AEGIS Engine audit events
+- YouTube connection management with Google OAuth
 
-## Roadmap
+### QueryForge
+CUSTOS business operations hub and data analysis platform.
+- CUSTOS policy management (3 active policies)
+- Agent registry (10 registered agents)
+- Project milestones (13 across two phases)
+- Sales CRM (observed prospect deal-value range: $1.2K–$240K)
+- CSV/SQL analysis tools
 
-| Version | Focus | Status |
-|---|---|---|
-| v0.1 | Stable Core | ✅ Shipped |
-| v0.2 | Authentication + Persistent Audit | ✅ Shipped |
-| v0.3 | Observability | ✅ Shipped |
-| v0.4 | Replay Engine | ✅ Shipped |
-| v0.5 | Multi-tenant Governance | ✅ Shipped |
-| v1.0 | Enterprise Release Candidate | ✅ Shipped |
-| v1.2 | Policy Persistence + OTLP Export | ✅ Current |
+### InsightFlow
+Audit logging and YouTube video upload workflow.
+- Audit logs (actor, role, action, outcome)
+- Video upload lifecycle (queue → upload → complete)
+- YouTube/Google OAuth credential management (3 credentials with YouTube API scopes)
+
+### DeployFlow
+Deployment platform with template/plugin marketplace.
+- App deployment tracking (4 apps across React, Node, Next.js, Vue)
+- CI/CD pipeline management (5 deployment records with commit tracking)
+- Template/plugin marketplace (8 items, $15–$59)
+- Analytics event infrastructure
 
 ---
 
-## Known Limitations
+## Integrations
 
-### Execution Layer (v1.2.0)
-- SSRF check validates IP literals but does not resolve hostnames to IPs
-  before checking (DNS rebinding attack vector). Production deployments
-  should add DNS resolution + IP validation.
-- Circuit breaker is global, not per-target. Per-target breakers would
-  be more granular but add complexity.
-- No live integration test against a real downstream service exists yet.
-  All forwarding tests use mocked HTTP clients.
-- HTTP adapter uses sync `httpx.Client`. Async client would scale better
-  under high concurrency. (v1.2)
+External service integrations live in the application layer (Base44 apps), NOT in the CUSTOS-CORE or LORL-9.1 GitHub repositories.
 
-| Area | Status | Notes |
-|---|---|---|
-| Tenant policy persistence | ✅ Available, opt-in | Custom rules added via `POST /v1/tenants/{id}/policy` survive restarts **only** when `POLICY_DB_PATH` or `DATABASE_URL` is set. With the default in-memory backend, custom rules are still lost on restart — this is expected for local/dev use. |
-| OTLP trace export | ✅ Available, opt-in | Set `OTEL_EXPORTER_OTLP_ENDPOINT` and install `opentelemetry-sdk` + `opentelemetry-exporter-otlp-proto-grpc`. Without the endpoint set (or without the packages installed), tracing gracefully falls back to console JSON output — trace IDs still appear in logs and API responses either way. |
-| Policy engine | ⚠️ Regex-based | Hardened regex patterns with Luhn validation for credit cards and expanded prompt injection detection. Adversarial test suite covers bypass attempts. Production upgrade path: OPA integration (tracked as a future focus area). |
+| Integration | Location | Auth Method |
+|-------------|----------|-------------|
+| YouTube Data API | InsightFlow, Media Bridge | Google OAuth 2.0 (youtube.upload, youtube.readonly, yt-analytics.readonly) |
+| Google OAuth | InsightFlow, Media Bridge | OAuth 2.0 (userinfo.email) |
+| CUSTOS-CORE API | LORL-9.1 (CustosClient) | JWT HS256 |
+| OPA policy server | LORL-9.1 (OPAClient) | HTTP (localhost:8181) |
+| Ollama inference | LORL-9.1 (OllamaClient) | HTTP (localhost:11434) |
 
-**Operator guidance:** For Kubernetes deployments where policy customization matters, set `POLICY_DB_PATH` (SQLite, single replica) or `DATABASE_URL` (PostgreSQL, multi-replica) so rules registered via the API survive rollouts, autoscaling, and rescheduling.
+Google OAuth credentials do NOT exist in the CUSTOS-CORE GitHub repository. The credentials belong to the Base44 application layer, which is a separate authentication domain from CUSTOS-CORE's JWT-based API security.
 
 ---
 
-## CI Status
+## Roadmap / Future
 
-Every push runs `ruff` lint + `bandit` security scan + `pip-audit` dependency check + `pytest` with coverage (≥80% threshold) across Python 3.10/3.11/3.12 + Docker build via GitHub Actions.
+Architecture targets that are NOT yet implemented. These should not be presented as existing features.
+
+- Treaty expansion (multi-party, complex terms)
+- Multi-ledger trust anchoring (Solana, Ethereum L2)
+- Zero-knowledge privacy proofs
+- Advanced dispute/settlement mechanisms
+- Exchange API
+- Trust Registry (cross-platform, beyond LORL-9.1's Ed25519 identity)
+- SOC 2 / ISO 27001 / HIPAA compliance certification (currently "aligned to", not "certified")
+- WORM/immutable storage (currently tamper-evident hash-chained)
+- OPA in CUSTOS-CORE (currently regex-based; OPA is in LORL-9.1 only)
 
 ---
 
-## License
+## Honest Claims Reference
 
-Apache 2.0 — see [LICENSE](LICENSE)
+| Claim | Correct | Incorrect |
+|-------|---------|-----------|
+| "Tamper-evident hash-chained audit" | ✅ | |
+| "WORM/immutable storage" | | ❌ — use "tamper-evident" |
+| "Regex-based policy engine" (CUSTOS-CORE) | ✅ | |
+| "OPA-powered" (CUSTOS-CORE) | | ❌ — OPA is in LORL-9.1 |
+| "OPA-backed agent governance" (LORL-9.1) | ✅ | |
+| "Compliance-aligned controls" | ✅ | |
+| "SOC 2/ISO 27001/HIPAA certified" | | ❌ — use "aligned to" |
+| "Google OAuth in Base44 apps" | ✅ | |
+| "Google OAuth in CUSTOS-CORE" | | ❌ — not in the codebase |
+| "Solana/Ethereum/ZK implemented" | | ❌ — architecture target |
+| "303 tests, 90% coverage" (CUSTOS-CORE) | ✅ | |
+| "77 tests, 93% coverage" (LORL-9.1) | ✅ | |
+
+For formal audit: authoritative evidence should be commit SHA + CI run + test output + coverage artifact, not a document stating test counts.
