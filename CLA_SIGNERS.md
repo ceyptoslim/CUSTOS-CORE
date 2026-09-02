@@ -9,6 +9,7 @@ and agree to the terms of the [CLA](./CLA.md).
 
 | GitHub Username | Type | Date Signed | CLA Version |
 |-----------------|------|-------------|-------------|
+| @ceyptoslim | Individual | 2026-09-02 | v1.0 |
 
 ## Corporate Contributors
 
