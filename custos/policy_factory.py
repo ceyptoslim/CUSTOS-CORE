@@ -14,17 +14,13 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import Union
 
-from custos.policy_engine import PolicyEngine as RegexPolicyEngine, PolicyResult
+from custos.policy_engine import PolicyEngine as RegexPolicyEngine
 
 logger = logging.getLogger(__name__)
 
-# Type alias — all engines return PolicyResult via evaluate()
-PolicyEngineType = Union[RegexPolicyEngine, "OPAPolicyEngine", "HybridPolicyEngine"]
 
-
-def create_policy_engine() -> PolicyEngineType:
+def create_policy_engine():
     """
     Factory: create the policy engine based on CUSTOS_POLICY_ENGINE env var.
 
