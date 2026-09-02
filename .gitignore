@@ -33,3 +33,4 @@ Thumbs.db
 .coverage
 htmlcov/
 coverage.xml
+opa_job.log
