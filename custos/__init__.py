@@ -6,5 +6,5 @@ CUSTOS Core — Policy-Governed AI Execution Firewall
 # See LICENSE file for details. Commercial license available upon request.
 
 
-__version__ = "1.2.0"
+__version__ = "1.3.1"
 __all__ = ["__version__"]

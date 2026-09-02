@@ -61,7 +61,7 @@ class OPAPolicyEngine:
         result = data.get("result")
 
         if isinstance(result, dict):
-            allowed = bool(result.get("allow", False))
+            allowed = result.get("allow") is True  # strict Boolean — only literal True authorizes
             deny_reasons = list(result.get("deny") or result.get("deny_messages") or [])
             triggered = result.get("triggered_rule")
         elif isinstance(result, bool):
@@ -142,7 +142,7 @@ class OPAPolicyEngine:
         result = data.get("result")
 
         if isinstance(result, dict):
-            allowed = bool(result.get("allow", False))
+            allowed = result.get("allow") is True  # strict Boolean — only literal True authorizes
             deny_reasons = list(result.get("deny") or result.get("deny_messages") or [])
             triggered = result.get("triggered_rule")
             audit_flag = result.get("audit")

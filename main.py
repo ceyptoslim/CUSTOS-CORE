@@ -65,7 +65,7 @@ from custos.execution import HTTPExecutionAdapter
 from custos.firewall import ExecutionFirewall
 from custos.validation import InputValidator
 
-VERSION = "1.2.0"
+VERSION = "1.3.1"
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -262,7 +262,9 @@ async def evaluate(
         tracer.finish_span(span)
         raise HTTPException(status_code=422, detail=val.error)
 
-    ctx = tenant_manager.get_or_default(req.tenant_id)
+    ctx = tenant_manager.get_strict(req.tenant_id)
+    if ctx is None:
+        raise HTTPException(status_code=403, detail=f"Unknown tenant: {req.tenant_id}")
     rate_key = (
         f"{req.tenant_id}:{req.client_id}"
         if req.tenant_id != "default"
@@ -338,13 +340,17 @@ async def get_audit_log(
     client_id: Optional[str] = None,
     tenant_id: str = "default",
 ):
-    ctx = tenant_manager.get_or_default(tenant_id)
+    ctx = tenant_manager.get_strict(tenant_id)
+    if ctx is None:
+        raise HTTPException(status_code=403, detail=f"Unknown tenant: {tenant_id}")
     return ctx.audit_chain.get_records(client_id=client_id)
 
 
 @app.get("/v1/audit/verify")
 async def verify_audit_chain(tenant_id: str = "default"):
-    ctx = tenant_manager.get_or_default(tenant_id)
+    ctx = tenant_manager.get_strict(tenant_id)
+    if ctx is None:
+        raise HTTPException(status_code=403, detail=f"Unknown tenant: {tenant_id}")
     valid, reason = ctx.audit_chain.verify()
     return {
         "valid": valid,
@@ -365,7 +371,9 @@ async def get_snapshot(
     start_time: Optional[float] = None,
     end_time: Optional[float] = None,
 ):
-    ctx = tenant_manager.get_or_default(tenant_id)
+    ctx = tenant_manager.get_strict(tenant_id)
+    if ctx is None:
+        raise HTTPException(status_code=403, detail=f"Unknown tenant: {tenant_id}")
     engine = SnapshotEngine(ctx.audit_chain)
     result = engine.generate(start_time=start_time, end_time=end_time)
     return SnapshotResponse(
@@ -395,7 +403,9 @@ async def verify_snapshot(req: SnapshotVerifyRequest):
 
 @app.post("/v1/replay", response_model=ReplayResponse)
 async def replay(req: ReplayRequest):
-    ctx = tenant_manager.get_or_default(req.tenant_id)
+    ctx = tenant_manager.get_strict(req.tenant_id)
+    if ctx is None:
+        raise HTTPException(status_code=403, detail=f"Unknown tenant: {req.tenant_id}")
     replay_engine = ReplayEngine(ctx.audit_chain, ctx.policy_engine)
     try:
         result = replay_engine.replay_by_hash(
@@ -598,7 +608,9 @@ async def execute(
         )
     _metrics["custos_requests_total"] += 1
 
-    ctx = tenant_manager.get_or_default(req.tenant_id)
+    ctx = tenant_manager.get_strict(req.tenant_id)
+    if ctx is None:
+        raise HTTPException(status_code=403, detail=f"Unknown tenant: {req.tenant_id}")
     rate_key = (
         f"{req.tenant_id}:{req.client_id}"
         if req.tenant_id != "default"

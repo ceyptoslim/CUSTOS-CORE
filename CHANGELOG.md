@@ -5,6 +5,48 @@ follows a transparent "what we built, what we fixed, what we know is still
 open" format — no claims beyond what the code and tests demonstrate.
 
 ---
+---
+## [1.3.1] — Release Integrity & Tenant Authorization Patch
+
+### Forensic Audit Remediation
+
+This patch addresses findings from a forensic audit of the v1.3.0 release.
+
+### Version Synchronization
+- `VERSION` in main.py: 1.2.0 → 1.3.1
+- `__version__` in custos/__init__.py: 1.2.0 → 1.3.1
+- Kubernetes deployment manifests: 1.2.0 → 1.3.1
+- Helm Chart version/appVersion: 1.2.0 → 1.3.1
+- Helm values tag: 1.2.0 → 1.3.1
+
+### Tenant Authorization (P0/P1)
+- **`get_strict()` added to TenantManager** — returns None for unknown
+  tenant IDs instead of silently falling back to the default tenant.
+- All 6 request-handling endpoints (/v1/evaluate, /v1/execute,
+  /v1/audit/records, /v1/audit/verify, /v1/audit/snapshot, /v1/replay)
+  now use `get_strict()` and reject unknown tenant IDs with HTTP 403.
+- `get_or_default()` is retained only for internal policy management
+  operations where creating a new tenant context is expected.
+- Cross-tenant audit record isolation verified.
+
+### OPA Response Typing (P1)
+- OPA authorization responses now use strict `is True` validation
+  instead of `bool()`. Only literal Boolean `True` authorizes.
+- String `"true"`, integer `1`, and other truthy non-boolean values
+  are rejected as malformed responses (fail-closed).
+
+### SECURITY.md Updated
+- DNS-rebinding: documented as fixed (v1.2+ uses getaddrinfo).
+- OPA: documented as implemented (v1.3.0+) with three modes.
+- Tenant authorization: documented with JWT↔client_id binding and
+  strict tenant boundary.
+- Audit chain: explicitly labeled "tamper-evident, not WORM/immutable".
+- Secrets: "injected at runtime, never in source control" (not just
+  ".env file").
+- OPA/regex parity: documented that rule semantics are not identical.
+- Known limitations: OPA response typing, downstream test status,
+  architecture targets clearly labeled as future.
+
 ## [1.2.0] — Execution Enforcement Layer
 
 ### The Critical Gap This Closes

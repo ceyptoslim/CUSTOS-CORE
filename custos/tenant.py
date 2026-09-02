@@ -139,9 +139,27 @@ class TenantManager:
         """
         Return tenant context if registered, otherwise fall back
         to the default tenant. Never returns None.
+
+        WARNING: Only use this for internal operations (e.g., policy
+        management where creating a new tenant context is expected).
+        For authenticated request paths (evaluate, execute, audit),
+        use get_strict() instead to prevent cross-tenant access.
         """
         with self._lock:
             return self._tenants.get(tenant_id) or self._tenants["default"]
+
+    def get_strict(self, tenant_id: str) -> Optional[TenantContext]:
+        """
+        Return tenant context if registered, otherwise return None.
+        Does NOT fall back to default. Use this for all authenticated
+        request paths to prevent cross-tenant access via unknown
+        tenant IDs.
+
+        The "default" tenant is always available. Unknown tenant IDs
+        return None, which the caller should treat as a 403/404.
+        """
+        with self._lock:
+            return self._tenants.get(tenant_id)
 
     def list_tenants(self) -> list[str]:
         """Return list of all registered tenant IDs."""
