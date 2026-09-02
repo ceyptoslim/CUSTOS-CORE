@@ -11,6 +11,26 @@ pytest tests/ -v
 
 All tests must pass before submitting a PR.
 
+## CLA — Required Before First Contribution
+
+All contributors must sign the [Contributor License Agreement (CLA)](./CLA.md)
+before their pull requests can be merged. This is **automatically enforced** by
+a GitHub Action that checks every PR.
+
+### How to Sign
+
+1. Read the [CLA document](./CLA.md)
+2. Add your GitHub username to `CLA_SIGNERS.md` in your PR:
+
+```markdown
+| @your-github-username | Individual | 2026-09-02 | v1.0 |
+```
+
+3. Commit this change as part of your PR
+
+The CLA check will automatically verify your signature and update the PR status.
+If you have questions about the CLA, contact frolifeproductions@gmail.com.
+
 ## Branch Convention
 
 | Branch | Purpose |
@@ -31,6 +51,7 @@ refactor: move models to custos/models.py
 
 ## Pull Request Requirements
 
+- [ ] CLA signed (add username to `CLA_SIGNERS.md`)
 - [ ] All existing tests pass (`pytest tests/ -v`)
 - [ ] New functionality has tests
 - [ ] `ruff check custos/ main.py` passes with no errors
@@ -51,9 +72,10 @@ refactor: move models to custos/models.py
 - Multi-cloud deployment configs
 - Enterprise SSO
 
-Focus areas for contributions (as of v1.1):
-- OPA integration to replace regex-based policy matching
+Focus areas for contributions (as of v1.3):
 - Policy version registry with rollback
 - RS256 / JWKS auth upgrade for multi-tenant production use
-- Distributed rate limiting for multi-replica deployments (current limiter is per-pod)
-- OTLP export test coverage against a real collector (current tests only cover the graceful-fallback path)
+- Distributed rate limiting for multi-replica deployments
+- OTLP export test coverage against a real collector
+- Additional SSRF test vectors for private IP ranges
+- Performance benchmarking for high-throughput /v1/evaluate
