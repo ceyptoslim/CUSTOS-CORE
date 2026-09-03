@@ -25,7 +25,7 @@ Verified implementation:
 
 | Feature | Status | Evidence |
 |---------|--------|----------|
-| `/v1/evaluate` policy decision API | ✅ Implemented | `main.py:239` — FastAPI endpoint, regex-based policy engine |
+| `/v1/evaluate` policy decision API | ✅ Implemented | `main.py:239` — FastAPI endpoint, three-mode policy engine (regex default / OPA / hybrid) |
 | `/v1/execute` enforcement firewall | 🔒 Enterprise | Assembled by `custos-enterprise` router — components (`execution.py`, `firewall.py`) are public |
 | JWT authentication (HS256) | ✅ Implemented | `custos/auth.py` — `CUSTOS_JWT_SECRET`, `verify_token()`, `auth_enabled()` |
 | Tenant authorization binding | ✅ Implemented | `main.py:244,589` — JWT `sub` compared to `req.client_id`, cross-tenant = 403 |
@@ -41,7 +41,7 @@ Verified implementation:
 | Kubernetes/Helm deployment | 🔒 Enterprise | Moved to `custos-enterprise` (private). Public repo ships Docker/Docker Compose. |
 | Prometheus metrics | ✅ Implemented | `main.py:192` — `/metrics` endpoint |
 
-**Policy engine:** Regex-based pattern matching with Luhn validation. This is NOT OPA/Rego. OPA integration lives in LORL-9.1 (see below).
+**Policy engine (v1.3.0+):** Three modes selectable via `CUSTOS_POLICY_ENGINE`: `regex` (default — pattern matching + Luhn validation, zero dependencies), `opa` (Rego enforcement via `policies/custos_governance.rego` and an OPA server — fails CLOSED if OPA is unavailable), and `hybrid` (regex first, then OPA, graceful fallback to regex). OPA and hybrid modes are CI-gated against a real OPA 1.0.0 server (`opa-integration` job). LORL-9.1 additionally runs its OWN separate OPA client for agent/treaty governance, which fails OPEN (best-effort).
 
 **Audit trail:** Tamper-evident hash-chained. NOT WORM/immutable storage. Events are append-only with SHA-256 content hashes and chained record hashes, but the storage backend (SQLite/PostgreSQL) is not write-once-read-many.
 
@@ -76,10 +76,10 @@ Verified implementation:
 
 **CUSTOS fail mode:** CUSTOS client fails CLOSED — if CUSTOS server is unavailable, returns `{"allowed": False}`. The GovernedExecutor flags the result as `ungoverned: True` and logs to the event ledger, but does NOT block the agent's response from being returned.
 
-**Key distinction:** CUSTOS-CORE uses a regex-based policy engine. LORL-9.1 has OPA/Rego enforcement as a separate governance layer. CUSTOS-CORE is NOT "OPA-powered." The correct framing is:
+**Key distinction:** CUSTOS-CORE ships its own OPA/Rego enforcement (v1.3.0+, fail-closed). LORL-9.1 runs a separate OPA client for agent/treaty policy (fail-open, best-effort). Both are true — they are different layers:
 
-- CUSTOS-CORE: core policy/governance primitives (regex-based)
-- LORL-9.1: OPA-backed agent governance integration (separate layer)
+- CUSTOS-CORE: policy engine with regex (default), OPA (fail-closed), and hybrid modes
+- LORL-9.1: separate OPA-backed agent governance layer on top of CUSTOS
 
 ---
 
@@ -150,7 +150,7 @@ External service integrations live in the application layer (Base44 apps), NOT i
 | YouTube Data API | InsightFlow, Media Bridge | Google OAuth 2.0 (youtube.upload, youtube.readonly, yt-analytics.readonly) |
 | Google OAuth | InsightFlow, Media Bridge | OAuth 2.0 (userinfo.email) |
 | CUSTOS-CORE API | LORL-9.1 (CustosClient) | JWT HS256 |
-| OPA policy server | LORL-9.1 (OPAClient) | HTTP (localhost:8181) |
+| OPA policy server | CUSTOS-CORE (`opa`/`hybrid` modes, fail-closed) + LORL-9.1 (OPAClient, fail-open) | HTTP (localhost:8181) |
 | Ollama inference | LORL-9.1 (OllamaClient) | HTTP (localhost:11434) |
 
 Google OAuth credentials do NOT exist in the CUSTOS-CORE GitHub repository. The credentials belong to the Base44 application layer, which is a separate authentication domain from CUSTOS-CORE's JWT-based API security.
@@ -169,7 +169,6 @@ Architecture targets that are NOT yet implemented. These should not be presented
 - Trust Registry (cross-platform, beyond LORL-9.1's Ed25519 identity)
 - SOC 2 / ISO 27001 / HIPAA compliance certification (currently "aligned to", not "certified")
 - WORM/immutable storage (currently tamper-evident hash-chained)
-- OPA in CUSTOS-CORE (currently regex-based; OPA is in LORL-9.1 only)
 
 ---
 
@@ -179,8 +178,8 @@ Architecture targets that are NOT yet implemented. These should not be presented
 |-------|---------|-----------|
 | "Tamper-evident hash-chained audit" | ✅ | |
 | "WORM/immutable storage" | | ❌ — use "tamper-evident" |
-| "Regex-based policy engine" (CUSTOS-CORE) | ✅ | |
-| "OPA-powered" (CUSTOS-CORE) | | ❌ — OPA is in LORL-9.1 |
+| "Regex-based policy engine" (CUSTOS-CORE) | ✅ (as default mode) | |
+| "OPA-powered" (CUSTOS-CORE) | ✅ (v1.3.0+ — `opa`/`hybrid` modes, CI-gated) | |
 | "OPA-backed agent governance" (LORL-9.1) | ✅ | |
 | "Compliance-aligned controls" | ✅ | |
 | "SOC 2/ISO 27001/HIPAA certified" | | ❌ — use "aligned to" |
