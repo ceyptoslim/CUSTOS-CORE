@@ -20,14 +20,19 @@ from custos.audit import (
 
 
 class TestInMemoryBackend:
-    def test_save_does_not_raise(self):
+    def test_noop_sink_contract(self):
+        """InMemoryBackend is a no-op persistence sink BY DESIGN: the audit
+        chain itself holds records in memory, so the backend accepts saves
+        without raising and reads back empty. If this contract ever changes,
+        this test fails instead of silently passing."""
         backend = InMemoryBackend()
         record = AuditRecord(
             timestamp=1.0, client_id="c1", action="allow",
             triggered_rule=None, reason="ok", content_hash="abc",
             record_hash="def", previous_hash="000",
         )
-        backend.save(record)
+        assert backend.save(record) is None
+        assert backend.load_all() == []
 
     def test_load_all_returns_empty(self):
         backend = InMemoryBackend()
