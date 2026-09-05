@@ -1,0 +1,4 @@
+{
+  "_instructions": "OWNER-POPULATED REGISTRY — fail-closed by design. Add a statute number ONLY after verifying it against official Florida sources (flsenate.gov). With an empty registry, every statute citation in an outreach draft is DENIED. Entry shape: \"<statute number>\": {\"title\": \"<official title>\", \"verified_date\": \"YYYY-MM-DD\", \"verified_by\": \"<who verified>\"}. Do NOT add statutes suggested by any AI without owner verification against the official source.",
+  "florida": {}
+}
