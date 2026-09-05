@@ -290,11 +290,6 @@ class TestMineOSvsCUSTOSQuality:
         assert "pyjwt==2.8.0" not in content.lower()
         assert "fastapi==0.110.0" not in content
 
-    def test_custos_has_236_tests(self):
-        """CUSTOS-CORE has 296 tests (v1.2.0); MineOS test count varies by environment."""
-        # This is proven by the test suite itself running
-        pass  # The fact that we're running IS the proof
-
     def test_integration_is_architecturally_sound(self):
         """CUSTOS patterns fit MineOS's FastAPI architecture natively."""
         gw = MineOSCustosGateway()
