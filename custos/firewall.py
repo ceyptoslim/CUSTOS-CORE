@@ -1,5 +1,5 @@
 """
-CUSTOS Execution Firewall v1.2
+CUSTOS Execution Firewall
 
 The enforcement boundary. This is what makes CUSTOS a firewall, not
 just a decision API.

@@ -1,5 +1,5 @@
 """
-CUSTOS Replay Engine v1.0
+CUSTOS Replay Engine
 
 Given any audit record hash, reproduces the exact policy
 decision that was made at that point in time.

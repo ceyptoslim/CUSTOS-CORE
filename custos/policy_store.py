@@ -1,5 +1,5 @@
 """
-CUSTOS Policy Store v1.1
+CUSTOS Policy Store
 
 Persistent storage for tenant policy rules.
 Solves issue #20: policy customizations survive pod restarts,

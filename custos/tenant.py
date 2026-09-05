@@ -1,5 +1,5 @@
 """
-CUSTOS Tenant Manager v1.1
+CUSTOS Tenant Manager
 
 Manages per-tenant policy engines, rate limiters, and audit chains.
 Each tenant is completely isolated — exhausting one tenant's quota,

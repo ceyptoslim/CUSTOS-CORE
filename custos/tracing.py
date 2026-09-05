@@ -1,5 +1,5 @@
 """
-CUSTOS OpenTelemetry Tracing v1.1
+CUSTOS OpenTelemetry Tracing
 
 Lightweight tracing layer for CUSTOS requests.
 Each /v1/evaluate call produces a trace span containing
