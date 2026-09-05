@@ -1,5 +1,5 @@
 """
-CUSTOS Execution Adapter v1.2
+CUSTOS Execution Adapter
 
 The execution layer that makes CUSTOS an actual firewall, not just a
 decision API. When the policy engine returns ALLOW, this module forwards

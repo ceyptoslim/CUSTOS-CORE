@@ -1,5 +1,5 @@
 """
-CUSTOS Pydantic Models v1.2
+CUSTOS Pydantic Models
 Schemas for all request/response models across evaluate, execute,
 audit, replay, policy diff, snapshots, and tenant management.
 """

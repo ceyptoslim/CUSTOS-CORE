@@ -1,5 +1,5 @@
 """
-CUSTOS Audit Chain v1.0
+CUSTOS Audit Chain
 
 Append-only, hash-chained audit log.
 
