@@ -32,6 +32,7 @@ from custos.auth import auth_enabled, verify_token
 from custos.logging import configure_logging, get_logger
 from custos.models import (
     AuditRecordResponse,
+    EvaluateActionRequest,
     EvaluateRequest,
     EvaluateResponse,
     HealthResponse,
@@ -57,6 +58,7 @@ from custos.rate_limiter import QuotaConfig
 from custos.replay import ReplayEngine
 from custos.snapshot import SnapshotEngine
 from custos.tenant import TenantConfig, TenantManager
+from custos.action_gate import ActionGate, ActionRequest
 from custos.tracing import tracer
 from custos.execution import HTTPExecutionAdapter
 from custos.validation import InputValidator
@@ -74,6 +76,7 @@ logger = get_logger("main")
 # ---------------------------------------------------------------------------
 policy_store = PolicyStore()
 tenant_manager = TenantManager(policy_store=policy_store)
+action_gate = ActionGate(tenant_manager)
 validator = InputValidator()
 policy_differ = PolicyDiffer()
 
@@ -236,6 +239,52 @@ async def info():
 # ---------------------------------------------------------------------------
 # Evaluate
 # ---------------------------------------------------------------------------
+
+@app.post("/v1/evaluate_action", response_model=EvaluateResponse)
+async def evaluate_action(
+    req: EvaluateActionRequest,
+    _auth: Optional[str] = Depends(optional_auth),
+):
+    """Pre-flight action gate: evaluate a PROPOSED agent action BEFORE execution.
+
+    Deny-by-default: tools must be explicitly allowlisted per tenant
+    (ActionGate.register_tools()); an unconfigured gate denies all actions.
+    Fail-closed on unknown tenants. Every decision is audit-chained.
+    """
+    if _auth is not None and _auth != req.client_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Client identity does not match request client_id",
+        )
+    span = tracer.start_span("custos.evaluate_action")
+    span.set_attribute("client_id", req.client_id)
+    span.set_attribute("tenant_id", req.tenant_id)
+    span.set_attribute("tool", req.tool)
+
+    gate_result = action_gate.evaluate_action(
+        tenant_id=req.tenant_id,
+        action=ActionRequest(tool=req.tool, command=req.command, args=req.args),
+        client_id=req.client_id,
+    )
+    decision = gate_result.decision
+
+    if decision.allowed:
+        _metrics["custos_requests_allowed"] += 1
+    else:
+        _metrics["custos_requests_denied"] += 1
+
+    tracer.finish_span(span)
+    return EvaluateResponse(
+        allowed=decision.allowed,
+        action=decision.action.value,
+        triggered_rule=decision.triggered_rule,
+        reason=decision.reason,
+        client_id=req.client_id,
+        tenant_id=req.tenant_id,
+        audit_record_hash=gate_result.audit_record_hash,
+        trace_id=span.trace_id,
+    )
+
 
 @app.post("/v1/evaluate", response_model=EvaluateResponse)
 async def evaluate(
