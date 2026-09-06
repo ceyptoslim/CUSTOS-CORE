@@ -45,6 +45,15 @@ class EvaluateRequest(BaseModel):
         return v
 
 
+class EvaluateActionRequest(BaseModel):
+    """A proposed agent action, evaluated pre-execution (deny-by-default)."""
+    client_id: str = Field(default="default", min_length=1, max_length=128)
+    tenant_id: str = Field(default="default", min_length=1, max_length=64)
+    tool: str = Field(..., min_length=1, max_length=128)
+    command: str = Field(default="", max_length=8_192)
+    args: Optional[dict] = Field(default=None)
+
+
 class EvaluateResponse(BaseModel):
     allowed: bool
     action: str
