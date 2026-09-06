@@ -18,6 +18,7 @@ Composes ONLY existing components (`PolicyRule`, `PolicyEngine`,
 | # | Rule group | Action | What it catches |
 |---|---|---|---|
 | 1 | `surplus_statute_gate` | DENY | Any Florida statute citation (`s. 197.582`, `F.S. 201.582`, `Fla. Stat. § …`, `Section …`) not in the owner-verified registry |
+| 1b | `surplus_court_citation_gate` | DENY | Any court citation (`Smith v. Jones, 123 So. 3d 456`, `500 U.S. 123`, `2026 WL …`) not covered by the owner-verified case registry — the Nippon v. OpenAI fabricated-citation class |
 | 2 | `surplus_guarantee_language` | DENY | Guaranteed / risk-free / 100%-success outcome claims |
 | 3 | `surplus_upl_risk` | DENY | Legal-advice claims, attorney identity, court-representation claims (UPL exposure) |
 | 4 | `surplus_predatory_urgency` | DENY | "Act now", "final notice", "last chance", lose-it-immediately pressure |
@@ -25,7 +26,7 @@ Composes ONLY existing components (`PolicyRule`, `PolicyEngine`,
 
 ## The fail-closed design (the whole point)
 
-`packs/verified_statutes.json` **ships EMPTY**. Until the owner verifies a
+Both registries — `packs/verified_statutes.json` (statutes) and `packs/verified_cases.json` (court cases) — **ship EMPTY**. Until the owner verifies a
 statute against official Florida sources (flsenate.gov) and enters it
 themselves, **every statute citation in every draft is DENIED**. An
 AI-generated/hallucinated statute number cannot pass this gate — there is no

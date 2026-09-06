@@ -15,6 +15,12 @@ engine, API, or schema changes:
    entered, ANY citation is DENIED. No AI-generated statute number can pass
    this gate. Unverified citation = no letter goes out.
 
+1b. COURT-CITATION GATE (fail-closed allowlist). Every court citation in a
+   draft ("Smith v. Jones, 123 So. 3d 456", "500 U.S. 123", "2026 WL 1234567")
+   must be covered by an entry in packs/verified_cases.json — the OWNER-
+   populated registry that also SHIPS EMPTY. This is the Nippon v. OpenAI
+   fabricated-citation class: an AI-generated case cite cannot pass.
+
 2. GUARANTEE LANGUAGE (DENY). Guaranteed / risk-free outcome claims are
    prohibited — surplus recovery outcomes are never guaranteed.
 
@@ -59,6 +65,21 @@ if TYPE_CHECKING:  # pragma: no cover
 
 DEFAULT_TENANT_ID = "surplus_recovery"
 DEFAULT_REGISTRY_PATH = Path(__file__).parent / "verified_statutes.json"
+DEFAULT_CASE_REGISTRY_PATH = Path(__file__).parent / "verified_cases.json"
+
+# Court citations: "Smith v. Jones, 123 So. 3d 456", "500 U.S. 123",
+# "45 F. Supp. 3d 789", "2026 WL 1234567" (the Nippon v. OpenAI fabrication class).
+_COURT_CITATION_RES = [
+    re.compile(
+        r"\b[A-Z][\w&.'\u2019]*(?:\s+[A-Z][\w&.'\u2019]*){0,4}\s+v\.?\s+"
+        r"[A-Z][\w&.'\u2019]*(?:\s+[A-Z][\w&.'\u2019]*){0,4},?\s*\d+\s+"
+        r"(?:U\.S\.?|F\.2d|F\.3d|F\.4th|F\.?\s?Supp\.?\s?\d?d?|So\.?\s?\d?d?|WL|Fla\.?)(?:\s+\d+)?"
+    ),
+    re.compile(
+        r"\b\d+\s+(?:U\.S\.?|F\.2d|F\.3d|F\.4th|F\.?\s?Supp\.?\s?\d?d?|So\.?\s?\d?d?|WL)\s+\d+\b"
+    ),
+]
+
 
 # Citations: "§ 197.582", "s. 197.582", "F.S. 197.582", "Fla. Stat. § 197.582",
 # "Section 197.582", "Statute 197.582", "Sec. 197.582". Group 1 = statute number.
@@ -127,6 +148,54 @@ def find_unverified_citations(content: str, registry: Optional[dict] = None) -> 
     return unverified
 
 
+def load_verified_cases(path: Optional[Path] = None) -> dict:
+    """Load the owner-verified court-case registry (same fail-closed design
+    as the statute registry: missing/malformed file -> {} -> all denied)."""
+    p = path or DEFAULT_CASE_REGISTRY_PATH
+    try:
+        with open(p, encoding="utf-8") as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    registry = data.get("cases", {})
+    return registry if isinstance(registry, dict) else {}
+
+
+def find_unverified_case_citations(content: str, registry: Optional[dict] = None) -> list[str]:
+    """Return court citations in `content` NOT covered by the verified registry.
+
+    A citation is covered when a registry key (normalized) matches it —
+    registry keys are the verified reporter cites, e.g. "123 So. 3d 456".
+    """
+    reg = (
+        {re.sub(r"\s+", " ", k).strip().lower() for k in registry}
+        if registry is not None
+        else {re.sub(r"\s+", " ", k).strip().lower() for k in load_verified_cases()}
+    )
+    unverified: list[str] = []
+    case_spans: list[tuple[int, int]] = []
+
+    def _covered(cite: str) -> bool:
+        return any(k in cite.lower() or cite.lower() in k for k in reg)
+
+    # Case-form matches first ("Smith v. Jones, 123 So. 3d 456")
+    for m in _COURT_CITATION_RES[0].finditer(content):
+        case_spans.append(m.span())
+        cite = re.sub(r"\s+", " ", m.group(0)).strip().rstrip(",.")
+        if not _covered(cite) and cite not in unverified:
+            unverified.append(cite)
+
+    # Bare reporter cites ("500 U.S. 123") — skip any overlapping a case-form span
+    for m in _COURT_CITATION_RES[1].finditer(content):
+        s0, e0 = m.span()
+        if any(not (e0 <= a or s0 >= b) for a, b in case_spans):
+            continue
+        cite = re.sub(r"\s+", " ", m.group(0)).strip().rstrip(",.")
+        if not _covered(cite) and cite not in unverified:
+            unverified.append(cite)
+    return unverified
+
+
 def load_pack(tenant_manager: "TenantManager", tenant_id: str = DEFAULT_TENANT_ID) -> "TenantContext":
     """Register the pack tenant and install the pack rules (persisted if a
     PolicyStore is configured). Idempotent per process: re-registration on an
@@ -147,6 +216,7 @@ def evaluate_outreach(
     content: str,
     tenant_id: str = DEFAULT_TENANT_ID,
     registry: Optional[dict] = None,
+    case_registry: Optional[dict] = None,
 ) -> PolicyResult:
     """Evaluate an outreach draft. Fail-closed by construction:
 
@@ -165,6 +235,20 @@ def evaluate_outreach(
                 + ". Only statutes the owner has verified against official Florida "
                 "sources and entered into packs/verified_statutes.json may appear "
                 "in outreach drafts."
+            ),
+        )
+
+    unverified_cases = find_unverified_case_citations(content, case_registry)
+    if unverified_cases:
+        return PolicyResult(
+            allowed=False,
+            action=PolicyAction.DENY,
+            triggered_rule="surplus_court_citation_gate",
+            reason=(
+                "Unverified court citation(s): " + "; ".join(unverified_cases)
+                + ". Only citations the owner has verified against official sources "
+                "and entered into packs/verified_cases.json may appear in "
+                "outreach drafts (the Nippon v. OpenAI fabricated-citation class)."
             ),
         )
 
