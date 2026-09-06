@@ -72,6 +72,92 @@ deny contains "Prompt injection attempt detected" if {
     contains(lower(input.content), "reveal your system prompt")
 }
 
+# Persona-hijack: professional-authority role assignment (AVC-9 corpus class)
+deny contains "Prompt injection attempt detected" if {
+    contains(lower(input.content), "you are a principal")
+}
+
+deny contains "Prompt injection attempt detected" if {
+    contains(lower(input.content), "you are a distinguished")
+}
+
+deny contains "Prompt injection attempt detected" if {
+    contains(lower(input.content), "you are a chief")
+}
+
+deny contains "Prompt injection attempt detected" if {
+    contains(lower(input.content), "you are a senior")
+}
+
+deny contains "Prompt injection attempt detected" if {
+    contains(lower(input.content), "you are a staff engineer")
+}
+
+deny contains "Prompt injection attempt detected" if {
+    contains(lower(input.content), "you are an expert")
+}
+
+deny contains "Prompt injection attempt detected" if {
+    contains(lower(input.content), "you are a world")
+}
+
+deny contains "Prompt injection attempt detected" if {
+    contains(lower(input.content), "you are an elite")
+}
+
+deny contains "Prompt injection attempt detected" if {
+    contains(lower(input.content), "you're a principal")
+}
+
+deny contains "Prompt injection attempt detected" if {
+    contains(lower(input.content), "you're a distinguished")
+}
+
+deny contains "Prompt injection attempt detected" if {
+    contains(lower(input.content), "your a principal")
+}
+
+deny contains "Prompt injection attempt detected" if {
+    contains(lower(input.content), "your a distinguished")
+}
+
+# Cross-AI relay: outsourcing the response to another model (AVC-9 corpus class)
+deny contains "Prompt injection attempt detected" if {
+    contains(lower(input.content), "respond to this other model")
+}
+
+deny contains "Prompt injection attempt detected" if {
+    contains(lower(input.content), "respond to the other model")
+}
+
+deny contains "Prompt injection attempt detected" if {
+    contains(lower(input.content), "respond to this other ai")
+}
+
+deny contains "Prompt injection attempt detected" if {
+    contains(lower(input.content), "respond to the other ai")
+}
+
+deny contains "Prompt injection attempt detected" if {
+    contains(lower(input.content), "relay this to another")
+}
+
+deny contains "Prompt injection attempt detected" if {
+    contains(lower(input.content), "relay it to another")
+}
+
+deny contains "Prompt injection attempt detected" if {
+    contains(lower(input.content), "relay that to another")
+}
+
+deny contains "Prompt injection attempt detected" if {
+    contains(lower(input.content), "forward this to another model")
+}
+
+deny contains "Prompt injection attempt detected" if {
+    contains(lower(input.content), "forward it to another model")
+}
+
 # ---------------------------------------------------------------------------
 # Audit rules — flag for audit but don't deny
 # ---------------------------------------------------------------------------

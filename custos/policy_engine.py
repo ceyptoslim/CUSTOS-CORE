@@ -104,6 +104,12 @@ DEFAULT_RULES: List[PolicyRule] = [
             r"|new\s+instructions?\s*:"
             r"|stop\s+following\s+(?:your|the|all)\s+rules?"
             r"|reveal\s+(?:your|the|all)\s+(?:system\s+)?(?:prompt|instructions?|rules?)"
+            # Persona-hijack: professional-authority role assignment (AVC-9 corpus class)
+            r"|(?:you\s+are|you'?re|your)\s+(?:a|an)\s+(?:principal|distinguished|chief|senior|staff|expert|world[-\s]class|elite)\s+(?:engineer|fellow|analyst|scientist|architect|researcher)s?"
+            # Cross-AI relay: outsourcing the response to another model (AVC-9 corpus class)
+            r"|(?:respond|reply)\s+to\s+(?:this|the)\s+other\s+(?:model|ai|assistant)"
+            r"|relay\s+(?:this|it|that)\s+to\s+(?:another|the\s+other|a\s+different)\s+(?:model|ai|assistant)"
+            r"|forward\s+(?:this|it|that)\s+to\s+(?:another|the\s+other)\s+(?:model|ai|assistant)"
             r"|show\s+(?:me\s+)?(?:your|the)\s+(?:system\s+)?prompt"
             r")"
         ),

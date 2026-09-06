@@ -22,6 +22,8 @@ from packs.surplus_recovery import (
     load_pack,
     load_verified_statutes,
     pack_rules,
+    find_unverified_case_citations,
+    load_verified_cases,
 )
 
 
@@ -189,3 +191,52 @@ class TestFailClosedComposition:
         data = json.loads(DEFAULT_REGISTRY_PATH.read_text(encoding="utf-8"))
         assert data["florida"] == {}
         assert "OWNER-POPULATED" in data["_instructions"]
+
+
+class TestCourtCitationGateFailClosed:
+    def test_case_citation_denied_with_empty_registry(self, tm):
+        letter = CLEAN_LETTER + " As stated in Smith v. Jones, 123 So. 3d 456, the funds are held."
+        result = evaluate_outreach(tm, letter)
+        assert result.allowed is False
+        assert result.triggered_rule == "surplus_court_citation_gate"
+        assert "123 So. 3d 456" in result.reason
+
+    def test_nippon_style_fabrication_denied(self, tm):
+        letter = CLEAN_LETTER + " Per Dela v. Nippon, 2026 WL 1234567, you should reopen your case."
+        result = evaluate_outreach(tm, letter)
+        assert result.allowed is False
+        assert result.triggered_rule == "surplus_court_citation_gate"
+
+    def test_bare_reporter_cite_denied(self, tm):
+        letter = CLEAN_LETTER + " See 500 U.S. 123 for the standard."
+        result = evaluate_outreach(tm, letter)
+        assert result.allowed is False
+        assert result.triggered_rule == "surplus_court_citation_gate"
+
+    def test_verified_case_passes_gate(self, tm):
+        cases = {"123 So. 3d 456": {"case": "Smith v. Jones", "verified_date": "2026-09-05"}}
+        letter = CLEAN_LETTER + " As stated in Smith v. Jones, 123 So. 3d 456, the funds are held."
+        result = evaluate_outreach(tm, letter, case_registry=cases)
+        assert result.allowed is True
+        assert result.triggered_rule != "surplus_court_citation_gate"
+
+    def test_clean_letter_unaffected(self, tm):
+        result = evaluate_outreach(tm, CLEAN_LETTER)
+        assert result.allowed is True
+
+    def test_case_registry_ships_empty_and_valid(self):
+        from packs.surplus_recovery import DEFAULT_CASE_REGISTRY_PATH
+        import json as _json
+        data = _json.loads(DEFAULT_CASE_REGISTRY_PATH.read_text(encoding="utf-8"))
+        assert data["cases"] == {}
+        assert "OWNER-POPULATED" in data["_instructions"]
+        assert load_verified_cases() == {}
+
+    def test_case_registry_malformed_fails_closed(self, tmp_path):
+        bad = tmp_path / "bad_cases.json"
+        bad.write_text("{ not json", encoding="utf-8")
+        assert load_verified_cases(bad) == {}
+
+    def test_find_unverified_case_citations_reports_cite(self):
+        text = "Smith v. Jones, 123 So. 3d 456 and Smith v. Jones, 123 So. 3d 456"
+        assert find_unverified_case_citations(text, registry={}) == ["Smith v. Jones, 123 So. 3d 456"]

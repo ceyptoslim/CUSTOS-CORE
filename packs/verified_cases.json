@@ -1,0 +1,4 @@
+{
+  "_instructions": "OWNER-POPULATED REGISTRY — fail-closed by design. Add a court citation ONLY after verifying it against official sources (the deciding court's published opinion, e.g. via the court's own site or a licensed legal database). With an empty registry, every court citation in an outreach draft is DENIED. Entry shape: \"<reporter cite>\": {\"case\": \"<Case Name v. Case Name>\", \"verified_date\": \"YYYY-MM-DD\", \"verified_by\": \"<who verified>\"}. Do NOT add citations suggested by any AI without owner verification against an official source.",
+  "cases": {}
+}
