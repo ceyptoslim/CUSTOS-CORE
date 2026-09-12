@@ -14,7 +14,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from custos.action_gate import ActionGate, ActionRequest
-from custos.policy_engine import PolicyAction
 from custos.tenant import TenantManager
 from main import app, action_gate as app_action_gate
 

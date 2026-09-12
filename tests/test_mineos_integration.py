@@ -26,7 +26,7 @@ pytestmark = pytest.mark.skipif(
     reason="MineOS repo not available (not on CI runners)",
 )
 
-from custos.policy_engine import PolicyEngine, PolicyAction, PolicyRule, DEFAULT_RULES
+from custos.policy_engine import PolicyEngine, PolicyAction, PolicyRule
 from custos.audit import AuditChain
 
 

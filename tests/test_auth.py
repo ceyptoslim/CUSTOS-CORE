@@ -24,8 +24,6 @@ from custos.auth import _JWT_SECRET, _JWT_ALGORITHM, create_token, verify_token
 
 def _enforce_auth(credentials=None):
     """Dependency override that always runs real JWT verification."""
-    from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-    from fastapi import Request
     # Re-use the real verify_token — just bypass the AUTH_DISABLED check
     return verify_token(credentials)
 

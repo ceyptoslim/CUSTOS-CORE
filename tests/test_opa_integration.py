@@ -20,7 +20,7 @@ import os
 import pytest
 import httpx
 
-from custos.policy_engine import PolicyAction, PolicyResult, PolicyEngine
+from custos.policy_engine import PolicyAction, PolicyEngine
 
 
 OPA_URL = os.getenv("CUSTOS_OPA_URL", "")

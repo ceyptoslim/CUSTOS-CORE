@@ -3,7 +3,6 @@
 Regression tests for the P2 audit finding: CUSTOS_JWT_SECRET previously
 fell back to a hardcoded dev default with no production startup check.
 """
-import os
 import pytest
 from fastapi.testclient import TestClient
 

@@ -4,11 +4,9 @@ Tests for OPA and Hybrid policy engines.
 Uses direct mocking of the httpx.Client context manager protocol.
 """
 
-import os
-import pytest
 import httpx
 from unittest.mock import patch, MagicMock
-from custos.policy_engine import PolicyAction, PolicyResult, PolicyEngine
+from custos.policy_engine import PolicyAction, PolicyEngine
 
 
 def mock_opa_response(allow=True, deny=None, triggered_rule=None, audit=False):

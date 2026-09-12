@@ -4,7 +4,6 @@ Tests for SQLite audit persistence — Issue #4
 
 import os
 import sys
-import tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pytest

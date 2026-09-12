@@ -23,10 +23,9 @@ No real OPA server required — these tests run in the standard test job.
 """
 
 import os
-import pytest
 import httpx
 from unittest.mock import patch, MagicMock
-from custos.policy_engine import PolicyAction, PolicyResult, PolicyEngine
+from custos.policy_engine import PolicyAction, PolicyEngine
 
 
 def make_mock_opa_client(response_json=None, status_code=200, raise_error=None, side_effect=None):
@@ -452,7 +451,6 @@ class TestAuthConfigSafety:
 
     def test_kubernetes_config_has_auth_enabled(self):
         """Verify K8s manifests set AUTH_DISABLED=0 (not 1)."""
-        import json
         k8s_files = []
         import glob
         for pattern in ["k8s/*.yaml", "k8s/*.yml", "k8s/**/*.yaml", "k8s/**/*.yml"]:

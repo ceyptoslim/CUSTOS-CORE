@@ -8,7 +8,6 @@ so custom tenant policy rules survive a process restart.
 import tempfile
 
 import pytest
-from fastapi.testclient import TestClient
 
 from custos.policy_engine import PolicyAction, PolicyRule
 from custos.policy_store import PolicyStore
