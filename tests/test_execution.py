@@ -12,9 +12,8 @@ Critical assertions:
 - Audit chain records the actual execution outcome
 """
 
-import os
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -23,12 +22,11 @@ from custos.audit import AuditChain
 from custos.execution import (
     CircuitState,
     HTTPExecutionAdapter,
-    ExecutionResult,
     SSRFError,
     validate_target_url,
 )
-from custos.firewall import ExecutionFirewall, FirewallResult
-from custos.policy_engine import PolicyEngine, PolicyRule, PolicyAction
+from custos.firewall import ExecutionFirewall
+from custos.policy_engine import PolicyEngine
 from custos.rate_limiter import RateLimiter, QuotaConfig
 from custos.validation import InputValidator
 

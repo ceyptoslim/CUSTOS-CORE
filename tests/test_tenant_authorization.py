@@ -162,7 +162,7 @@ class TestEndpointTenantRejection:
         })
 
         # Register a second tenant
-        from custos.tenant import TenantManager, TenantConfig
+        from custos.tenant import TenantConfig
         # Use the global instance
         from main import tenant_manager as global_tm
         global_tm.register("tenant-b", TenantConfig(tenant_id="tenant-b"))
