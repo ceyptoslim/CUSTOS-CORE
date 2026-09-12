@@ -152,6 +152,8 @@ class TestAuthEnforcement:
 
     def test_production_disables_auth_bypass(self, monkeypatch):
         monkeypatch.setenv("CUSTOS_ENV", "production")
+        # Production now requires a real JWT secret (fail-closed startup guard).
+        monkeypatch.setenv("CUSTOS_JWT_SECRET", "test-production-secret-32-bytes-long!!")
         monkeypatch.setenv("AUTH_DISABLED", "1")
         import main as app_module
         # Remove the test auth override so real auth runs

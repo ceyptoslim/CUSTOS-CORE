@@ -92,6 +92,28 @@ def verify_token(
 # Optional: bypass for dev mode
 # ---------------------------------------------------------------------------
 
+_DEV_DEFAULT_SECRET = "dev-secret-change-in-production"
+
+
+def validate_production_secrets() -> None:
+    """Fail closed: refuse to run in production with a missing/dev-default JWT secret.
+
+    Strict-env-presence rule: security-critical environment variables must be
+    present in production deployments. A well-known dev fallback secret in a
+    production deployment is equivalent to running with no secret at all, so
+    startup raises instead of logging a warning.
+    """
+    env = os.getenv("CUSTOS_ENV", "development").lower()
+    if env != "production":
+        return
+    secret = os.getenv("CUSTOS_JWT_SECRET")
+    if not secret or secret == _DEV_DEFAULT_SECRET:
+        raise RuntimeError(
+            "CUSTOS_JWT_SECRET is unset or set to the dev default while "
+            "CUSTOS_ENV=production. Set a strong unique secret (fail-closed)."
+        )
+
+
 def auth_enabled() -> bool:
     """Return True unless AUTH_DISABLED=1 is set (dev/test convenience only).
 
