@@ -340,7 +340,7 @@ class TestExecutionFirewallAllow:
         """The audit chain should record 'forwarded' for allowed requests."""
         mock_response = httpx.Response(200, json={"result": "ok"})
         with patch.object(adapter._client, "request", return_value=mock_response):
-            result = firewall.enforce(
+            firewall.enforce(
                 client_id="test_client",
                 content="Hello world",
                 target_url="https://api.example.com/v1/chat",

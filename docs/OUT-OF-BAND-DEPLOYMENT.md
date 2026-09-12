@@ -1,6 +1,6 @@
 # Out-of-Band Deployment Pattern — defense-in-depth for governed agent workloads
 
-**Status:** deployment guidance for shipped components (v1.3.1). Nothing new to
+**Status:** deployment guidance for shipped components (v1.3.2). Nothing new to
 build — this doc exists because the pattern needs to be *configured*, and a
 misconfigured deployment silently reopens the exact failures it exists to
 prevent.
@@ -36,7 +36,7 @@ fails the safe way.
 ┌─────────────────────────┐        443 only        ┌─────────────────────────┐
 │  AGENT HOST ($20 VPS)   │ ─────────────────────► │  GATE HOST (2nd VPS)   │
 │                         │                        │                         │
-│  surplus pipeline /     │   egress allowlist:    │  CUSTOS-CORE v1.3.1    │
+│  surplus pipeline /     │   egress allowlist:    │  CUSTOS-CORE v1.3.2    │
 │  agents / scripts       │   gate:443, DNS only  │  /v1/evaluate           │
 │                         │   everything else:     │  /v1/evaluate_action    │
 │                         │   DENY                 │  tamper-evident ledger  │

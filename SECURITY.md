@@ -1,5 +1,13 @@
 # Security Policy
 
+## Production Secret Enforcement (v1.3.2+)
+
+`CUSTOS_ENV=production` deployments REFUSE TO START when `CUSTOS_JWT_SECRET` is
+unset or still the development default (`dev-secret-change-in-production`).
+This is the strict env-presence rule applied at startup: a well-known fallback
+secret in production is equivalent to no secret, so the process fails closed
+instead of logging a warning. Development/test environments keep the fallback.
+
 ## Supported Versions
 
 | Version | Supported | Notes |
