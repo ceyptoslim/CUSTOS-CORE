@@ -28,7 +28,7 @@ from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from custos.auth import auth_enabled, verify_token
+from custos.auth import validate_production_secrets,  auth_enabled, verify_token
 from custos.logging import configure_logging, get_logger
 from custos.models import (
     AuditRecordResponse,
@@ -127,6 +127,9 @@ async def optional_auth(
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Fail-closed security validation: refuse to start in production with
+    # missing/dev-default secrets (strict env-presence rule).
+    validate_production_secrets()
     logger.info("custos.startup", extra={"version": VERSION})
     yield
     logger.info("custos.shutdown")
