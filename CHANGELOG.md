@@ -6,6 +6,23 @@ open" format — no claims beyond what the code and tests demonstrate.
 
 ---
 ---
+## [1.3.2] — Production Secret Fail-Closed Hardening
+
+### Security (P2 audit remediation, PR #36)
+- **Fail-closed production JWT secret validation:** `CUSTOS_ENV=production` now
+  refuses to start when `CUSTOS_JWT_SECRET` is unset or still the dev default.
+  Previously the fallback `dev-secret-change-in-production` remained silently
+  active in production; only `AUTH_DISABLED` was guarded. Fail-closed per the
+  strict env-presence rule.
+- Live boot-verified: production + missing/dev-default secret → startup
+  RuntimeError; production + real secret → serves normally.
+
+### Tests
+- +6 regression tests (`tests/test_production_secrets.py`): validator both
+  directions, startup wiring both ways, dev-mode unchanged.
+- Suite now **470 passed, 12 skipped** (was 464/12). Coverage holds at 88%.
+- Cleaned 3 pyflakes findings in test files (unused locals, redundant re-import).
+
 ## [1.3.1] — Release Integrity & Tenant Authorization Patch
 
 ### Forensic Audit Remediation

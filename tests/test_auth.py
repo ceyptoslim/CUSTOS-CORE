@@ -155,8 +155,7 @@ class TestAuthEnforcement:
         # Production now requires a real JWT secret (fail-closed startup guard).
         monkeypatch.setenv("CUSTOS_JWT_SECRET", "test-production-secret-32-bytes-long!!")
         monkeypatch.setenv("AUTH_DISABLED", "1")
-        import main as app_module
-        # Remove the test auth override so real auth runs
+        # Remove the test auth override so real auth runs (module-level import)
         saved = app_module.app.dependency_overrides.pop(app_module.optional_auth, None)
         try:
             with TestClient(app_module.app, raise_server_exceptions=False) as client:
