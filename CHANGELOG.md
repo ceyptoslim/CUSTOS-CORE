@@ -6,6 +6,35 @@ open" format — no claims beyond what the code and tests demonstrate.
 
 ---
 ---
+
+## [1.3.3] — Security Hardening (external audit reconciliation)
+
+### Security
+- **SSRF validation is now fail-closed**: unresolvable hostnames block instead of silently
+  skipping the DNS check; invalid/unparseable ports raise a clean block instead of crashing.
+- **DNS-rebinding TOCTOU closed**: target hostname is resolved once, validated, and the
+  outbound request is pinned to exactly the validated IPs (Host header + SNI preserved).
+- **Explicit `:443` targets are allowed** (previously rejected as a privileged port).
+- **OPA policy engine: `deny` is terminal.** The audit flag can no longer convert a
+  deny decision into an allow (deny + audit co-fire resolves to deny).
+- **Administrative endpoints require authentication** when auth is enabled: audit log,
+  audit verify, snapshots, replay, policy diff, and all tenant management routes.
+- **Expired tokens return 401** (RFC 6750) instead of 403.
+
+### Deployment
+- `docker-compose.yml`: production now sets `CUSTOS_ENV` (the variable the app actually
+  reads — the previous `ENV=production` engaged nothing); Grafana admin password supplied
+  via `GRAFANA_ADMIN_PASSWORD` (fail-closed, no shipped default); Prometheus
+  `--web.enable-lifecycle` removed.
+
+### Dependencies
+- `httpx` 0.27.0 -> 0.28.1 (aligned with LORL-9.1); `PyJWT` 2.13.0 -> 2.15.0
+  (fixes 12 published security advisories; `pip-audit` clean).
+
+### Tests
+- 480 passed / 12 skipped / 88% coverage (+10 regression tests covering every fix).
+
+
 ## [1.3.2] — Production Secret Fail-Closed Hardening
 
 ### Security (P2 audit remediation, PR #36)
