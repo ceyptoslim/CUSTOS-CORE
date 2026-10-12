@@ -68,17 +68,15 @@ class SSRFError(Exception):
     pass
 
 
-def validate_target_url(url: str, allowlist: Optional[set[str]] = None) -> str:
+def _validate_target_url(
+    url: str, allowlist: Optional[set[str]] = None
+) -> tuple[str, set[str]]:
     """
-    Validate that a target URL is safe to forward to.
+    Validate that a target URL is safe to forward to, resolving the
+    hostname exactly ONCE (fail-closed) and returning the set of IPs
+    the live request is pinned to (DNS-rebinding TOCTOU protection).
 
-    Checks:
-    1. Must be HTTPS
-    2. Must not resolve to private/loopback/link-local IPs
-    3. Must be in the allowlist if one is configured
-    4. Must not use dangerous schemes or ports
-
-    Returns the validated URL.
+    Returns (validated_url, pinned_ips).
     Raises SSRFError if the URL is blocked.
     """
     parsed = urlparse(url)
@@ -95,45 +93,79 @@ def validate_target_url(url: str, allowlist: Optional[set[str]] = None) -> str:
                 f"Target host '{parsed.hostname}' not in allowlist"
             )
 
-    # Fix: DNS rebinding protection — resolve hostname to IP before SSRF check (audit finding)
+    # Port validation (fail-closed on unparseable ports). Standard HTTPS
+    # port 443 is always allowed; other privileged ports are blocked.
     try:
-        addr_info = socket.getaddrinfo(parsed.hostname, None)
-        for entry in addr_info:
-            ip_str = entry[4][0]
-            try:
-                ip = ipaddress.ip_address(ip_str)
-                if (
-                    ip.is_private
-                    or ip.is_loopback
-                    or ip.is_link_local
-                    or ip.is_reserved
-                    or ip.is_unspecified
-                ):
-                    raise SSRFError(
-                        f"Target IP {ip_str} for '{parsed.hostname}' is private/loopback/reserved"
-                    )
-            except ValueError:
-                pass
-    except socket.gaierror:
-        pass
+        port = parsed.port
+    except ValueError as exc:
+        raise SSRFError(f"Target URL has an invalid port: {exc}")
+    if port is not None and (port == 0 or (port < 1024 and port != 443)):
+        raise SSRFError(f"Target port {port} is privileged")
 
-    # Check for IP literals
+    # IP-literal targets: validate the literal itself and pin to it.
     try:
         ip = ipaddress.ip_address(parsed.hostname)
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
-            raise SSRFError(f"Target IP {parsed.hostname} is private/loopback/reserved")
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_unspecified
+        ):
+            raise SSRFError(
+                f"Target IP {parsed.hostname} is private/loopback/reserved"
+            )
+        return url, {str(ip)}
     except ValueError:
-        # It's a hostname, not an IP — check against blocked prefixes as fallback
+        # It's a hostname — check blocked prefixes, then resolve ONCE and
+        # validate every resolved address (fail-closed, no fallthrough).
         hostname = parsed.hostname.lower()
         for prefix in _BLOCKED_PREFIXES:
             if hostname.startswith(prefix.lower()):
-                raise SSRFError(f"Target hostname '{hostname}' matches blocked prefix")
+                raise SSRFError(
+                    f"Target hostname '{hostname}' matches blocked prefix"
+                )
 
-    # Block dangerous ports
-    if parsed.port and parsed.port < 1024:
-        raise SSRFError(f"Target port {parsed.port} is privileged")
+    try:
+        addr_info = socket.getaddrinfo(parsed.hostname, None)
+    except socket.gaierror as exc:
+        # Fail-closed: an unresolvable hostname must BLOCK the request,
+        # never fall through to weaker checks (fixes fail-open finding).
+        raise SSRFError(
+            f"DNS resolution failed for '{parsed.hostname}' — failing closed: {exc}"
+        )
 
-    return url
+    pinned: set[str] = set()
+    for entry in addr_info:
+        ip_str = entry[4][0]
+        try:
+            resolved = ipaddress.ip_address(ip_str)
+        except ValueError:
+            continue  # skip malformed entries
+        if (
+            resolved.is_private
+            or resolved.is_loopback
+            or resolved.is_link_local
+            or resolved.is_reserved
+            or resolved.is_unspecified
+        ):
+            raise SSRFError(
+                f"Target IP {ip_str} for '{parsed.hostname}' is private/loopback/reserved"
+            )
+        pinned.add(str(resolved))
+
+    if not pinned:
+        raise SSRFError(
+            f"DNS returned no usable addresses for '{parsed.hostname}'"
+        )
+
+    return url, pinned
+
+
+def validate_target_url(url: str, allowlist: Optional[set[str]] = None) -> str:
+    """Backward-compatible wrapper: validate and return the URL only."""
+    return _validate_target_url(url, allowlist)[0]
+
 
 
 # ---------------------------------------------------------------------------
@@ -269,9 +301,11 @@ class HTTPExecutionAdapter:
         start = time.time()
         target_host = self._get_host(url)
 
-        # SSRF check — block before any network call
+        # SSRF check — block before any network call. Single resolution,
+        # validated and pinned: the live request may only connect to an
+        # address that passed validation (DNS-rebinding TOCTOU protection).
         try:
-            validate_target_url(url, self._allowlist)
+            _, pinned_ips = _validate_target_url(url, self._allowlist)
         except SSRFError as e:
             return ExecutionResult(
                 forwarded=False,
@@ -294,12 +328,27 @@ class HTTPExecutionAdapter:
             if headers:
                 req_headers.update(headers)
 
+            # Pin the request to a validated IP. SNI + Host keep TLS
+            # verification and routing against the real hostname while
+            # the connection can only reach a validated address.
+            parsed = urlparse(url)
+            host = parsed.hostname
+            pinned_ip = sorted(pinned_ips, key=lambda a: (":" in a, a))[0]
+            req_ip = f"[{pinned_ip}]" if ":" in pinned_ip else pinned_ip
+            port = parsed.port
+            req_url = f"https://{req_ip}" + (f":{port}" if port else "")
+            req_url += parsed.path or "/"
+            if parsed.query:
+                req_url += f"?{parsed.query}"
+            req_headers["Host"] = host
+
             response = self._client.request(
                 method=method,
-                url=url,
+                url=req_url,
                 content=content,
                 headers=req_headers,
                 timeout=timeout or self._default_timeout,
+                extensions={"sni_hostname": host},
             )
 
             self.record_success(target_host)

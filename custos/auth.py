@@ -58,7 +58,7 @@ def verify_token(
     """
     FastAPI dependency. Extracts and verifies the Bearer JWT.
     Returns the client_id (sub claim) on success.
-    Raises HTTP 401 on missing/invalid token, HTTP 403 on expired token.
+    Raises HTTP 401 on missing, invalid, or expired token (RFC 6750).
     """
     if credentials is None:
         raise HTTPException(
@@ -76,7 +76,7 @@ def verify_token(
         return client_id
     except jwt.ExpiredSignatureError:
         raise HTTPException(
-            status_code=403,
+            status_code=401,
             detail="Token has expired",
             headers={"WWW-Authenticate": "Bearer"},
         )

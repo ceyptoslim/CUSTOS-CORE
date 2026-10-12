@@ -103,13 +103,15 @@ class TestAuthEnforcement:
         )
         assert r.status_code == 401
 
-    def test_expired_token_returns_403(self, client_with_auth, expired_token):
+    def test_expired_token_returns_401(self, client_with_auth, expired_token):
+        """RFC 6750: an expired credential is an authentication failure (401),
+        not an authorization failure (403)."""
         r = client_with_auth.post(
             "/v1/evaluate",
             json={"client_id": "default", "content": "hello"},
             headers={"Authorization": f"Bearer {expired_token}"},
         )
-        assert r.status_code == 403
+        assert r.status_code == 401
 
     def test_valid_token_allows_request(self, client_with_auth, valid_token):
         r = client_with_auth.post(

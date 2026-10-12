@@ -75,16 +75,15 @@ class OPAPolicyEngine:
 
         audit_flag = result.get("audit") if isinstance(result, dict) else None
 
-        if not allowed and audit_flag is True:
-            return PolicyResult(
-                allowed=True,
-                action=PolicyAction.AUDIT,
-                triggered_rule=triggered or "opa_audit",
-                reason="; ".join(deny_reasons) if deny_reasons else "Flagged for audit by OPA",
-            )
-
         if not allowed:
+            # DENY is terminal. The audit flag must NEVER convert a deny
+            # into an allow: if a deny rule and an audit rule co-fire on
+            # the same input (e.g. an SSN pattern plus a password keyword),
+            # the deny wins — the engine may not approve content its own
+            # deny rule fired on (fixes DENY->ALLOW co-fire bypass).
             reason = "; ".join(deny_reasons) if deny_reasons else "Denied by OPA policy"
+            if audit_flag is True:
+                reason = f"{reason} (audit flag also set)"
             return PolicyResult(
                 allowed=False,
                 action=PolicyAction.DENY,

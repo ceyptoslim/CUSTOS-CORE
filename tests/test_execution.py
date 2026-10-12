@@ -12,6 +12,7 @@ Critical assertions:
 - Audit chain records the actual execution outcome
 """
 
+import socket
 import time
 from unittest.mock import patch
 
@@ -114,9 +115,20 @@ class TestSSRFProtection:
         with pytest.raises(SSRFError, match="allowlist"):
             validate_target_url("https://api.evil.com/v1", allow)
 
+    def test_explicit_443_allowed(self):
+        """Explicit :443 is the standard HTTPS port and must NOT be blocked
+        (regression: the old `port < 1024` check rejected it)."""
+        assert validate_target_url("https://api.example.com:443/v1") is not None
+
+    def test_invalid_port_blocked(self):
+        """Out-of-range ports raise SSRFError (fail-closed), never a raw
+        ValueError escaping the 'NEVER raises' forward() contract."""
+        with pytest.raises(SSRFError):
+            validate_target_url("https://api.example.com:99999/v1")
+
     def test_privileged_port_blocked(self):
         with pytest.raises(SSRFError, match="privileged"):
-            validate_target_url("https://api.example.com:443/v1")
+            validate_target_url("https://api.example.com:22/v1")
 
     def test_no_hostname_blocked(self):
         with pytest.raises(SSRFError, match="hostname"):
@@ -166,17 +178,69 @@ class TestCircuitBreaker:
 # Execution Adapter Tests (with mocked HTTP)
 # ===========================================================================
 
+@pytest.fixture(autouse=True)
+def _hermetic_dns(monkeypatch):
+    """Resolve every hostname to a public IP so tests never hit real DNS.
+
+    Individual tests override this with side_effect=gaierror to assert
+    fail-closed behavior on DNS errors.
+    """
+    import custos.execution as execution_module
+
+    monkeypatch.setattr(
+        execution_module.socket,
+        "getaddrinfo",
+        lambda host, port=None: [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))
+        ],
+    )
+
+
 class TestHTTPExecutionAdapter:
     """The adapter that actually forwards (or blocks) requests."""
 
-    def test_forward_success(self):
+    def test_forward_success_pins_validated_ip(self):
+        """TOCTOU regression: the live request must go to the validated IP,
+        with Host/SNI keeping the original hostname — never a second,
+        attacker-controllable DNS resolution."""
         adapter = HTTPExecutionAdapter(timeout=5.0)
         mock_response = httpx.Response(200, json={"result": "ok"})
 
-        with patch.object(adapter._client, "request", return_value=mock_response):
+        with patch.object(
+            adapter._client, "request", return_value=mock_response
+        ) as mock_request:
             result = adapter.forward("https://api.example.com/v1", content="hello")
         assert result.forwarded is True
         assert result.status_code == 200
+        called_kwargs = mock_request.call_args.kwargs
+        called_url = mock_request.call_args.args[1] if len(mock_request.call_args.args) > 1 else called_kwargs["url"]
+        assert "93.184.216.34" in called_url, "request must be pinned to the validated IP"
+        assert called_kwargs["headers"]["Host"] == "api.example.com"
+        assert called_kwargs["extensions"]["sni_hostname"] == "api.example.com"
+
+    def test_forward_dns_failure_fail_closed(self):
+        """Fail-closed regression: unresolvable hostname must BLOCK the
+        request, never fall through to weaker checks."""
+        import custos.execution as execution_module
+        adapter = HTTPExecutionAdapter()
+
+        with patch.object(
+            execution_module.socket,
+            "getaddrinfo",
+            side_effect=socket.gaierror("no such host"),
+        ):
+            result = adapter.forward("https://unresolvable.invalid/api", content="hello")
+        assert result.forwarded is False
+        assert "SSRF" in result.error
+        assert "failing closed" in result.error
+
+    def test_forward_invalid_port_never_raises(self):
+        """The forward() contract is 'NEVER raises' — an unparseable port
+        must surface as a blocked result, not a raw ValueError."""
+        adapter = HTTPExecutionAdapter()
+        result = adapter.forward("https://api.example.com:99999/v1", content="hello")
+        assert result.forwarded is False
+        assert "SSRF" in result.error
 
     def test_forward_ssrf_blocked(self):
         adapter = HTTPExecutionAdapter()

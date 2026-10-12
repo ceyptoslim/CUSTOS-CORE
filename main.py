@@ -122,6 +122,21 @@ async def optional_auth(
     return verify_token(credentials)
 
 
+async def require_auth(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_bearer),
+) -> Optional[str]:
+    """Strict auth for administrative endpoints (audit, replay, tenants, policy).
+
+    Fail-closed: when auth is enabled, a valid bearer token is REQUIRED
+    to read audit logs, verify snapshots, replay decisions, or manage
+    tenants and policies. AUTH_DISABLED=1 (non-production only) disables
+    for dev/test convenience; production forces auth (see auth_enabled()).
+    """
+    if not auth_enabled():
+        return None
+    return verify_token(credentials)
+
+
 # ---------------------------------------------------------------------------
 # Lifespan
 # ---------------------------------------------------------------------------
@@ -387,6 +402,7 @@ async def evaluate(
 async def get_audit_log(
     client_id: Optional[str] = None,
     tenant_id: str = "default",
+    _auth: Optional[str] = Depends(require_auth),
 ):
     ctx = tenant_manager.get_strict(tenant_id)
     if ctx is None:
@@ -395,7 +411,10 @@ async def get_audit_log(
 
 
 @app.get("/v1/audit/verify")
-async def verify_audit_chain(tenant_id: str = "default"):
+async def verify_audit_chain(
+    tenant_id: str = "default",
+    _auth: Optional[str] = Depends(require_auth),
+):
     ctx = tenant_manager.get_strict(tenant_id)
     if ctx is None:
         raise HTTPException(status_code=403, detail=f"Unknown tenant: {tenant_id}")
@@ -417,6 +436,7 @@ async def verify_audit_chain(tenant_id: str = "default"):
 async def get_snapshot(
     tenant_id: str = "default",
     start_time: Optional[float] = None,
+    _auth: Optional[str] = Depends(require_auth),
     end_time: Optional[float] = None,
 ):
     ctx = tenant_manager.get_strict(tenant_id)
@@ -438,7 +458,10 @@ async def get_snapshot(
 
 
 @app.post("/v1/audit/snapshot/verify", response_model=SnapshotVerifyResponse)
-async def verify_snapshot(req: SnapshotVerifyRequest):
+async def verify_snapshot(
+    req: SnapshotVerifyRequest,
+    _auth: Optional[str] = Depends(require_auth),
+):
     ctx = tenant_manager.get("default")
     engine = SnapshotEngine(ctx.audit_chain)
     valid, reason = engine.verify_snapshot(req.snapshot)
@@ -450,7 +473,10 @@ async def verify_snapshot(req: SnapshotVerifyRequest):
 # ---------------------------------------------------------------------------
 
 @app.post("/v1/replay", response_model=ReplayResponse)
-async def replay(req: ReplayRequest):
+async def replay(
+    req: ReplayRequest,
+    _auth: Optional[str] = Depends(require_auth),
+):
     ctx = tenant_manager.get_strict(req.tenant_id)
     if ctx is None:
         raise HTTPException(status_code=403, detail=f"Unknown tenant: {req.tenant_id}")
@@ -490,7 +516,10 @@ async def replay(req: ReplayRequest):
 # ---------------------------------------------------------------------------
 
 @app.post("/v1/policy/diff", response_model=PolicyDiffResponse)
-async def policy_diff(req: PolicyDiffRequest):
+async def policy_diff(
+    req: PolicyDiffRequest,
+    _auth: Optional[str] = Depends(require_auth),
+):
     ACTION_MAP = {
         "allow": PolicyAction.ALLOW,
         "deny": PolicyAction.DENY,
@@ -536,7 +565,11 @@ _ACTION_MAP = {
 
 
 @app.post("/v1/tenants/{tenant_id}/policy", response_model=PolicyRuleAddResponse)
-async def add_tenant_policy_rule(tenant_id: str, req: PolicyRuleRequest):
+async def add_tenant_policy_rule(
+    tenant_id: str,
+    req: PolicyRuleRequest,
+    _auth: Optional[str] = Depends(require_auth),
+):
     """
     Add a custom policy rule for a tenant. The rule is applied immediately
     and persisted via PolicyStore, so it survives pod restarts, rollouts,
@@ -564,7 +597,10 @@ async def add_tenant_policy_rule(tenant_id: str, req: PolicyRuleRequest):
 
 
 @app.get("/v1/tenants/{tenant_id}/policy", response_model=PolicyRuleListResponse)
-async def list_tenant_policy_rules(tenant_id: str):
+async def list_tenant_policy_rules(
+    tenant_id: str,
+    _auth: Optional[str] = Depends(require_auth),
+):
     """List custom (persisted) policy rules for a tenant. Excludes defaults."""
     rules = tenant_manager.list_policy_rules(tenant_id)
     rule_requests = [
@@ -583,7 +619,10 @@ async def list_tenant_policy_rules(tenant_id: str):
 # ---------------------------------------------------------------------------
 
 @app.post("/v1/tenants", response_model=TenantResponse)
-async def register_tenant(req: TenantRegisterRequest):
+async def register_tenant(
+    req: TenantRegisterRequest,
+    _auth: Optional[str] = Depends(require_auth),
+):
     if req.tenant_id == "default":
         raise HTTPException(
             status_code=400,
@@ -613,13 +652,18 @@ async def register_tenant(req: TenantRegisterRequest):
 
 
 @app.get("/v1/tenants", response_model=TenantListResponse)
-async def list_tenants():
+async def list_tenants(
+    _auth: Optional[str] = Depends(require_auth),
+):
     tenants = tenant_manager.list_tenants()
     return TenantListResponse(tenants=tenants, count=len(tenants))
 
 
 @app.delete("/v1/tenants/{tenant_id}")
-async def delete_tenant(tenant_id: str):
+async def delete_tenant(
+    tenant_id: str,
+    _auth: Optional[str] = Depends(require_auth),
+):
     if tenant_id == "default":
         raise HTTPException(
             status_code=400, detail="Cannot delete the default tenant"
