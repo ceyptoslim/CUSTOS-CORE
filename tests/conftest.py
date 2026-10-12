@@ -32,8 +32,10 @@ def _disable_auth_for_tests():
     set externally. This makes `pytest tests/ -v` self-contained.
     """
     app_module.app.dependency_overrides[app_module.optional_auth] = lambda: None
+    app_module.app.dependency_overrides[app_module.require_auth] = lambda: None
     yield
     app_module.app.dependency_overrides.pop(app_module.optional_auth, None)
+    app_module.app.dependency_overrides.pop(app_module.require_auth, None)
 
 
 @pytest.fixture(autouse=True)

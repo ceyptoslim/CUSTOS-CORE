@@ -9,7 +9,11 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - ENV=production
+      # CUSTOS_ENV=production engages the fail-closed production guards
+      # (strong-secret requirement, AUTH_DISABLED override). The variable
+      # is read from the app as CUSTOS_ENV — the previous "ENV=production"
+      # name was never read and silently disabled those guards.
+      - CUSTOS_ENV=${CUSTOS_ENV:-development}
       # DEV ONLY: disables JWT auth so the Quickstart curl examples in
       # README.md work with zero setup. Never set this in a real deployment
       # -- instead set CUSTOS_JWT_SECRET and issue tokens via
@@ -36,7 +40,6 @@ services:
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
-      - "--web.enable-lifecycle"
     depends_on:
       - custos
     restart: unless-stopped
@@ -50,7 +53,8 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=custos_admin
+      # Fail-closed: no hardcoded default; set GRAFANA_ADMIN_PASSWORD in .env
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env (fail-closed)}
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/custos.json
     volumes:
