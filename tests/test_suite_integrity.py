@@ -146,3 +146,56 @@ class TestSuiteCanFail:
             f"Test function count dropped to {count} (< 400 floor) — "
             "tests may have been deleted"
         )
+
+    def test_red_proof_workflow_produces_structured_records(self):
+        """The red-proof CI must produce machine-readable evidence records:
+        JUnit XML, a JSON evidence record binding the sabotage-script hash
+        and commit SHA to the verdict, and artifact upload that persists
+        records even on faulty-green. Guards against silent removal of the
+        records pipeline (added Oct 2026)."""
+        import yaml
+
+        wf_path = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "ci-red-proof.yml"
+        assert wf_path.exists(), "ci-red-proof.yml missing"
+        wf = yaml.safe_load(wf_path.read_text())
+
+        run_step = next(
+            (s for s in wf["jobs"]["red-proof"]["steps"]
+             if isinstance(s, dict) and "junitxml" in str(s.get("run", ""))),
+            None,
+        )
+        assert run_step is not None, (
+            "red-proof run step must emit --junitxml (structured execution record)"
+        )
+
+        evidence_step = next(
+            (s for s in wf["jobs"]["red-proof"]["steps"]
+             if isinstance(s, dict) and "red-proof-evidence.json" in str(s.get("run", ""))),
+            None,
+        )
+        assert evidence_step is not None, (
+            "red-proof workflow must write red-proof-evidence.json"
+        )
+        evidence_src = evidence_step["run"]
+        for field in ("sabotage_script_sha256", "commit_sha",
+                      "pytest_exit_code", "verdict", "recorded_at_utc"):
+            assert f'"{field}"' in evidence_src, (
+                f"evidence record must carry field: {field}"
+            )
+
+        upload_step = next(
+            (s for s in wf["jobs"]["red-proof"]["steps"]
+             if isinstance(s, dict) and s.get("uses", "").startswith("actions/upload-artifact")),
+            None,
+        )
+        assert upload_step is not None, (
+            "red-proof workflow must upload evidence artifacts"
+        )
+        assert upload_step.get("with", {}).get("if-no-files-found") == "error", (
+            "artifact upload must fail when records are missing"
+        )
+        # Records must persist even when the verdict step fails (faulty-green):
+        # the evidence steps must be `if: always()`.
+        assert upload_step.get("if") == "always()", (
+            "artifact upload must run even on faulty-green (if: always())"
+        )

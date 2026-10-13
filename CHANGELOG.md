@@ -24,6 +24,8 @@ open" format — no claims beyond what the code and tests demonstrate.
   `@app` without auth.
 
 ### CI — red-proof package
+
+**Structured red-proof evidence records** — every red-proof CI run now produces machine-readable records: `red-proof-evidence.json` (sabotage id, sabotage-script SHA-256, commit SHA, pytest exit code, expected vs. actual outcome, verdict RED-CONFIRMED/FAULTY-GREEN, UTC timestamp), `red-proof-junit.xml` (structured execution report), and the pytest output — all uploaded as CI artifacts even on faulty-green, so the enforcement decision is always reproducible against the exact code state and known-bad patch. Meta-test added guarding the records pipeline against silent removal.
 - Suite-integrity meta-tests: every test must assert something real (no
   print-only tests), no vacuous assertions, no unconditional skips, count floor.
 - Strictness: `--strict-markers`, `--strict-config`, `xfail_strict`, `-ra` —
