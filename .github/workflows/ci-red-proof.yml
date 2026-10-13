@@ -1,0 +1,54 @@
+name: CI Red-Proof
+
+# Purposeful-green check: CI must be ABLE to fail.
+#
+# A green suite that cannot fail proves nothing. This workflow applies
+# known-bad sabotage patches (scripts/ci-sabotage/) that MUST turn the
+# suite red. The job FAILS if the suite stays green on known-bad code —
+# that would mean our tests cannot detect the exact regression class
+# they were written for (faulty-green detection).
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"  # weekly, Monday 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  red-proof:
+    name: Sabotage ${{ matrix.sabotage }} must turn tests RED
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        sabotage: ["001-weaken-admin-auth", "002-invert-opa-deny"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Apply known-bad sabotage patch
+        run: bash scripts/ci-sabotage/${{ matrix.sabotage }}.sh
+
+      - name: Run tests (expected: RED)
+        id: run
+        run: |
+          set +e
+          pytest tests/ -q --no-header -x --tb=no > /tmp/pytest_output.txt 2>&1
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          tail -5 /tmp/pytest_output.txt
+          if [ "$code" -eq 0 ]; then
+            echo "::error::FAULTY GREEN — the suite PASSED on known-bad code (${{ matrix.sabotage }}). Tests cannot detect this regression class."
+            exit 1
+          fi
+
+      - name: Red confirmed — suite can fail as designed
+        run: |
+          echo "Suite went RED under sabotage ${{ matrix.sabotage }} (exit ${{ steps.run.outputs.exit_code }}). CI green is meaningful."
