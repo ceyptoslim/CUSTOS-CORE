@@ -24,7 +24,7 @@ import time
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -135,6 +135,14 @@ async def require_auth(
     if not auth_enabled():
         return None
     return verify_token(credentials)
+
+
+# ---------------------------------------------------------------------------
+# Admin router — every route mounted here requires authentication when auth
+# is enabled. New administrative endpoints must be added to admin_router
+# (never bare @app), so they inherit this dependency automatically.
+# ---------------------------------------------------------------------------
+admin_router = APIRouter(dependencies=[Depends(require_auth)])
 
 
 # ---------------------------------------------------------------------------
@@ -398,11 +406,10 @@ async def evaluate(
 # Audit
 # ---------------------------------------------------------------------------
 
-@app.get("/v1/audit", response_model=list[AuditRecordResponse])
+@admin_router.get("/v1/audit", response_model=list[AuditRecordResponse])
 async def get_audit_log(
     client_id: Optional[str] = None,
     tenant_id: str = "default",
-    _auth: Optional[str] = Depends(require_auth),
 ):
     ctx = tenant_manager.get_strict(tenant_id)
     if ctx is None:
@@ -410,10 +417,9 @@ async def get_audit_log(
     return ctx.audit_chain.get_records(client_id=client_id)
 
 
-@app.get("/v1/audit/verify")
+@admin_router.get("/v1/audit/verify")
 async def verify_audit_chain(
     tenant_id: str = "default",
-    _auth: Optional[str] = Depends(require_auth),
 ):
     ctx = tenant_manager.get_strict(tenant_id)
     if ctx is None:
@@ -432,11 +438,10 @@ async def verify_audit_chain(
 # Snapshot
 # ---------------------------------------------------------------------------
 
-@app.get("/v1/audit/snapshot", response_model=SnapshotResponse)
+@admin_router.get("/v1/audit/snapshot", response_model=SnapshotResponse)
 async def get_snapshot(
     tenant_id: str = "default",
     start_time: Optional[float] = None,
-    _auth: Optional[str] = Depends(require_auth),
     end_time: Optional[float] = None,
 ):
     ctx = tenant_manager.get_strict(tenant_id)
@@ -457,10 +462,9 @@ async def get_snapshot(
     )
 
 
-@app.post("/v1/audit/snapshot/verify", response_model=SnapshotVerifyResponse)
+@admin_router.post("/v1/audit/snapshot/verify", response_model=SnapshotVerifyResponse)
 async def verify_snapshot(
     req: SnapshotVerifyRequest,
-    _auth: Optional[str] = Depends(require_auth),
 ):
     ctx = tenant_manager.get("default")
     engine = SnapshotEngine(ctx.audit_chain)
@@ -472,10 +476,9 @@ async def verify_snapshot(
 # Replay
 # ---------------------------------------------------------------------------
 
-@app.post("/v1/replay", response_model=ReplayResponse)
+@admin_router.post("/v1/replay", response_model=ReplayResponse)
 async def replay(
     req: ReplayRequest,
-    _auth: Optional[str] = Depends(require_auth),
 ):
     ctx = tenant_manager.get_strict(req.tenant_id)
     if ctx is None:
@@ -515,10 +518,9 @@ async def replay(
 # Policy Diff
 # ---------------------------------------------------------------------------
 
-@app.post("/v1/policy/diff", response_model=PolicyDiffResponse)
+@admin_router.post("/v1/policy/diff", response_model=PolicyDiffResponse)
 async def policy_diff(
     req: PolicyDiffRequest,
-    _auth: Optional[str] = Depends(require_auth),
 ):
     ACTION_MAP = {
         "allow": PolicyAction.ALLOW,
@@ -564,11 +566,10 @@ _ACTION_MAP = {
 }
 
 
-@app.post("/v1/tenants/{tenant_id}/policy", response_model=PolicyRuleAddResponse)
+@admin_router.post("/v1/tenants/{tenant_id}/policy", response_model=PolicyRuleAddResponse)
 async def add_tenant_policy_rule(
     tenant_id: str,
     req: PolicyRuleRequest,
-    _auth: Optional[str] = Depends(require_auth),
 ):
     """
     Add a custom policy rule for a tenant. The rule is applied immediately
@@ -596,10 +597,9 @@ async def add_tenant_policy_rule(
     )
 
 
-@app.get("/v1/tenants/{tenant_id}/policy", response_model=PolicyRuleListResponse)
+@admin_router.get("/v1/tenants/{tenant_id}/policy", response_model=PolicyRuleListResponse)
 async def list_tenant_policy_rules(
     tenant_id: str,
-    _auth: Optional[str] = Depends(require_auth),
 ):
     """List custom (persisted) policy rules for a tenant. Excludes defaults."""
     rules = tenant_manager.list_policy_rules(tenant_id)
@@ -618,10 +618,9 @@ async def list_tenant_policy_rules(
 # Tenant Management
 # ---------------------------------------------------------------------------
 
-@app.post("/v1/tenants", response_model=TenantResponse)
+@admin_router.post("/v1/tenants", response_model=TenantResponse)
 async def register_tenant(
     req: TenantRegisterRequest,
-    _auth: Optional[str] = Depends(require_auth),
 ):
     if req.tenant_id == "default":
         raise HTTPException(
@@ -651,18 +650,16 @@ async def register_tenant(
     )
 
 
-@app.get("/v1/tenants", response_model=TenantListResponse)
+@admin_router.get("/v1/tenants", response_model=TenantListResponse)
 async def list_tenants(
-    _auth: Optional[str] = Depends(require_auth),
 ):
     tenants = tenant_manager.list_tenants()
     return TenantListResponse(tenants=tenants, count=len(tenants))
 
 
-@app.delete("/v1/tenants/{tenant_id}")
+@admin_router.delete("/v1/tenants/{tenant_id}")
 async def delete_tenant(
     tenant_id: str,
-    _auth: Optional[str] = Depends(require_auth),
 ):
     if tenant_id == "default":
         raise HTTPException(
@@ -703,3 +700,6 @@ try:
     logger.info("enterprise.routes.mounted", extra={"endpoints": ["/v1/execute", "/v1/execute/circuit", "/v1/execute/circuit/reset"]})
 except ImportError:
     logger.info("enterprise.routes.not_available", extra={"reason": "custos-enterprise not installed — public-only deployment"})
+
+# Mount the admin router (must come after all its routes are defined).
+app.include_router(admin_router)

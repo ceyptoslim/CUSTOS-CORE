@@ -65,3 +65,52 @@ class TestAdminEndpointsRequireAuth:
             "/v1/audit", headers={"Authorization": "Bearer not.a.token"}
         )
         assert r.status_code == 401
+
+
+class TestAdminRouterProtection:
+    """Future-proofing: every administrative path must be mounted on
+    admin_router (which carries require_auth at the router level). This
+    fails loudly if someone mounts an admin route on bare @app or on any
+    router without the auth dependency."""
+
+    ADMIN_PATHS = {
+        "/v1/audit",
+        "/v1/audit/verify",
+        "/v1/audit/snapshot",
+        "/v1/audit/snapshot/verify",
+        "/v1/replay",
+        "/v1/policy/diff",
+        "/v1/tenants",
+        "/v1/tenants/{tenant_id}",
+        "/v1/tenants/{tenant_id}/policy",
+    }
+
+    def test_admin_routes_mounted_only_on_protected_router(self):
+        from fastapi.routing import APIRoute
+
+        # no admin path may exist as a bare top-level APIRoute
+        for route in app_module.app.routes:
+            if isinstance(route, APIRoute) and route.path in self.ADMIN_PATHS:
+                raise AssertionError(
+                    f"{route.path} is mounted on bare @app — mount it on "
+                    "admin_router so it inherits require_auth."
+                )
+
+        # the admin router must carry the auth dependency and cover all paths
+        included = [
+            r for r in app_module.app.routes
+            if type(r).__name__ == "_IncludedRouter"
+            and getattr(r, "original_router", None) is app_module.admin_router
+        ]
+        assert included, "admin_router was never included into the app"
+
+        deps = [d.dependency for d in app_module.admin_router.dependencies]
+        assert app_module.require_auth in deps, (
+            "admin_router lost its require_auth dependency"
+        )
+
+        router_paths = {
+            getattr(r, "path", None) for r in app_module.admin_router.routes
+        }
+        missing = self.ADMIN_PATHS - router_paths
+        assert not missing, f"admin paths missing from admin_router: {missing}"
