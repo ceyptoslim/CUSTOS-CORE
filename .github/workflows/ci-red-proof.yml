@@ -35,15 +35,18 @@ jobs:
 
       - name: Apply known-bad sabotage patch
         run: bash scripts/ci-sabotage/${{ matrix.sabotage }}.sh
-
       - name: "Run tests (expected: RED)"
         id: run
         run: |
+          TESTS_STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          echo "tests_started=$TESTS_STARTED" >> "$GITHUB_OUTPUT"
           set +e
           pytest tests/ -q --no-header -x --tb=short \
             --junitxml=red-proof-junit.xml > red-proof-pytest-output.txt 2>&1
           code=$?
+          TESTS_COMPLETED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
           echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          echo "tests_completed=$TESTS_COMPLETED" >> "$GITHUB_OUTPUT"
           tail -5 red-proof-pytest-output.txt
 
       - name: Enforce red-proof verdict
@@ -53,31 +56,57 @@ jobs:
             exit 1
           fi
 
-      - name: Write structured red-proof evidence record
+      - name: Write structured red-proof evidence record (v2)
         if: always()
         run: |
           SAB_SHA=$(sha256sum "scripts/ci-sabotage/${{ matrix.sabotage }}.sh" | cut -d' ' -f1)
           COMMIT_SHA=$(git rev-parse HEAD)
-          TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          JUNIT_SHA=$(sha256sum red-proof-junit.xml | cut -d' ' -f1)
+          OUTPUT_SHA=$(sha256sum red-proof-pytest-output.txt | cut -d' ' -f1)
           EXIT_CODE="${{ steps.run.outputs.exit_code }}"
           if [ -z "$EXIT_CODE" ]; then EXIT_CODE=0; fi
-          if [ "$EXIT_CODE" -ne 0 ]; then VERDICT="RED-CONFIRMED"; OUTCOME="RED"; else VERDICT="FAULTY-GREEN"; OUTCOME="GREEN"; fi
+          if [ "$EXIT_CODE" -ne 0 ]; then VERDICT="RED-CONFIRMED"; ACTUAL="RED"; else VERDICT="FAULTY-GREEN"; ACTUAL="GREEN"; fi
           cat > red-proof-evidence.json <<EOF
           {
-            "workflow": "ci-red-proof",
-            "repo": "ceyptoslim/CUSTOS-CORE",
-            "sabotage": "${{ matrix.sabotage }}",
-            "sabotage_script_sha256": "$SAB_SHA",
-            "commit_sha": "$COMMIT_SHA",
-            "pytest_exit_code": $EXIT_CODE,
-            "expected_outcome": "RED",
-            "actual_outcome": "$OUTCOME",
-            "verdict": "$VERDICT",
-            "recorded_at_utc": "$TIMESTAMP",
-            "runner": "github-actions"
+            "record_version": 2,
+            "identity": {
+              "run_id": "${{ github.run_id }}",
+              "run_number": "${{ github.run_number }}",
+              "run_attempt": "${{ github.run_attempt }}",
+              "commit_sha": "$COMMIT_SHA",
+              "injected_regression_id": "${{ matrix.sabotage }}",
+              "sabotage_script_sha256": "$SAB_SHA"
+            },
+            "time": {
+              "tests_started_utc": "${{ steps.run.outputs.tests_started }}",
+              "tests_completed_utc": "${{ steps.run.outputs.tests_completed }}",
+              "record_generated_at_utc": "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            },
+            "observations": {
+              "pytest_exit_code": $EXIT_CODE,
+              "junit_xml": {"file": "red-proof-junit.xml", "sha256": "$JUNIT_SHA"},
+              "pytest_output": {"file": "red-proof-pytest-output.txt", "sha256": "$OUTPUT_SHA"},
+              "ci_job_outcome": "${{ steps.run.outcome }}"
+            },
+            "verdict": {
+              "expected": "RED",
+              "actual": "$ACTUAL",
+              "verdict": "$VERDICT",
+              "rule": {
+                "id": "red-proof-verdict-rule",
+                "version": 2,
+                "mapping": "observations.pytest_exit_code != 0 -> RED-CONFIRMED; else FAULTY-GREEN"
+              }
+            },
+            "provenance": {
+              "workflow": "ci-red-proof",
+              "repo": "ceyptoslim/CUSTOS-CORE",
+              "runner": "github-actions",
+              "artifact": "red-proof-records-${{ matrix.sabotage }}"
+            }
           }
           EOF
-          echo "--- red-proof evidence record ---"
+          echo "--- red-proof evidence record (v2) ---"
           cat red-proof-evidence.json
 
       - name: Red confirmed — suite can fail as designed
