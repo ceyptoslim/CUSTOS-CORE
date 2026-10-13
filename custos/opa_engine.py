@@ -24,7 +24,7 @@ from typing import Any
 
 import httpx
 
-from custos.policy_engine import PolicyAction, PolicyResult
+from custos.policy_engine import PolicyAction, PolicyEngine, PolicyResult
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +34,23 @@ class OPAPolicyEngine:
 
     def __init__(self, opa_url: str | None = None) -> None:
         self.opa_url = (opa_url or os.getenv("CUSTOS_OPA_URL", "http://localhost:8181")).rstrip("/")
+        # Custom (tenant) rules are enforced LOCALLY with deny-union
+        # semantics: they may only add restrictions on top of the OPA
+        # decision, never loosen it. add_rule() used to be a warn-and-
+        # ignore no-op, so persisted tenant rules were silently
+        # unenforced on this engine (Oct 2026 fix).
+        self._custom_rules = PolicyEngine(rules=[])
 
     def evaluate(self, content: str) -> PolicyResult:
-        """Query OPA for policy decision. Fails CLOSED if OPA is unavailable."""
+        """Query OPA for policy decision. Fails CLOSED if OPA is unavailable.
+
+        Locally enforced custom rules run first: a custom DENY is
+        terminal, and a custom AUDIT downgrades an OPA allow to AUDIT.
+        """
+        custom = self._custom_rules.evaluate(content)
+        if custom.action == PolicyAction.DENY:
+            return custom  # custom deny is terminal — OPA cannot override it
+
         input_data: dict[str, Any] = {
             "content": content,
             "action_type": "custos_evaluate",
@@ -99,6 +113,14 @@ class OPAPolicyEngine:
                 reason="; ".join(deny_reasons) if deny_reasons else "Flagged for audit by OPA",
             )
 
+        if custom.action == PolicyAction.AUDIT:
+            return PolicyResult(
+                allowed=True,
+                action=PolicyAction.AUDIT,
+                triggered_rule=custom.triggered_rule,
+                reason=f"Custom rule '{custom.triggered_rule}' flagged for audit: {custom.reason}",
+            )
+
         return PolicyResult(
             allowed=True,
             action=PolicyAction.ALLOW,
@@ -108,15 +130,28 @@ class OPAPolicyEngine:
 
     @property
     def rule_count(self) -> int:
-        """OPA rules are dynamic — return 0 as a sentinel."""
-        return 0
+        """Number of locally enforced custom rules."""
+        return self._custom_rules.rule_count
 
     def add_rule(self, rule: Any) -> None:
-        """OPA rules are managed in Rego files, not added at runtime."""
-        logger.warning("OPA rules are managed via Rego policy files, not runtime add_rule()")
+        """Enforce a custom (tenant) rule locally, before the OPA query.
+
+        A custom DENY is terminal (OPA is never consulted), and a custom
+        AUDIT downgrades an OPA allow to AUDIT. Runtime rules cannot
+        loosen the OPA decision — only tighten it.
+        """
+        self._custom_rules.add_rule(rule)
 
     def evaluate_with_metadata(self, content: str, client_id: str = "", action_type: str = "custos_evaluate") -> PolicyResult:
-        """Extended evaluate with client_id and action_type for tenant-specific OPA policies."""
+        """Extended evaluate with client_id and action_type for tenant-specific OPA policies.
+
+        Locally enforced custom rules run first: a custom DENY is
+        terminal, and a custom AUDIT downgrades an OPA allow to AUDIT.
+        """
+        custom = self._custom_rules.evaluate(content)
+        if custom.action == PolicyAction.DENY:
+            return custom  # custom deny is terminal — OPA cannot override it
+
         input_data: dict[str, Any] = {
             "content": content,
             "client_id": client_id,
@@ -156,21 +191,25 @@ class OPAPolicyEngine:
             triggered = "opa_parse_error"
             audit_flag = None
 
-        if not allowed and audit_flag is True:
-            return PolicyResult(
-                allowed=True,
-                action=PolicyAction.AUDIT,
-                triggered_rule=triggered or "opa_audit",
-                reason="; ".join(deny_reasons) if deny_reasons else "Flagged for audit by OPA",
-            )
-
         if not allowed:
+            # DENY is terminal. The audit flag must NEVER convert a deny
+            # into an allow (same co-fire fix as evaluate()).
             reason = "; ".join(deny_reasons) if deny_reasons else "Denied by OPA policy"
+            if audit_flag is True:
+                reason = f"{reason} (audit flag also set)"
             return PolicyResult(
                 allowed=False,
                 action=PolicyAction.DENY,
                 triggered_rule=triggered or "opa_deny",
                 reason=reason,
+            )
+
+        if custom.action == PolicyAction.AUDIT:
+            return PolicyResult(
+                allowed=True,
+                action=PolicyAction.AUDIT,
+                triggered_rule=custom.triggered_rule,
+                reason=f"Custom rule '{custom.triggered_rule}' flagged for audit: {custom.reason}",
             )
 
         return PolicyResult(
