@@ -177,8 +177,17 @@ class TestSuiteCanFail:
             "red-proof workflow must write red-proof-evidence.json"
         )
         evidence_src = evidence_step["run"]
-        for field in ("sabotage_script_sha256", "commit_sha",
-                      "pytest_exit_code", "verdict", "recorded_at_utc"):
+        # v2 spec (external review, Oct 2026): identity, time, raw
+        # observations kept separate from the verdict, provenance, and a
+        # versioned rule mapping observations -> verdict.
+        for field in ("run_id", "commit_sha", "injected_regression_id",
+                      "sabotage_script_sha256",
+                      "tests_started_utc", "tests_completed_utc",
+                      "record_generated_at_utc",
+                      "observations", "pytest_exit_code", "junit_xml",
+                      "sha256", "ci_job_outcome",
+                      "verdict", "expected", "actual", "rule", "version",
+                      "mapping", "provenance", "workflow", "artifact"):
             assert f'"{field}"' in evidence_src, (
                 f"evidence record must carry field: {field}"
             )
