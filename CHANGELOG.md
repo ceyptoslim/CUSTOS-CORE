@@ -7,6 +7,35 @@ open" format — no claims beyond what the code and tests demonstrate.
 ---
 ---
 
+## [Unreleased]
+
+### Security
+- OPA policy engine now enforces custom (tenant) rules locally, with deny-union
+  semantics: a custom rule may only add restrictions, never loosen an OPA
+  decision. `add_rule()` is no longer a warn-and-ignore no-op; persisted tenant
+  rules are enforced on every evaluate path.
+- `evaluate_with_metadata()` now applies the same deny-terminal ordering as
+  `evaluate()` — an OPA deny can no longer be co-fired into an AUDIT/allow.
+
+### API
+- All administrative endpoints moved onto `admin_router`, which carries the
+  auth dependency at the router level: new admin endpoints inherit protection
+  automatically. A guard test fails loudly if an admin path ever lands on bare
+  `@app` without auth.
+
+### CI — red-proof package
+- Suite-integrity meta-tests: every test must assert something real (no
+  print-only tests), no vacuous assertions, no unconditional skips, count floor.
+- Strictness: `--strict-markers`, `--strict-config`, `xfail_strict`, `-ra` —
+  tests can no longer silently degrade to skipped while CI reads green.
+- Weekly sabotage workflow: applies known-bad patches and FAILS if the suite
+  stays green on them (faulty-green detection). Verified live: sabotage turns
+  the suite red (6 and 18 failures), restored suite green.
+
+### Tests
+- **493 passed / 12 skipped / 89% coverage** (+13 since v1.3.3: +8 OPA
+  custom-rule enforcement, +1 admin-router guard, +4 suite-integrity).
+
 ## [1.3.3] — Security Hardening (external audit reconciliation)
 
 ### Security
