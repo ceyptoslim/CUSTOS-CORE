@@ -47,6 +47,8 @@ Verified implementation:
 
 **Authentication vs. authorization:** JWT handles authentication (who are you). Tenant authorization binding (JWT `sub` = `client_id`) handles authorization (can you access this tenant's resources). These are separate concerns, both implemented.
 
+**Design essay:** [*The Impossibility Result Is the Design Spec*](docs/essays/the-impossibility-result-is-the-design-spec.md) — why the incomputability of behavioral prediction (Alfonseca et al. 2021, JAIR) is the design rationale for a deterministic, fail-closed action boundary, with citations to Yampolskiy (2012) and Bostrom (2014).
+
 ### LORL-9.1
 
 [github.com/ceyptoslim/LORL-9.1](https://github.com/ceyptoslim/LORL-9.1)
