@@ -31,7 +31,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        sabotage: ["001-weaken-admin-auth", "002-invert-opa-deny"]
+        sabotage: ["001-weaken-admin-auth", "002-invert-opa-deny", "003-weaken-action-gate"]
 
     steps:
       - uses: actions/checkout@v4
@@ -43,6 +43,19 @@ jobs:
 
       - name: Install dependencies
         run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Verify pinned pre-registered design (003)
+        if: matrix.sabotage == '003-weaken-action-gate'
+        run: |
+          echo "94ed3ed624769d34978a94a8b5114cf2caab93ca8d6ab3b74ef90d1d6ef2f7e4  docs/red-proof-records/sabotage-003/DESIGN.md" | sha256sum -c -
+          echo "pre-registered design verified: frozen criteria match the pinned hash"
+
+      - name: Control probe on clean build (003)
+        if: matrix.sabotage == '003-weaken-action-gate'
+        run: |
+          PROBE_PHASE=clean GITHUB_RUN_ID=${{ github.run_id }} \
+            python3 scripts/red-proof/action_gate_probe.py > red-proof-probe-clean.json
+          cat red-proof-probe-clean.json
 
       - name: Apply known-bad sabotage patch
         run: bash scripts/ci-sabotage/${{ matrix.sabotage }}.sh
@@ -59,6 +72,14 @@ jobs:
           echo "diff_lines=$(wc -l < red-proof-injection-diff.patch)" >> "$GITHUB_OUTPUT"
           echo "injection diff sealed: $DIFF_SHA ($(wc -l < red-proof-injection-diff.patch) lines)"
         id: diff
+
+      - name: Control probe after injection (003)
+        if: matrix.sabotage == '003-weaken-action-gate'
+        run: |
+          PROBE_PHASE=injected GITHUB_RUN_ID=${{ github.run_id }} \
+            INJECTION_DIFF_SHA256=${{ steps.diff.outputs.diff_sha }} \
+            python3 scripts/red-proof/action_gate_probe.py > red-proof-probe-injected.json
+          cat red-proof-probe-injected.json
 
       - name: "Run tests (expected: RED, full failure set)"
         id: run
@@ -152,6 +173,27 @@ jobs:
           echo "--- red-proof evidence record (v3) ---"
           cat red-proof-evidence.json
 
+      - name: Attach control-probe observations (003)
+        if: always() && matrix.sabotage == '003-weaken-action-gate'
+        run: |
+          python3 - <<'PY'
+          import hashlib, json
+          rec = json.load(open("red-proof-evidence.json"))
+          obs = rec["observations"]
+          for phase, fname in [
+              ("control_probe_clean", "red-proof-probe-clean.json"),
+              ("control_probe_injected", "red-proof-probe-injected.json"),
+          ]:
+              try:
+                  data = open(fname, "rb").read()
+                  obs[phase] = {"file": fname, "sha256": hashlib.sha256(data).hexdigest()}
+              except FileNotFoundError:
+                  obs[phase] = {"file": fname, "sha256": "MISSING"}
+          json.dump(rec, open("red-proof-evidence.json", "w"), indent=2)
+          PY
+          echo "--- 003 record with probe observations ---"
+          cat red-proof-evidence.json
+
       - name: Red confirmed — suite can fail as designed
         if: ${{ steps.run.outputs.exit_code != 0 }}
         run: |
@@ -169,3 +211,13 @@ jobs:
             red-proof-injection-diff.patch
             red-proof-exit-code.txt
           if-no-files-found: error
+
+      - name: Upload control-probe artifacts (003)
+        if: always() && matrix.sabotage == '003-weaken-action-gate'
+        uses: actions/upload-artifact@v4
+        with:
+          name: red-proof-probe-${{ matrix.sabotage }}
+          path: |
+            red-proof-probe-clean.json
+            red-proof-probe-injected.json
+          if-no-files-found: warn
