@@ -1,0 +1,38 @@
+{
+  "record_version": 2,
+  "identity": {
+    "run_id": "38446904362",
+    "run_number": "9",
+    "run_attempt": "1",
+    "commit_sha": "6ed3cff1935f747431aaf58109bf71115f503632",
+    "injected_regression_id": "001-weaken-admin-auth",
+    "sabotage_script_sha256": "82a0329dacf0c669ef7d28961e331ae2e4044abed9a216c9a570783f03d7d085"
+  },
+  "time": {
+    "tests_started_utc": "2026-10-13T18:27:51Z",
+    "tests_completed_utc": "2026-10-13T18:27:53Z",
+    "record_generated_at_utc": "2026-10-13T18:27:54Z"
+  },
+  "observations": {
+    "pytest_exit_code": 1,
+    "junit_xml": {"file": "red-proof-junit.xml", "sha256": "68086270afd77c8656e5184a931b437d2450870a3a169332f9dbfba023a3b73e"},
+    "pytest_output": {"file": "red-proof-pytest-output.txt", "sha256": "45b1c5c36a595c1e12b081c54d85aea56222b45b71c8ace9ad9c3f5eaf0c1dec"},
+    "ci_job_outcome": "success"
+  },
+  "verdict": {
+    "expected": "RED",
+    "actual": "RED",
+    "verdict": "RED-CONFIRMED",
+    "rule": {
+      "id": "red-proof-verdict-rule",
+      "version": 2,
+      "mapping": "observations.pytest_exit_code != 0 -> RED-CONFIRMED; else FAULTY-GREEN"
+    }
+  },
+  "provenance": {
+    "workflow": "ci-red-proof",
+    "repo": "ceyptoslim/CUSTOS-CORE",
+    "runner": "github-actions",
+    "artifact": "red-proof-records-001-weaken-admin-auth"
+  }
+}

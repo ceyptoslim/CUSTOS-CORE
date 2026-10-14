@@ -152,7 +152,8 @@ class TestSuiteCanFail:
         JUnit XML, a JSON evidence record binding the sabotage-script hash
         and commit SHA to the verdict, and artifact upload that persists
         records even on faulty-green. Guards against silent removal of the
-        records pipeline (added Oct 2026)."""
+        records pipeline (added Oct 2026; v3 fields added after external
+        review FN-CUSTOS-REDPROOF-001, Oct 2026)."""
         import yaml
 
         wf_path = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "ci-red-proof.yml"
@@ -181,16 +182,47 @@ class TestSuiteCanFail:
         # observations kept separate from the verdict, provenance, and a
         # versioned rule mapping observations -> verdict.
         for field in ("run_id", "commit_sha", "injected_regression_id",
-                      "sabotage_script_sha256",
+                      "sabotage_script_sha256", "injection_diff_sha256",
                       "tests_started_utc", "tests_completed_utc",
                       "record_generated_at_utc",
                       "observations", "pytest_exit_code", "junit_xml",
+                      "junit_failures", "exit_code_artifact", "injection_diff",
                       "sha256", "ci_job_outcome",
                       "verdict", "expected", "actual", "rule", "version",
                       "mapping", "provenance", "workflow", "artifact"):
             assert f'"{field}"' in evidence_src, (
                 f"evidence record must carry field: {field}"
             )
+        # v3: record and rule versions must be bumped together
+        assert '"record_version": 3' in evidence_src, (
+            "evidence record must declare record_version 3"
+        )
+        # v3 (FN-CUSTOS-REDPROOF-001, proposition 4): the suite must run
+        # WITHOUT -x so the JUnit records the full failure set of the
+        # regression class, not just the first failure.
+        assert " -x " not in run_step["run"], (
+            "red-proof run step must not use -x: the full failure set "
+            "must be recorded for regression-class coverage"
+        )
+        # v3: the post-injection diff must be sealed at run time
+        # (contemporaneous, not merely replayable) and the exit code must
+        # be echoed by the shell into an artifact independent of the
+        # record that asserts it.
+        assert "red-proof-injection-diff.patch" in evidence_src, (
+            "evidence record must bind the sealed injection diff"
+        )
+        assert "red-proof-exit-code.txt" in evidence_src, (
+            "evidence record must reference the independent exit-code artifact"
+        )
+        diff_step = next(
+            (s for s in wf["jobs"]["red-proof"]["steps"]
+             if isinstance(s, dict)
+             and "red-proof-injection-diff.patch" in str(s.get("run", ""))),
+            None,
+        )
+        assert diff_step is not None, (
+            "red-proof workflow must seal the post-injection diff as an artifact"
+        )
 
         upload_step = next(
             (s for s in wf["jobs"]["red-proof"]["steps"]
@@ -203,6 +235,14 @@ class TestSuiteCanFail:
         assert upload_step.get("with", {}).get("if-no-files-found") == "error", (
             "artifact upload must fail when records are missing"
         )
+        upload_path = str(upload_step.get("with", {}).get("path", ""))
+        for artifact_file in ("red-proof-evidence.json", "red-proof-junit.xml",
+                              "red-proof-pytest-output.txt",
+                              "red-proof-injection-diff.patch",
+                              "red-proof-exit-code.txt"):
+            assert artifact_file in upload_path, (
+                f"artifact upload must persist: {artifact_file}"
+            )
         # Records must persist even when the verdict step fails (faulty-green):
         # the evidence steps must be `if: always()`.
         assert upload_step.get("if") == "always()", (
