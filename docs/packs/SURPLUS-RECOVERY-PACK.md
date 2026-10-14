@@ -1,7 +1,7 @@
 # Surplus-Recovery Outreach Policy Pack
 
 **Status:** shipped as config-only components (`packs/surplus_recovery.py`,
-`packs/verified_statutes.json`, `tests/test_surplus_pack.py` — 30 tests).
+`packs/verified_statutes.json`, `tests/test_surplus_pack.py` — 38 tests).
 Functional working name only — **no brand naming** (naming pending attorney
 clearance; commercial naming is a counsel decision).
 

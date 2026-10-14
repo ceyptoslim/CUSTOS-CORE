@@ -26,6 +26,20 @@ open" format — no claims beyond what the code and tests demonstrate.
 ### CI — red-proof package
 
 **Structured red-proof evidence records** — every red-proof CI run now produces machine-readable records: `red-proof-evidence.json` (sabotage id, sabotage-script SHA-256, commit SHA, pytest exit code, expected vs. actual outcome, verdict RED-CONFIRMED/FAULTY-GREEN, UTC timestamp), `red-proof-junit.xml` (structured execution report), and the pytest output — all uploaded as CI artifacts even on faulty-green, so the enforcement decision is always reproducible against the exact code state and known-bad patch. Meta-test added guarding the records pipeline against silent removal. **v2 (external review feedback):** record restructured into identity (run ID/number/attempt, commit SHA, regression ID, sabotage hash), time (started/completed/generated UTC), raw observations (exit code, JUnit XML + SHA-256, pytest output + SHA-256, CI job outcome) kept separate from the verdict, and a versioned verdict rule (observations -> RED-CONFIRMED/FAULTY-GREEN) with full provenance — the verdict is an assertion about the run, and the observations are what let an independent system check it.
+  **v3 (independent external reconstruction FN-CUSTOS-REDPROOF-001, Oct 2026):**
+  pytest runs without `-x` so the JUnit records the full failure set of each
+  regression class, not just the first failure; the post-injection diff is
+  sealed at run time (SHA-256 bound into record identity, uploaded as an
+  artifact — contemporaneously bound, not merely replayable); the shell
+  writes the exit code to its own artifact file before the record is
+  generated, so the integer is observable through a channel independent of
+  the record asserting it. Observations gain a `junit_failures` count;
+  record_version 3; meta-test hardened to enforce the v3 field set, the
+  absence of `-x`, the diff-sealing step, and upload of all five artifacts.
+  The run-9 observation set used for the external reconstruction is frozen
+  permanently in-repo at `docs/red-proof-records/run-38446904362/`
+  (byte-identical artifact copies, SHA-256 manifest), outliving GitHub's
+  90-day artifact expiry.
 - Suite-integrity meta-tests: every test must assert something real (no
   print-only tests), no vacuous assertions, no unconditional skips, count floor.
 - Strictness: `--strict-markers`, `--strict-config`, `xfail_strict`, `-ra` —
@@ -35,8 +49,9 @@ open" format — no claims beyond what the code and tests demonstrate.
   the suite red (6 and 18 failures), restored suite green.
 
 ### Tests
-- **493 passed / 12 skipped / 89% coverage** (+13 since v1.3.3: +8 OPA
-  custom-rule enforcement, +1 admin-router guard, +4 suite-integrity).
+- **494 passed / 12 skipped / 89% coverage** (+14 since v1.3.3: +8 OPA
+  custom-rule enforcement, +1 admin-router guard, +4 suite-integrity,
+  +1 red-proof records pipeline meta-test).
 
 ## [1.3.3] — Security Hardening (external audit reconciliation)
 
