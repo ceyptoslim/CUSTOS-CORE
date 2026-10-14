@@ -159,6 +159,7 @@ class TestSuiteCanFail:
         wf_path = Path(__file__).resolve().parent.parent / ".github" / "workflows" / "ci-red-proof.yml"
         assert wf_path.exists(), "ci-red-proof.yml missing"
         wf = yaml.safe_load(wf_path.read_text())
+        workflow_src = wf_path.read_text()
 
         run_step = next(
             (s for s in wf["jobs"]["red-proof"]["steps"]
@@ -247,4 +248,41 @@ class TestSuiteCanFail:
         # the evidence steps must be `if: always()`.
         assert upload_step.get("if") == "always()", (
             "artifact upload must run even on faulty-green (if: always())"
+        )
+
+        # 003 (FN-CUSTOS-REDPROOF-002 protocol): the pre-registered
+        # experiment must be wired as a third sabotage class with its
+        # design hash pinned, a two-phase control probe (clean before
+        # sabotage, injected after diff seal), probe observations bound
+        # into the record, and a dedicated probe artifact upload.
+        matrix_sabotages = wf["jobs"]["red-proof"]["strategy"]["matrix"]["sabotage"]
+        assert "003-weaken-action-gate" in matrix_sabotages, (
+            "the pre-registered 003 experiment must be in the sabotage matrix"
+        )
+        assert "sabotage-003/DESIGN.md" in workflow_src, (
+            "the workflow must verify the pinned pre-registered DESIGN.md hash"
+        )
+        assert "sha256sum -c" in workflow_src, (
+            "the workflow must fail if the frozen design no longer matches its pin"
+        )
+        for probe_file in ("red-proof-probe-clean.json",
+                           "red-proof-probe-injected.json"):
+            assert probe_file in workflow_src, (
+                f"the two-phase control probe must record: {probe_file}"
+            )
+        assert "INJECTION_DIFF_SHA256=" in workflow_src, (
+            "the injected probe artifact must carry the sealed diff hash"
+        )
+        assert "control_probe_clean" in workflow_src and (
+            "control_probe_injected" in workflow_src
+        ), "probe observations must be bound into the evidence record"
+        repo_root = Path(__file__).resolve().parents[1]
+        assert (repo_root / "scripts" / "ci-sabotage" / "003-weaken-action-gate.sh").exists(), (
+            "the 003 sabotage script must exist"
+        )
+        assert (repo_root / "scripts" / "red-proof" / "action_gate_probe.py").exists(), (
+            "the pre-registered control probe script must exist"
+        )
+        assert (repo_root / "docs" / "red-proof-records" / "sabotage-003" / "DESIGN.md").exists(), (
+            "the frozen pre-registration document must exist in-repo"
         )
