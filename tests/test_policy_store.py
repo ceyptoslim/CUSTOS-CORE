@@ -264,9 +264,9 @@ class TestPostgreSQLPolicyBackend:
 
     def test_init_raises_without_psycopg2(self):
         from custos.policy_store import PostgreSQLPolicyBackend
-        with _mock.patch.dict("sys.modules", {"psycopg2": None}):
-            with pytest.raises(RuntimeError, match="psycopg2"):
-                PostgreSQLPolicyBackend(self.DB_URL)
+        with _mock.patch.dict("sys.modules", {"psycopg2": None}), \
+             pytest.raises(RuntimeError, match="psycopg2"):
+            PostgreSQLPolicyBackend(self.DB_URL)
 
     def test_schema_created_on_init(self):
         db, _ = self._backend()
