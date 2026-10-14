@@ -23,6 +23,27 @@ open" format — no claims beyond what the code and tests demonstrate.
   automatically. A guard test fails loudly if an admin path ever lands on bare
   `@app` without auth.
 
+### CI — red-proof 003 (pre-registered blind experiment, FN-CUSTOS-REDPROOF-002 protocol)
+
+Third sabotage class `003-weaken-action-gate` targets the boundary between
+declared authority and actual execution: the minimal natural weakening of
+the action gate's deny-by-default tool-allowlist authority check
+(un-registered tools proceed past the authorization-decision boundary).
+Pre-registered before first execution in
+`docs/red-proof-records/sabotage-003/DESIGN.md` (frozen; SHA-256 pinned and
+verified by the workflow at run time; no criteria revision after the first
+run; the first preserved execution is the finding either way). Two-phase
+control probe (`scripts/red-proof/action_gate_probe.py`) records the gate's
+decision for a consequential un-registered tool request on the clean build
+and after injection — an observed clean/injected delta rather than an
+expectation match; the injected probe artifact carries the run_id and
+injection_diff_sha256. The probe establishes a violation at the
+authorization-decision boundary only; probe and suite results are separate
+observations from the same CI run, not independent sources. Blinding
+preserved: no local execution of the sabotage before the workflow, and the
+injection was written from the implementation's structure, not from the
+gate's tests.
+
 ### CI — red-proof package
 
 **Structured red-proof evidence records** — every red-proof CI run now produces machine-readable records: `red-proof-evidence.json` (sabotage id, sabotage-script SHA-256, commit SHA, pytest exit code, expected vs. actual outcome, verdict RED-CONFIRMED/FAULTY-GREEN, UTC timestamp), `red-proof-junit.xml` (structured execution report), and the pytest output — all uploaded as CI artifacts even on faulty-green, so the enforcement decision is always reproducible against the exact code state and known-bad patch. Meta-test added guarding the records pipeline against silent removal. **v2 (external review feedback):** record restructured into identity (run ID/number/attempt, commit SHA, regression ID, sabotage hash), time (started/completed/generated UTC), raw observations (exit code, JUnit XML + SHA-256, pytest output + SHA-256, CI job outcome) kept separate from the verdict, and a versioned verdict rule (observations -> RED-CONFIRMED/FAULTY-GREEN) with full provenance — the verdict is an assertion about the run, and the observations are what let an independent system check it.
