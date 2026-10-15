@@ -12,12 +12,24 @@ establishes is the observed delta between the two recorded decisions.
 # Copyright (C) 2024-2026 FroLife Productions
 # Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0)
 
+import hashlib
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
+
+
+def _git(*args: str) -> str:
+    """Run git in the repo tree; record errors instead of crashing the probe."""
+    try:
+        return subprocess.run(
+            ["git", *args], capture_output=True, text=True, check=True
+        ).stdout.strip()
+    except Exception as exc:  # noqa: BLE001 - observation channel, never fatal
+        return f"git-error: {exc}"
 
 from custos.action_gate import ActionGate, ActionRequest
 from custos.tenant import TenantConfig, TenantManager
@@ -46,6 +58,9 @@ def main() -> int:
         "registered_tools": sorted(REGISTERED_TOOLS),
         "requested_tool": TARGET_TOOL,
         "requested_tool_registered": TARGET_TOOL in REGISTERED_TOOLS,
+        "probe_script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "git_commit_sha": _git("rev-parse", "HEAD"),
+        "git_status_porcelain": _git("status", "--porcelain"),
         "allowed": decision.allowed,
         "policy_action": decision.action.value,
         "triggered_rule": decision.triggered_rule,

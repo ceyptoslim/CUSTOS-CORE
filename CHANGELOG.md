@@ -48,6 +48,16 @@ gate's tests.
   manifest — all three classes' records plus both control-probe
   artifacts, permanent against CI artifact expiry.
 
+- Observed-equivalence instrumentation (FN-CUSTOS-003 exchange): the
+  control probe now records its own SHA-256, the working-tree commit
+  SHA, and a git status --porcelain capture inside BOTH phase
+  artifacts. Clean/injected probe-environment equivalence is now an
+  observed comparison (same script hash, same commit, pristine tree vs
+  the enumerated injection delta) rather than an inference. The frozen
+  003 criteria, the verdict rule, and the pinned DESIGN.md are
+  unchanged; run 38610363998 remains the first preserved execution as
+  recorded.
+
 ### CI — red-proof package
 
 **Structured red-proof evidence records** — every red-proof CI run now produces machine-readable records: `red-proof-evidence.json` (sabotage id, sabotage-script SHA-256, commit SHA, pytest exit code, expected vs. actual outcome, verdict RED-CONFIRMED/FAULTY-GREEN, UTC timestamp), `red-proof-junit.xml` (structured execution report), and the pytest output — all uploaded as CI artifacts even on faulty-green, so the enforcement decision is always reproducible against the exact code state and known-bad patch. Meta-test added guarding the records pipeline against silent removal. **v2 (external review feedback):** record restructured into identity (run ID/number/attempt, commit SHA, regression ID, sabotage hash), time (started/completed/generated UTC), raw observations (exit code, JUnit XML + SHA-256, pytest output + SHA-256, CI job outcome) kept separate from the verdict, and a versioned verdict rule (observations -> RED-CONFIRMED/FAULTY-GREEN) with full provenance — the verdict is an assertion about the run, and the observations are what let an independent system check it.
