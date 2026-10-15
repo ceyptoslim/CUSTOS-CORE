@@ -283,6 +283,15 @@ class TestSuiteCanFail:
         assert (repo_root / "scripts" / "red-proof" / "action_gate_probe.py").exists(), (
             "the pre-registered control probe script must exist"
         )
+        probe_src = (repo_root / "scripts" / "red-proof" / "action_gate_probe.py").read_text()
+        assert "probe_script_sha256" in probe_src, (
+            "the probe must record its own SHA-256 so clean/injected probe "
+            "script identity is observable in both artifacts"
+        )
+        assert "porcelain" in probe_src, (
+            "the probe must capture git status --porcelain so the working-tree "
+            "delta between clean and injected phases is observable, not inferred"
+        )
         assert (repo_root / "docs" / "red-proof-records" / "sabotage-003" / "DESIGN.md").exists(), (
             "the frozen pre-registration document must exist in-repo"
         )
