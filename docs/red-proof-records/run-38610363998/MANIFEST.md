@@ -1,0 +1,20 @@
+# SHA-256 Manifest — Run 38610363998 Frozen Observation Set
+
+9607edbe18f23d9960ec429e4da66dd3cb0d6c7423c14ecf69447feb58c7da5c  001-weaken-admin-auth/red-proof-evidence.json
+4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865  001-weaken-admin-auth/red-proof-exit-code.txt
+29d73e8fca95e8961fe209bcae490410eb539afff83f187da832bca3cd1be567  001-weaken-admin-auth/red-proof-injection-diff.patch
+64b8ee24fc02ce931dba74d3af5f1b5a89cab3d40c3f53190e0fc85fd90af128  001-weaken-admin-auth/red-proof-junit.xml
+8d4a897ff8135feea91302509928cd2a72f4b249b0116eac4f40e13dbbbf8b71  001-weaken-admin-auth/red-proof-pytest-output.txt
+be38ba4182de9e98c21db098de8827096679a07a4d9e99d9e323996a36abd828  002-invert-opa-deny/red-proof-evidence.json
+4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865  002-invert-opa-deny/red-proof-exit-code.txt
+90536c15e486987abf2ef148e90040a46eac137df9c23eb2f657a466435c5ac1  002-invert-opa-deny/red-proof-injection-diff.patch
+be12a1224325053218eba02d85ad45fb9ff52c85a19ee4cbe9b5185934b2657d  002-invert-opa-deny/red-proof-junit.xml
+a2227093791e81ba10f3123d8550acda88ad6cee3f173a85a2085c3c85d84b0b  002-invert-opa-deny/red-proof-pytest-output.txt
+b5951061545259536561b5829346651f499e755d599e672f7c6bbca1633dacfa  003-probe/red-proof-probe-clean.json
+5683de843dc4dd059156686029af713c68d1290f6637a51b321bcae7ca5eb670  003-probe/red-proof-probe-injected.json
+53cf1126b0e3d92e27043e414f47685605e2d30f8ad0da7197d20a23cadecd2c  003-weaken-action-gate/red-proof-evidence.json
+4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865  003-weaken-action-gate/red-proof-exit-code.txt
+74456f767f1cba7c70c98f2705ec2873b92552f5000ba7777c6dbccfb8d60838  003-weaken-action-gate/red-proof-injection-diff.patch
+bffc84099f61f044351e3fb5c436156c05753a33ef71d9a0bbe90e42feaa7580  003-weaken-action-gate/red-proof-junit.xml
+eb89afc7ef3bcec180eace1c94e990ff750692b4389cd5b4f013c6160e83ba2d  003-weaken-action-gate/red-proof-pytest-output.txt
+fc9d18d86fbc6c283722a2ff1b9e84bc82e841484913556e0208ffcc9ed6497f  README.md

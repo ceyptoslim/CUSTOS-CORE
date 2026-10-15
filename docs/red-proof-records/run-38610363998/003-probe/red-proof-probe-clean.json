@@ -1,0 +1,17 @@
+{
+  "allowed": false,
+  "audit_record_hash": "45e2735ccf88a077c1b0a0139cbc2aea1e5c4cccef9f1723cda7941be5a8075b",
+  "injection_diff_sha256": null,
+  "policy_action": "deny",
+  "probe_phase": "clean",
+  "probed_at_utc": "2026-10-14T17:52:50Z",
+  "reason": "Tool 'payment_transfer' is not in tenant 'probe_tenant_003's allowlist. Deny-by-default: register tools explicitly via ActionGate.register_tools().",
+  "registered_tools": [
+    "weather_lookup"
+  ],
+  "requested_tool": "payment_transfer",
+  "requested_tool_registered": false,
+  "run_id": "38610363998",
+  "tenant_id": "probe_tenant_003",
+  "triggered_rule": "action_gate_tool_not_allowlisted"
+}

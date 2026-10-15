@@ -1,0 +1,40 @@
+diff --git a/custos/opa_engine.py b/custos/opa_engine.py
+index e1fceb4..e9fca8f 100644
+--- a/custos/opa_engine.py
++++ b/custos/opa_engine.py
+@@ -66,7 +66,7 @@ class OPAPolicyEngine:
+         except (httpx.HTTPError, Exception) as exc:
+             logger.error("OPA policy server unavailable at %s (failing CLOSED): %s", url, exc)
+             return PolicyResult(
+-                allowed=False,
++                allowed=True,
+                 action=PolicyAction.DENY,
+                 triggered_rule="opa_unavailable",
+                 reason=f"OPA policy server unavailable — failing closed: {exc}",
+@@ -99,7 +99,7 @@ class OPAPolicyEngine:
+             if audit_flag is True:
+                 reason = f"{reason} (audit flag also set)"
+             return PolicyResult(
+-                allowed=False,
++                allowed=True,
+                 action=PolicyAction.DENY,
+                 triggered_rule=triggered or "opa_deny",
+                 reason=reason,
+@@ -167,7 +167,7 @@ class OPAPolicyEngine:
+         except (httpx.HTTPError, Exception) as exc:
+             logger.error("OPA policy server unavailable at %s (failing CLOSED): %s", url, exc)
+             return PolicyResult(
+-                allowed=False,
++                allowed=True,
+                 action=PolicyAction.DENY,
+                 triggered_rule="opa_unavailable",
+                 reason=f"OPA policy server unavailable — failing closed: {exc}",
+@@ -198,7 +198,7 @@ class OPAPolicyEngine:
+             if audit_flag is True:
+                 reason = f"{reason} (audit flag also set)"
+             return PolicyResult(
+-                allowed=False,
++                allowed=True,
+                 action=PolicyAction.DENY,
+                 triggered_rule=triggered or "opa_deny",
+                 reason=reason,

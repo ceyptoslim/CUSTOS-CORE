@@ -43,6 +43,10 @@ observations from the same CI run, not independent sources. Blinding
 preserved: no local execution of the sabotage before the workflow, and the
 injection was written from the implementation's structure, not from the
 gate's tests.
+- Run 11 observation set (run_id 38610363998, first 003 execution) frozen
+  in-repo at docs/red-proof-records/run-38610363998/ with SHA-256
+  manifest — all three classes' records plus both control-probe
+  artifacts, permanent against CI artifact expiry.
 
 ### CI — red-proof package
 
