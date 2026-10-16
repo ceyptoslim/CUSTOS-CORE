@@ -1,0 +1,255 @@
+........................................................................ [ 13%]
+......................................................................ss [ 27%]
+sssssssssssssssssssss...F..F..F.FF........F..........ssssssssssss....... [ 41%]
+.FFFFF............F.FFF................................................. [ 55%]
+........................................................................ [ 69%]
+........................................................................ [ 83%]
+.............................................................FF.F....... [ 97%]
+..............                                                           [100%]
+=================================== FAILURES ===================================
+_____ TestOPACustomRulesEnforced.test_custom_rules_cannot_loosen_opa_deny ______
+tests/test_opa_custom_rules.py:112: in test_custom_rules_cannot_loosen_opa_deny
+    assert result.allowed is False
+E   AssertionError: assert True is False
+E    +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='block_pii_ssn', reason='SSN pattern detected').allowed
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-10-15T21:37:30Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+____ TestMetadataPathCoFire.test_metadata_deny_with_audit_flag_still_denies ____
+tests/test_opa_custom_rules.py:153: in test_metadata_deny_with_audit_flag_still_denies
+    assert result.allowed is False
+E   AssertionError: assert True is False
+E    +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='block_pii_ssn', reason='SSN pattern detected (audit flag also set)').allowed
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-10-15T21:37:30Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+_________________________ TestOPAEngine.test_opa_deny __________________________
+tests/test_opa_hybrid.py:71: in test_opa_deny
+    assert result.allowed is False
+E   AssertionError: assert True is False
+E    +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='block_pii_ssn', reason='SSN pattern detected').allowed
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-10-15T21:37:30Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+_______________ TestOPAEngine.test_opa_unavailable_fails_closed ________________
+tests/test_opa_hybrid.py:93: in test_opa_unavailable_fails_closed
+    assert result.allowed is False
+E   AssertionError: assert True is False
+E    +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='opa_unavailable', reason='OPA policy server unavailable — failing closed: error').allowed
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-10-15T21:37:30Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-10-15T21:37:30Z", "level": "error", "logger": "custos.opa_engine", "message": "OPA policy server unavailable at http://test:8181/v1/data/custos/governance/allow (failing CLOSED): error"}
+_____________ TestOPAEngine.test_opa_connection_error_fails_closed _____________
+tests/test_opa_hybrid.py:103: in test_opa_connection_error_fails_closed
+    assert result.allowed is False
+E   AssertionError: assert True is False
+E    +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='opa_unavailable', reason='OPA policy server unavailable — failing closed: Connection refused').allowed
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-10-15T21:37:30Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-10-15T21:37:30Z", "level": "error", "logger": "custos.opa_engine", "message": "OPA policy server unavailable at http://test:8181/v1/data/custos/governance/allow (failing CLOSED): Connection refused"}
+__________ TestHybridEngine.test_hybrid_with_metadata_tenant_context ___________
+tests/test_opa_hybrid.py:249: in test_hybrid_with_metadata_tenant_context
+    assert result_blocked.allowed is False
+E   AssertionError: assert True is False
+E    +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='tenant_block', reason='Tenant blocked').allowed
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-10-15T21:37:30Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+___________ TestOPAModeFailClosed.test_opa_healthy_denies_violation ____________
+tests/test_opa_security_regression.py:124: in test_opa_healthy_denies_violation
+    assert result.allowed is False
+E   AssertionError: assert True is False
+E    +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='block_pii_ssn', reason='SSN detected').allowed
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-10-15T21:37:30Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+___________ TestOPAModeFailClosed.test_opa_unavailable_returns_deny ____________
+tests/test_opa_security_regression.py:134: in test_opa_unavailable_returns_deny
+    assert result.allowed is False
+E   AssertionError: assert True is False
+E    +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='opa_unavailable', reason='OPA policy server unavailable — failing closed: Connection refused').allowed
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-10-15T21:37:30Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-10-15T21:37:30Z", "level": "error", "logger": "custos.opa_engine", "message": "OPA policy server unavailable at http://test:8181/v1/data/custos/governance/allow (failing CLOSED): Connection refused"}
+_______________ TestOPAModeFailClosed.test_opa_503_returns_deny ________________
+tests/test_opa_security_regression.py:145: in test_opa_503_returns_deny
+    assert result.allowed is False
+E   AssertionError: assert True is False
+E    +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='opa_unavailable', reason='OPA policy server unavailable — failing closed: server error').allowed
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-10-15T21:37:30Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-10-15T21:37:30Z", "level": "error", "logger": "custos.opa_engine", "message": "OPA policy server unavailable at http://test:8181/v1/data/custos/governance/allow (failing CLOSED): server error"}
+_____________ TestOPAModeFailClosed.test_opa_timeout_returns_deny ______________
+tests/test_opa_security_regression.py:155: in test_opa_timeout_returns_deny
+    assert result.allowed is False
+E   AssertionError: assert True is False
+E    +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='opa_unavailable', reason='OPA policy server unavailable — failing closed: timed out').allowed
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-10-15T21:37:30Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-10-15T21:37:30Z", "level": "error", "logger": "custos.opa_engine", "message": "OPA policy server unavailable at http://test:8181/v1/data/custos/governance/allow (failing CLOSED): timed out"}
+___ TestOPAModeFailClosed.test_opa_clean_content_still_denied_when_opa_down ____
+tests/test_opa_security_regression.py:165: in test_opa_clean_content_still_denied_when_opa_down
+    assert result.allowed is False
+E   AssertionError: assert True is False
+E    +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='opa_unavailable', reason='OPA policy server unavailable — failing closed: down').allowed
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-10-15T21:37:30Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-10-15T21:37:30Z", "level": "error", "logger": "custos.opa_engine", "message": "OPA policy server unavailable at http://test:8181/v1/data/custos/governance/allow (failing CLOSED): down"}
+_____ TestMalformedOPAResponses.test_opa_pure_mode_malformed_returns_deny ______
+tests/test_opa_security_regression.py:345: in test_opa_pure_mode_malformed_returns_deny
+    assert result.allowed is False
+E   AssertionError: assert True is False
+E    +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='opa_parse_error', reason='OPA returned unexpected response format').allowed
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-10-15T21:37:30Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+____________ TestMalformedOPAResponses.test_opa_returns_bool_false _____________
+tests/test_opa_security_regression.py:363: in test_opa_returns_bool_false
+    assert result.allowed is False
+E   AssertionError: assert True is False
+E    +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='opa_deny', reason='Denied by OPA policy').allowed
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-10-15T21:37:30Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+________ TestTenantSpecificPolicies.test_tenant_allowed_content_passes _________
+tests/test_opa_security_regression.py:400: in test_tenant_allowed_content_passes
+    assert bad.allowed is False
+E   AssertionError: assert True is False
+E    +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='tenant_block', reason='Tenant blocked').allowed
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-10-15T21:37:30Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+____ TestTenantSpecificPolicies.test_unregistered_client_denied_on_execute _____
+tests/test_opa_security_regression.py:425: in test_unregistered_client_denied_on_execute
+    assert result.allowed is False
+E   AssertionError: assert True is False
+E    +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='block_unregistered_client', reason='Unregistered client').allowed
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-10-15T21:37:30Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+___________ TestOPAStrictResponseTyping.test_string_truthy_rejected ____________
+tests/test_tenant_authorization.py:199: in test_string_truthy_rejected
+    assert result.allowed is False, "String 'true' must not authorize — strict Boolean check required"
+E   AssertionError: String 'true' must not authorize — strict Boolean check required
+E   assert True is False
+E    +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='opa_deny', reason='Denied by OPA policy').allowed
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-10-15T21:37:31Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+____________ TestOPAStrictResponseTyping.test_integer_one_rejected _____________
+tests/test_tenant_authorization.py:216: in test_integer_one_rejected
+    assert result.allowed is False, "Integer 1 must not authorize — strict Boolean check required"
+E   AssertionError: Integer 1 must not authorize — strict Boolean check required
+E   assert True is False
+E    +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='opa_deny', reason='Denied by OPA policy').allowed
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-10-15T21:37:31Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+_____________ TestOPAStrictResponseTyping.test_empty_dict_rejected _____________
+tests/test_tenant_authorization.py:250: in test_empty_dict_rejected
+    assert result.allowed is False, "Empty result dict must not authorize"
+E   AssertionError: Empty result dict must not authorize
+E   assert True is False
+E    +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='opa_deny', reason='Denied by OPA policy').allowed
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-10-15T21:37:31Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+=============================== warnings summary ===============================
+../../../../../opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/test_admin_auth.py::TestAdminEndpointsRequireAuth::test_valid_token_allows_audit_read
+tests/test_auth.py::TestTokenCreation::test_create_token_returns_string
+tests/test_auth.py::TestTokenCreation::test_token_contains_correct_subject
+tests/test_auth.py::TestTokenCreation::test_token_has_expiry
+tests/test_auth.py::TestAuthEnforcement::test_expired_token_returns_401
+tests/test_auth.py::TestAuthEnforcement::test_valid_token_allows_request
+tests/test_auth.py::TestAuthEnforcement::test_valid_token_on_clean_content_returns_allow
+tests/test_auth.py::TestAuthEnforcement::test_cross_client_access_denied
+tests/test_auth.py::TestAuthEnforcement::test_same_client_access_allowed
+  /opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/jwt/api_jwt.py:149: InsecureKeyLengthWarning: The HMAC key is 31 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+    return self._jws.encode(
+
+tests/test_admin_auth.py::TestAdminEndpointsRequireAuth::test_valid_token_allows_audit_read
+tests/test_auth.py::TestTokenCreation::test_token_contains_correct_subject
+tests/test_auth.py::TestTokenCreation::test_token_has_expiry
+tests/test_auth.py::TestAuthEnforcement::test_expired_token_returns_401
+tests/test_auth.py::TestAuthEnforcement::test_valid_token_allows_request
+tests/test_auth.py::TestAuthEnforcement::test_valid_token_on_clean_content_returns_allow
+tests/test_auth.py::TestAuthEnforcement::test_cross_client_access_denied
+tests/test_auth.py::TestAuthEnforcement::test_same_client_access_allowed
+  /opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/jwt/api_jwt.py:370: InsecureKeyLengthWarning: The HMAC key is 31 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+    decoded = self.decode_complete(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_mineos_integration.py:73: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:77: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:81: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:85: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:90: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:106: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:113: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:120: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:125: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:152: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:161: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:167: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:173: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:211: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:217: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:222: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:235: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:241: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:260: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:273: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:280: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:285: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:293: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_opa_integration.py:37: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:42: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:53: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:61: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:69: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:77: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:86: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:99: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:112: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:123: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:136: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:150: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+FAILED tests/test_opa_custom_rules.py::TestOPACustomRulesEnforced::test_custom_rules_cannot_loosen_opa_deny - AssertionError: assert True is False
+ +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='block_pii_ssn', reason='SSN pattern detected').allowed
+FAILED tests/test_opa_custom_rules.py::TestMetadataPathCoFire::test_metadata_deny_with_audit_flag_still_denies - AssertionError: assert True is False
+ +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='block_pii_ssn', reason='SSN pattern detected (audit flag also set)').allowed
+FAILED tests/test_opa_hybrid.py::TestOPAEngine::test_opa_deny - AssertionError: assert True is False
+ +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='block_pii_ssn', reason='SSN pattern detected').allowed
+FAILED tests/test_opa_hybrid.py::TestOPAEngine::test_opa_unavailable_fails_closed - AssertionError: assert True is False
+ +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='opa_unavailable', reason='OPA policy server unavailable — failing closed: error').allowed
+FAILED tests/test_opa_hybrid.py::TestOPAEngine::test_opa_connection_error_fails_closed - AssertionError: assert True is False
+ +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='opa_unavailable', reason='OPA policy server unavailable — failing closed: Connection refused').allowed
+FAILED tests/test_opa_hybrid.py::TestHybridEngine::test_hybrid_with_metadata_tenant_context - AssertionError: assert True is False
+ +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='tenant_block', reason='Tenant blocked').allowed
+FAILED tests/test_opa_security_regression.py::TestOPAModeFailClosed::test_opa_healthy_denies_violation - AssertionError: assert True is False
+ +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='block_pii_ssn', reason='SSN detected').allowed
+FAILED tests/test_opa_security_regression.py::TestOPAModeFailClosed::test_opa_unavailable_returns_deny - AssertionError: assert True is False
+ +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='opa_unavailable', reason='OPA policy server unavailable — failing closed: Connection refused').allowed
+FAILED tests/test_opa_security_regression.py::TestOPAModeFailClosed::test_opa_503_returns_deny - AssertionError: assert True is False
+ +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='opa_unavailable', reason='OPA policy server unavailable — failing closed: server error').allowed
+FAILED tests/test_opa_security_regression.py::TestOPAModeFailClosed::test_opa_timeout_returns_deny - AssertionError: assert True is False
+ +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='opa_unavailable', reason='OPA policy server unavailable — failing closed: timed out').allowed
+FAILED tests/test_opa_security_regression.py::TestOPAModeFailClosed::test_opa_clean_content_still_denied_when_opa_down - AssertionError: assert True is False
+ +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='opa_unavailable', reason='OPA policy server unavailable — failing closed: down').allowed
+FAILED tests/test_opa_security_regression.py::TestMalformedOPAResponses::test_opa_pure_mode_malformed_returns_deny - AssertionError: assert True is False
+ +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='opa_parse_error', reason='OPA returned unexpected response format').allowed
+FAILED tests/test_opa_security_regression.py::TestMalformedOPAResponses::test_opa_returns_bool_false - AssertionError: assert True is False
+ +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='opa_deny', reason='Denied by OPA policy').allowed
+FAILED tests/test_opa_security_regression.py::TestTenantSpecificPolicies::test_tenant_allowed_content_passes - AssertionError: assert True is False
+ +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='tenant_block', reason='Tenant blocked').allowed
+FAILED tests/test_opa_security_regression.py::TestTenantSpecificPolicies::test_unregistered_client_denied_on_execute - AssertionError: assert True is False
+ +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='block_unregistered_client', reason='Unregistered client').allowed
+FAILED tests/test_tenant_authorization.py::TestOPAStrictResponseTyping::test_string_truthy_rejected - AssertionError: String 'true' must not authorize — strict Boolean check required
+assert True is False
+ +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='opa_deny', reason='Denied by OPA policy').allowed
+FAILED tests/test_tenant_authorization.py::TestOPAStrictResponseTyping::test_integer_one_rejected - AssertionError: Integer 1 must not authorize — strict Boolean check required
+assert True is False
+ +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='opa_deny', reason='Denied by OPA policy').allowed
+FAILED tests/test_tenant_authorization.py::TestOPAStrictResponseTyping::test_empty_dict_rejected - AssertionError: Empty result dict must not authorize
+assert True is False
+ +  where True = PolicyResult(allowed=True, action=<PolicyAction.DENY: 'deny'>, triggered_rule='opa_deny', reason='Denied by OPA policy').allowed
+18 failed, 465 passed, 35 skipped, 18 warnings in 2.70s

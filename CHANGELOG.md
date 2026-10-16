@@ -47,6 +47,13 @@ gate's tests.
   in-repo at docs/red-proof-records/run-38610363998/ with SHA-256
   manifest — all three classes' records plus both control-probe
   artifacts, permanent against CI artifact expiry.
+- Run 12 observation set (run_id 38811246068, first execution with the
+  observed-equivalence probe instrumentation) frozen in-repo at
+  docs/red-proof-records/run-38811246068/ with SHA-256 manifest — the
+  probe artifacts record the probe script SHA-256, the commit SHA, and
+  a `git status --porcelain` capture in both phases, making clean vs
+  injected probe-environment equivalence observable rather than
+  inferred (the causal-establishability gap identified in FN-CUSTOS-003).
 
 - Observed-equivalence instrumentation (FN-CUSTOS-003 exchange): the
   control probe now records its own SHA-256, the working-tree commit
