@@ -9,7 +9,39 @@ open" format — no claims beyond what the code and tests demonstrate.
 
 ## [Unreleased]
 
+### Security — RS256/JWKS authentication (PR #57)
+- Dual-algorithm JWT verification: HS256 backward compatible, RS256
+  production path (`CUSTOS_JWT_ALGORITHM=RS256` + `CUSTOS_JWT_PRIVATE_KEY`,
+  explicit key required at startup in production — fail-closed).
+- JWKS discovery at `/.well-known/jwks.json` (RFC 7517, RFC 7638-style
+  `kid`); tenant-issued tokens verify against tenant JWKS URLs
+  (`CUSTOS_TENANT_JWKS_URL[_<ISSUER_SLUG>]`, https-only, TLS mandatory,
+  no redirects, kid lookup with TTL cache and refresh-on-unknown-kid).
+- Algorithm confusion structurally closed: verification branches on the
+  token header; RS256-header tokens never touch symmetric secrets,
+  `alg=none` rejected; dev-default shared secrets never authorize in
+  production, even in RS256 deployments.
+- Re-proved against the red-proof protocol on merge day: run
+  39322985909 (run #15) on `c4a3d93` — all three sabotage classes
+  RED-CONFIRMED (001: 6 failures, 002: 18, 003: 2).
+
+### Fixed — tenant quota inheritance (PR #58)
+- `/v1/evaluate` auto-registered new per-client rate keys with a hardcoded
+  60/min quota, silently ignoring the tenant API's `requests_per_minute`
+  contract. New rate keys now inherit the tenant's configured quota via
+  `RateLimiter.get_quota()`; the conservative 60/min default remains only
+  for tenants without explicit configuration (default-tenant behavior
+  unchanged). Surfaced by the new benchmark suite; regression tests in
+  `TestTenantQuotaInheritance`.
+
+### Performance — /v1/evaluate benchmark (PR #58)
+- Reproducible benchmark (`scripts/benchmark_evaluate.py`,
+  `docs/performance/benchmark-v1.md`): governance overhead ~1.5 ms p50 /
+  < 2.2 ms p99 end-to-end; > 1,000 req/s per replica; RS256 adds ~0.13 ms
+  p50 over HS256. Both ALLOW and DENY governance paths measured.
+
 ### Security
+
 - OPA policy engine now enforces custom (tenant) rules locally, with deny-union
   semantics: a custom rule may only add restrictions, never loosen an OPA
   decision. `add_rule()` is no longer a warn-and-ignore no-op; persisted tenant
@@ -91,9 +123,10 @@ gate's tests.
   the suite red (6 and 18 failures), restored suite green.
 
 ### Tests
-- **494 passed / 12 skipped / 89% coverage** (+14 since v1.3.3: +8 OPA
-  custom-rule enforcement, +1 admin-router guard, +4 suite-integrity,
-  +1 red-proof records pipeline meta-test).
+- **528 passed / 12 skipped / 90% coverage** (+34 since v1.3.3: +20 RS256/JWKS
+  suite, +2 tenant-quota inheritance regression, +8 OPA custom-rule
+  enforcement, +1 admin-router guard, +4 suite-integrity, +1 red-proof
+  records pipeline meta-test, and PostgreSQL policy-backend coverage).
 
 ## [1.3.3] — Security Hardening (external audit reconciliation)
 
