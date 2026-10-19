@@ -355,9 +355,15 @@ async def evaluate(
     )
 
     if ctx.rate_limiter.get_all_quotas().get(rate_key) is None:
+        # New per-client key: inherit the TENANT'S configured quota (the
+        # quota registered at tenant creation under the tenant-level key),
+        # falling back to the conservative default only if it is absent.
+        # A hardcoded 60/min here would silently ignore the tenant API's
+        # requests_per_minute contract (observed by the benchmark suite).
+        tenant_quota = ctx.rate_limiter.get_quota(ctx.tenant_id)
         ctx.rate_limiter.register(
             rate_key,
-            QuotaConfig(requests_per_minute=60, requests_per_hour=1000),
+            tenant_quota or QuotaConfig(requests_per_minute=60, requests_per_hour=1000),
         )
 
     allowed, msg = ctx.rate_limiter.check_and_consume(rate_key, req.token_count)

@@ -76,6 +76,15 @@ class RateLimiter:
             state.token_count += tokens
             return True, "OK"
 
+    def get_quota(self, client_id: str) -> QuotaConfig | None:
+        """Return the registered QuotaConfig for a key, or None.
+
+        Unlike get_all_quotas() (a display dump), this returns the raw
+        config object so callers can inherit it for new keys.
+        """
+        with self._lock:
+            return self._quotas.get(client_id)
+
     def get_all_quotas(self) -> dict[str, dict]:
         """
         FIX APPLIED: list(self._quotas.keys()) snapshot prevents

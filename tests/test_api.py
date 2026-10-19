@@ -144,3 +144,50 @@ class TestAuditEndpoint:
         assert r.status_code == 200
         assert r.json()["valid"] is True
 
+
+
+class TestTenantQuotaInheritance:
+    """Tenant-level quota (registered via POST /v1/tenants) must govern the
+    per-client rate keys on /v1/evaluate — the auto-registration for new
+    rate keys inherits the tenant's configured quota rather than a
+    hardcoded 60/min (bug surfaced by the benchmark suite, Oct 2026)."""
+
+    def _register_tenant(self, client, tenant_id, rpm):
+        import jwt as pyjwt
+        import time as _time
+
+        token = pyjwt.encode(
+            {"sub": "admin", "iat": int(_time.time()), "exp": int(_time.time()) + 600},
+            "dev-secret-change-in-production", algorithm="HS256",
+        )
+        r = client.post(
+            "/v1/tenants",
+            headers={"Authorization": f"Bearer {token}"},
+            json={"tenant_id": tenant_id, "requests_per_minute": rpm,
+                  "requests_per_hour": rpm * 10, "tokens_per_minute": 100_000},
+        )
+        assert r.status_code in (200, 409), r.text
+
+    def test_tenant_quota_governs_client_keys(self, client):
+        """A tenant registered with rpm=500 must NOT rate-limit at 60/min."""
+        self._register_tenant(client, "quota500", 500)
+        statuses = []
+        for i in range(80):  # >60: previously 429s started at request 61
+            r = client.post("/v1/evaluate", json={
+                "client_id": "qclient", "tenant_id": "quota500",
+                "content": "quota inheritance probe", "token_count": 1,
+            })
+            statuses.append(r.status_code)
+        assert 429 not in statuses, "tenant quota ignored: 429 below configured rpm"
+
+    def test_default_tenant_behavior_unchanged(self, client):
+        """Default-tenant clients still get the conservative 60/min."""
+        statuses = {}
+        for i in range(65):
+            r = client.post("/v1/evaluate", json={
+                "client_id": "default_probe_client", "tenant_id": "default",
+                "content": "default quota probe", "token_count": 1,
+            })
+            statuses[r.status_code] = statuses.get(r.status_code, 0) + 1
+        assert statuses.get(429, 0) > 0, "expected 429 after 60/min on default tenant"
+        assert statuses.get(200, 0) == 60
