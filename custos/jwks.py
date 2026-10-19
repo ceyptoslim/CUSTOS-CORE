@@ -191,11 +191,23 @@ class JWKSCache:
         self._last_attempt: Dict[str, float] = {}     # url -> ts (backoff guard)
 
     def _fetch(self, url: str) -> Dict[str, Any]:
-        import urllib.request
+        """Fetch a JWKS document. https-only: tenant key material over a
+        plaintext scheme would let a network attacker substitute keys, so
+        non-https URLs are rejected before any request is made."""
+        from urllib.parse import urlsplit
 
-        req = urllib.request.Request(url, headers={"Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=5) as resp:
-            doc = json.loads(resp.read().decode("utf-8"))
+        if urlsplit(url).scheme != "https":
+            raise ValueError("tenant JWKS URL must be https:// (fail-closed)")
+        import httpx
+
+        with httpx.Client(
+            timeout=5.0,
+            verify=True,  # TLS certificate verification is mandatory
+            follow_redirects=False,  # no redirect following: fetch the configured URL only
+        ) as client:
+            resp = client.get(url, headers={"Accept": "application/json"})
+            resp.raise_for_status()
+            doc = resp.json()
         keys: Dict[str, Any] = {}
         for jwk in doc.get("keys", []):
             if jwk.get("kty") == "RSA" and jwk.get("kid"):
@@ -205,9 +217,14 @@ class JWKSCache:
     def get_key(self, url: str, kid: str) -> Optional[Dict[str, Any]]:
         """Return the cached JWK for (url, kid), refreshing when needed.
 
-        Returns None when the kid is unknown after a refresh — callers
-        must treat that as verification failure (401).
+        Raises ValueError for non-https URLs (structural fail-closed —
+        checked before any fetch). Returns None when the kid is unknown
+        after a refresh; callers must treat that as verification failure.
         """
+        from urllib.parse import urlsplit
+
+        if urlsplit(url).scheme != "https":
+            raise ValueError("tenant JWKS URL must be https:// (fail-closed)")
         with self._lock:
             entry = self._by_url.get(url)
             now = time.time()
@@ -279,7 +296,12 @@ def verify_rs256_token(token: str) -> Dict[str, Any]:
     iss = unverified.get("iss")
     jwks_url = tenant_jwks_url_for_issuer(iss)
     if jwks_url:
-        jwk = _jwks_cache.get_key(jwks_url, kid or "")
+        try:
+            jwk = _jwks_cache.get_key(jwks_url, kid or "")
+        except ValueError as exc:
+            # Refused JWKS URL (e.g. plaintext) is an auth failure, not a
+            # server error — surface as 401 InvalidTokenError.
+            raise jwt.InvalidTokenError(f"tenant JWKS refused: {exc}") from exc
         if jwk:
             from jwt.algorithms import RSAAlgorithm
 

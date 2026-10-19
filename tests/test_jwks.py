@@ -173,6 +173,28 @@ class TestTenantJWKS:
         assert tenant_jwks_url_for_issuer("https://tenant.example") == \
             "https://tenant.example/jwks.json"
 
+    def test_plaintext_jwks_url_rejected(self, rs256_mode, monkeypatch):
+        """Fail-closed: http:// JWKS URLs are refused before any request."""
+        monkeypatch.setenv("CUSTOS_TENANT_JWKS_URL", "http://insecure.example/jwks.json")
+        cache = JWKSCache()
+        with pytest.raises(ValueError, match="https"):
+            cache.get_key("http://insecure.example/jwks.json", "some-kid")
+
+    def test_plaintext_jwks_token_gets_401_not_500(self, rs256_mode, monkeypatch):
+        """End-to-end: a token whose issuer points at an http:// JWKS
+        must produce an auth failure (401), never a server error."""
+        from fastapi import HTTPException
+
+        monkeypatch.setenv("CUSTOS_TENANT_JWKS_URL", "http://insecure.example/jwks.json")
+        token = jwt.encode(
+            {"sub": "x", "iss": "https://tenant.example", "exp": int(time.time()) + 60},
+            _new_tenant_key(), algorithm="RS256", headers={"kid": "tenant-key-1"},
+        )
+        with pytest.raises(HTTPException) as exc_info:
+            auth_mod.verify_token(_make_credentials(token))
+        assert exc_info.value.status_code == 401
+        assert "refused" in exc_info.value.detail or "Invalid" in exc_info.value.detail
+
     def test_unknown_kid_rejected(self, rs256_mode, monkeypatch):
         monkeypatch.setenv("CUSTOS_TENANT_JWKS_URL", "https://tenant.example/jwks.json")
 
