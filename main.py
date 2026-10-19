@@ -28,7 +28,8 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from custos.auth import validate_production_secrets,  auth_enabled, verify_token
+from custos.auth import validate_production_secrets, auth_enabled, verify_token
+from custos.jwks import get_jwks_document, validate_production_key
 from custos.logging import configure_logging, get_logger
 from custos.models import (
     AuditRecordResponse,
@@ -151,8 +152,10 @@ admin_router = APIRouter(dependencies=[Depends(require_auth)])
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Fail-closed security validation: refuse to start in production with
-    # missing/dev-default secrets (strict env-presence rule).
+    # missing/dev-default secrets (strict env-presence rule) or, in RS256
+    # mode, a missing explicit private key.
     validate_production_secrets()
+    validate_production_key()
     logger.info("custos.startup", extra={"version": VERSION})
     yield
     logger.info("custos.shutdown")
@@ -179,6 +182,15 @@ async def add_version_header(request: Request, call_next):
 # ---------------------------------------------------------------------------
 # Health / Ready / Metrics / Info
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# JWKS discovery — public by design (RFC 7517). Lets clients and external
+# verifiers confirm RS256 token signatures without sharing any secret.
+# ---------------------------------------------------------------------------
+@app.get("/.well-known/jwks.json", tags=["auth"])
+async def well_known_jwks() -> dict:
+    return get_jwks_document()
+
 
 @app.get("/health", response_model=HealthResponse)
 async def health():

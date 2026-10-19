@@ -74,7 +74,7 @@ refactor: move models to custos/models.py
 
 Focus areas for contributions (as of v1.3):
 - Policy version registry with rollback
-- RS256 / JWKS auth upgrade for multi-tenant production use
+- ~~RS256 / JWKS auth upgrade for multi-tenant production use~~ (shipped: `custos/jwks.py`, `/.well-known/jwks.json`, dual-alg verify)
 - Distributed rate limiting for multi-replica deployments
 - OTLP export test coverage against a real collector
 - Additional SSRF test vectors for private IP ranges

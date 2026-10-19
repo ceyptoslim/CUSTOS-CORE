@@ -1,10 +1,21 @@
 """
 CUSTOS JWT Authentication
 
-Lightweight JWT verification middleware for /v1/evaluate.
-Uses HS256 by default. Secret loaded from environment variable CUSTOS_JWT_SECRET.
+JWT verification middleware for /v1/evaluate and the admin router.
 
-Upgrade path: swap to RS256 with JWKS endpoint for production multi-tenant use.
+Two algorithms, selected per token header and configuration:
+
+* HS256 (default, backward compatible): shared secret from
+  CUSTOS_JWT_SECRET. Suitable for single-tenant deployments.
+* RS256 (production multi-tenant): asymmetric keys. The service
+  publishes its public key at /.well-known/jwks.json (see custos/jwks.py);
+  tenant-issued tokens are verified against tenant JWKS URLs configured
+  via CUSTOS_TENANT_JWKS_URL[_<ISSUER_SLUG>].
+
+Set CUSTOS_JWT_ALGORITHM=RS256 (plus CUSTOS_JWT_PRIVATE_KEY in production)
+to activate the RS256 path. Both algorithms are accepted during the
+transition; each token is verified strictly against the key material its
+own header selects — algorithm-confusion tokens are rejected.
 """
 # Copyright (C) 2024-2026 FroLife Productions
 # Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0)
@@ -28,7 +39,9 @@ logger = get_logger("auth")
 # Configuration
 # ---------------------------------------------------------------------------
 _JWT_SECRET = os.getenv("CUSTOS_JWT_SECRET", "dev-secret-change-in-production")
-_JWT_ALGORITHM = "HS256"
+_JWT_ALGORITHM = (os.getenv("CUSTOS_JWT_ALGORITHM") or "HS256").upper()
+if _JWT_ALGORITHM not in ("HS256", "RS256"):
+    raise RuntimeError(f"CUSTOS_JWT_ALGORITHM must be HS256 or RS256, got {_JWT_ALGORITHM!r}")
 _JWT_EXPIRY_SECONDS = int(os.getenv("CUSTOS_JWT_EXPIRY", "3600"))  # 1 hour default
 
 _bearer_scheme = HTTPBearer(auto_error=False)
@@ -39,12 +52,19 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 # ---------------------------------------------------------------------------
 
 def create_token(client_id: str, expires_in: int = _JWT_EXPIRY_SECONDS) -> str:
-    """Create a signed JWT for the given client_id."""
+    """Create a signed JWT for the given client_id.
+
+    HS256 mode signs with the shared secret; RS256 mode signs with the
+    service RSA keypair (kid header included) — see custos/jwks.py.
+    """
     payload = {
         "sub": client_id,
         "iat": int(time.time()),
         "exp": int(time.time()) + expires_in,
     }
+    if _JWT_ALGORITHM == "RS256":
+        from custos.jwks import sign_rs256
+        return sign_rs256(payload)
     return jwt.encode(payload, _JWT_SECRET, algorithm=_JWT_ALGORITHM)
 
 
@@ -69,7 +89,25 @@ def verify_token(
 
     token = credentials.credentials
     try:
-        payload = jwt.decode(token, _JWT_SECRET, algorithms=[_JWT_ALGORITHM])
+        header_alg = jwt.get_unverified_header(token).get("alg", "")
+        if header_alg == "RS256":
+            # Asymmetric path: service key or tenant JWKS (custos/jwks.py).
+            # HS256 secrets are NEVER accepted for RS256-header tokens and
+            # vice versa — the confusion attack is structurally closed.
+            from custos.jwks import verify_rs256_token
+            payload = verify_rs256_token(token)
+        elif header_alg == "HS256":
+            if os.getenv("CUSTOS_ENV", "development").lower() == "production":
+                secret = os.getenv("CUSTOS_JWT_SECRET")
+                if not secret or secret == _DEV_DEFAULT_SECRET:
+                    # Fail-closed even in RS256 deployments: an unset/dev
+                    # shared secret must never silently accept HS256 tokens.
+                    raise jwt.InvalidTokenError(
+                        "HS256 rejected: shared secret unset or dev-default (production)"
+                    )
+            payload = jwt.decode(token, _JWT_SECRET, algorithms=["HS256"])
+        else:
+            raise jwt.InvalidTokenError(f"Unsupported algorithm: {header_alg!r}")
         client_id: str = payload.get("sub", "")
         if not client_id:
             raise HTTPException(status_code=401, detail="Token missing subject claim")
@@ -106,12 +144,18 @@ def validate_production_secrets() -> None:
     env = os.getenv("CUSTOS_ENV", "development").lower()
     if env != "production":
         return
-    secret = os.getenv("CUSTOS_JWT_SECRET")
-    if not secret or secret == _DEV_DEFAULT_SECRET:
-        raise RuntimeError(
-            "CUSTOS_JWT_SECRET is unset or set to the dev default while "
-            "CUSTOS_ENV=production. Set a strong unique secret (fail-closed)."
-        )
+    algorithm = (os.getenv("CUSTOS_JWT_ALGORITHM") or "HS256").upper()
+    if algorithm == "RS256":
+        from custos.jwks import validate_production_key
+        validate_production_key()  # explicit RSA key required (fail-closed)
+    else:
+        secret = os.getenv("CUSTOS_JWT_SECRET")
+        if not secret or secret == _DEV_DEFAULT_SECRET:
+            raise RuntimeError(
+                "CUSTOS_JWT_SECRET is unset or set to the dev default while "
+                "CUSTOS_ENV=production. Set a strong unique secret (fail-closed). "
+                "(Or switch to RS256: CUSTOS_JWT_ALGORITHM=RS256 + CUSTOS_JWT_PRIVATE_KEY.)"
+            )
 
 
 def auth_enabled() -> bool:
