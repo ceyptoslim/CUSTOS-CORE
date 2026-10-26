@@ -271,6 +271,7 @@ CUSTOS-CORE/
   fallback if the optional `opentelemetry` packages aren't installed.
 
 ## Planned (Not Yet Built)
+- Chain-head custody — external anchoring of audit chain heads (design: `docs/design/chain-head-custody.md`; companion red-proof class `custody`, pre-registered)
 - OPA integration to replace regex-based policy matching
 - Policy version registry with rollback
 - RS256 / JWKS auth for multi-tenant production use
