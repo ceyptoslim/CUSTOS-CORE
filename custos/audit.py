@@ -263,6 +263,17 @@ class AuditChain:
                 previous_hash = record.record_hash
             return True, "OK"
 
+    def head(self) -> tuple:
+        """(length, head_hash) of this chain, under the existing lock.
+
+        Read-only snapshot for the custody anchoring path; no writes, no
+        re-hashing — the hot path is untouched.
+        """
+        with self._lock:
+            if not self._records:
+                return 0, self.GENESIS_HASH
+            return len(self._records), self._records[-1].record_hash
+
     def get_records(self, client_id: Optional[str] = None) -> List[dict]:
         with self._lock:
             records = self._records
