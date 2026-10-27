@@ -273,7 +273,10 @@ class TSAAnchorSink(CustodySink):
             headers={"Content-Type": "application/timestamp-query"},
             method="POST",
         )
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        # The TSA URL is operator-configured infrastructure
+        # (CUSTOS_CUSTODY_TSA_URL), not attacker-controlled input — same
+        # trust posture as the execution adapter's configurable targets.
+        with urllib.request.urlopen(req, timeout=10) as resp:  # nosec B310
             token = resp.read()
         rel = os.path.join(anchor.tenant_id, f"epoch-{anchor.epoch}.tsr")
         path = os.path.join(self._dir, rel)
