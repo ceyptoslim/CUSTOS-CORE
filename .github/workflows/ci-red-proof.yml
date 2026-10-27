@@ -31,7 +31,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        sabotage: ["001-weaken-admin-auth", "002-invert-opa-deny", "003-weaken-action-gate"]
+        sabotage: ["001-weaken-admin-auth", "002-invert-opa-deny", "003-weaken-action-gate", "004-weaken-custody-verify"]
 
     steps:
       - uses: actions/checkout@v4
@@ -48,6 +48,12 @@ jobs:
         if: matrix.sabotage == '003-weaken-action-gate'
         run: |
           echo "94ed3ed624769d34978a94a8b5114cf2caab93ca8d6ab3b74ef90d1d6ef2f7e4  docs/red-proof-records/sabotage-003/DESIGN.md" | sha256sum -c -
+          echo "pre-registered design verified: frozen criteria match the pinned hash"
+
+      - name: Verify pinned pre-registered design (004)
+        if: matrix.sabotage == '004-weaken-custody-verify'
+        run: |
+          echo "1fa2b6a6f757411c0adaa669489309c74549f6c6b14bf916492cf07bacb3ca44  docs/red-proof-records/sabotage-custody/DESIGN.md" | sha256sum -c -
           echo "pre-registered design verified: frozen criteria match the pinned hash"
 
       - name: Control probe on clean build (003)
@@ -221,3 +227,40 @@ jobs:
             red-proof-probe-clean.json
             red-proof-probe-injected.json
           if-no-files-found: warn
+
+  custody-attacks:
+    name: Custody attack — ${{ matrix.attack }} must be DETECTED
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        attack: ["001-rewrite-backend", "002-truncate-tail", "003-suppress-anchor"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Verify pinned pre-registered design (custody)
+        run: |
+          echo "1fa2b6a6f757411c0adaa669489309c74549f6c6b14bf916492cf07bacb3ca44  docs/red-proof-records/sabotage-custody/DESIGN.md" | sha256sum -c -
+          echo "pre-registered design verified: frozen criteria match the pinned hash"
+
+      - name: "Execute custody attack (expected: DETECTED)"
+        run: |
+          GITHUB_RUN_ID=${{ github.run_id }} \
+            python3 scripts/red-proof/custody_attack.py ${{ matrix.attack }} > custody-attack-observation.json
+          cat custody-attack-observation.json
+
+      - name: Upload custody attack evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: custody-attack-records-${{ matrix.attack }}
+          path: custody-attack-observation.json
+          if-no-files-found: error
