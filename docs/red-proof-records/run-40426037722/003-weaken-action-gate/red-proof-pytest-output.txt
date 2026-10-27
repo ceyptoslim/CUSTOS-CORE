@@ -1,0 +1,92 @@
+.F.........................F............................................ [ 12%]
+...........................................s............................ [ 25%]
+...........................................sssssssssssssssssssssss...... [ 38%]
+..........................ssssssssssss.................................. [ 51%]
+........................................................................ [ 63%]
+........................................................................ [ 76%]
+........................................................................ [ 89%]
+...........................................................              [100%]
+=================================== FAILURES ===================================
+___________ TestFailClosed.test_unregistered_tenant_denies_all_tools ___________
+tests/test_action_gate.py:43: in test_unregistered_tenant_denies_all_tools
+    assert result.decision.allowed is False
+E   AssertionError: assert True is False
+E    +  where True = PolicyResult(allowed=True, action=<PolicyAction.ALLOW: 'allow'>, triggered_rule=None, reason='No policy violations detected').allowed
+E    +    where PolicyResult(allowed=True, action=<PolicyAction.ALLOW: 'allow'>, triggered_rule=None, reason='No policy violations detected') = ActionGateResult(decision=PolicyResult(allowed=True, action=<PolicyAction.ALLOW: 'allow'>, triggered_rule=None, reason='No policy violations detected'), audit_record_hash='13ae05c51f03427ae972a3074ee91dec529311d8b1573bb4b9ae394966c7193e').decision
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-10-27T00:23:29Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+{"timestamp": "2026-10-27T00:23:29Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+________ TestEvaluateActionAPI.test_endpoint_denies_unallowlisted_tool _________
+tests/test_action_gate.py:142: in test_endpoint_denies_unallowlisted_tool
+    assert body["allowed"] is False
+E   assert True is False
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-10-27T00:23:29Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+----------------------------- Captured stdout call -----------------------------
+{"otel.span": {"trace_id": "7c0660a4eeb74618a771dab155895434", "span_id": "ce80181c6abc4726", "name": "custos.evaluate_action", "start_time": 1793060609.1870306, "end_time": 1793060609.1870987, "duration_ms": 0.07, "status": "OK", "attributes": {"client_id": "default", "tenant_id": "default", "tool": "shell"}}}
+=============================== warnings summary ===============================
+../../../../../opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/test_admin_auth.py: 1 warning
+tests/test_api.py: 1 warning
+tests/test_auth.py: 8 warnings
+tests/test_jwks.py: 2 warnings
+  /opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/jwt/api_jwt.py:149: InsecureKeyLengthWarning: The HMAC key is 31 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+    return self._jws.encode(
+
+tests/test_admin_auth.py::TestAdminEndpointsRequireAuth::test_valid_token_allows_audit_read
+tests/test_auth.py::TestTokenCreation::test_token_contains_correct_subject
+tests/test_auth.py::TestTokenCreation::test_token_has_expiry
+tests/test_auth.py::TestAuthEnforcement::test_expired_token_returns_401
+tests/test_auth.py::TestAuthEnforcement::test_valid_token_allows_request
+tests/test_auth.py::TestAuthEnforcement::test_valid_token_on_clean_content_returns_allow
+tests/test_auth.py::TestAuthEnforcement::test_cross_client_access_denied
+tests/test_auth.py::TestAuthEnforcement::test_same_client_access_allowed
+  /opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/jwt/api_jwt.py:370: InsecureKeyLengthWarning: The HMAC key is 31 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+    decoded = self.decode_complete(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_custody.py:328: CUSTOS_CUSTODY_TSA_URL not set — TSA integration tests require a running RFC 3161 timestamping service
+SKIPPED [1] tests/test_mineos_integration.py:73: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:77: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:81: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:85: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:90: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:106: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:113: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:120: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:125: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:152: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:161: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:167: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:173: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:211: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:217: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:222: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:235: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:241: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:260: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:273: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:280: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:285: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:293: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_opa_integration.py:37: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:42: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:53: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:61: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:69: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:77: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:86: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:99: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:112: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:123: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:136: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:150: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+FAILED tests/test_action_gate.py::TestFailClosed::test_unregistered_tenant_denies_all_tools - AssertionError: assert True is False
+ +  where True = PolicyResult(allowed=True, action=<PolicyAction.ALLOW: 'allow'>, triggered_rule=None, reason='No policy violations detected').allowed
+ +    where PolicyResult(allowed=True, action=<PolicyAction.ALLOW: 'allow'>, triggered_rule=None, reason='No policy violations detected') = ActionGateResult(decision=PolicyResult(allowed=True, action=<PolicyAction.ALLOW: 'allow'>, triggered_rule=None, reason='No policy violations detected'), audit_record_hash='13ae05c51f03427ae972a3074ee91dec529311d8b1573bb4b9ae394966c7193e').decision
+FAILED tests/test_action_gate.py::TestEvaluateActionAPI::test_endpoint_denies_unallowlisted_tool - assert True is False
+2 failed, 525 passed, 36 skipped, 21 warnings in 4.58s

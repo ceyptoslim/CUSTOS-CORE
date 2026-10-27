@@ -1,0 +1,20 @@
+{
+  "allowed": false,
+  "audit_record_hash": "d634d407a2205be260df007f96d2e0cbc8bfaaf5d744d43662f91aeb344a0f30",
+  "git_commit_sha": "0fc516e21e8018e15be146cefeff3bd3d282c50f",
+  "git_status_porcelain": "?? red-proof-probe-clean.json",
+  "injection_diff_sha256": null,
+  "policy_action": "deny",
+  "probe_phase": "clean",
+  "probe_script_sha256": "ae197f3ecee8a04df256e0e40f2ae9d0e83f9eb9672c83ece64b4152cd5a1fa2",
+  "probed_at_utc": "2026-10-27T00:23:25Z",
+  "reason": "Tool 'payment_transfer' is not in tenant 'probe_tenant_003's allowlist. Deny-by-default: register tools explicitly via ActionGate.register_tools().",
+  "registered_tools": [
+    "weather_lookup"
+  ],
+  "requested_tool": "payment_transfer",
+  "requested_tool_registered": false,
+  "run_id": "40426037722",
+  "tenant_id": "probe_tenant_003",
+  "triggered_rule": "action_gate_tool_not_allowlisted"
+}
