@@ -1,0 +1,64 @@
+{
+  "record_version": 3,
+  "identity": {
+    "run_id": "40426037722",
+    "attack_id": "003-suppress-anchor",
+    "commit_sha": "0fc516e21e8018e15be146cefeff3bd3d282c50f",
+    "attack_script_sha256": "febd378f0ba6b58097ac3958c44ec7785fe00862d68cc8c7b518835fbc1e1dd1",
+    "pre_registered_design": "docs/red-proof-records/sabotage-custody/DESIGN.md"
+  },
+  "time": {
+    "executed_at_utc": "2026-10-27T00:23:21Z"
+  },
+  "observations": {
+    "enforcement_error": null,
+    "health_during_outage": {
+      "sinks": [
+        "git"
+      ],
+      "sinks_healthy": false,
+      "tenants": {
+        "default": {
+          "epoch": 1,
+          "pending_gap": true,
+          "anchor_age_seconds": 0.085622,
+          "stale": false
+        }
+      },
+      "last_error": "git: Command '['git', 'add', 'anchors/default/epoch-2.json']' returned non-zero exit status 128."
+    },
+    "anchors_after_recovery": 1,
+    "gap_object": {
+      "attempts": 1,
+      "first_attempt_utc": "2026-10-27T00:23:21Z",
+      "from_epoch": 2,
+      "last_attempt_utc": "2026-10-27T00:23:21Z"
+    },
+    "anchor_repo": "/tmp/custody-attack-9t27p40y/anchor-repo"
+  },
+  "verdict": {
+    "expected": {
+      "enforcement_unaffected": true,
+      "gap_recorded_while_down": true,
+      "gap_carried_in_band_by_next_anchor": true,
+      "gap_cleared_after_recovery": true
+    },
+    "actual": {
+      "enforcement_unaffected": true,
+      "gap_recorded_while_down": true,
+      "gap_carried_in_band_by_next_anchor": true,
+      "gap_cleared_after_recovery": true
+    },
+    "verdict": "DETECTED",
+    "rule": {
+      "id": "custody-attack-verdict-rule",
+      "version": 1,
+      "mapping": "actual == expected -> DETECTED; else FAULTY-GREEN"
+    }
+  },
+  "provenance": {
+    "workflow": "ci-red-proof (custody-attacks)",
+    "repo": "ceyptoslim/CUSTOS-CORE",
+    "runner": "true"
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "record_version": 3,
+  "identity": {
+    "run_id": "40426037722",
+    "attack_id": "002-truncate-tail",
+    "commit_sha": "0fc516e21e8018e15be146cefeff3bd3d282c50f",
+    "attack_script_sha256": "febd378f0ba6b58097ac3958c44ec7785fe00862d68cc8c7b518835fbc1e1dd1",
+    "pre_registered_design": "docs/red-proof-records/sabotage-custody/DESIGN.md"
+  },
+  "time": {
+    "executed_at_utc": "2026-10-27T00:23:23Z"
+  },
+  "observations": {
+    "internal_verify_message": "OK",
+    "records_surviving": 8,
+    "records_anchored": 12,
+    "external_detail": "store holds 8 records; anchors cover 12 (truncation detected)",
+    "external_verdicts": {
+      "P1_record_chain_consistency": "ESTABLISHED",
+      "P3_anchor_chain_integrity": "ESTABLISHED",
+      "P2_anchored_heads_match_store": "CONTRADICTION",
+      "P4_store_completeness": "CONTRADICTION"
+    },
+    "anchor_repo": "/tmp/custody-attack-1_ocltj8/anchor-repo"
+  },
+  "verdict": {
+    "expected": {
+      "internal_verify": true,
+      "P4_store_completeness": "CONTRADICTION",
+      "overall": "CONTRADICTION"
+    },
+    "actual": {
+      "internal_verify": true,
+      "P4_store_completeness": "CONTRADICTION",
+      "overall": "CONTRADICTION"
+    },
+    "verdict": "DETECTED",
+    "rule": {
+      "id": "custody-attack-verdict-rule",
+      "version": 1,
+      "mapping": "actual == expected -> DETECTED; else FAULTY-GREEN"
+    }
+  },
+  "provenance": {
+    "workflow": "ci-red-proof (custody-attacks)",
+    "repo": "ceyptoslim/CUSTOS-CORE",
+    "runner": "true"
+  }
+}

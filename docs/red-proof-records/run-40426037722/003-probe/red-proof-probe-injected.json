@@ -1,0 +1,20 @@
+{
+  "allowed": true,
+  "audit_record_hash": "78698aa3b1dd39a5eb8c28259b16ad71a17e8d4f9d4e5b0235acb932346c79a3",
+  "git_commit_sha": "0fc516e21e8018e15be146cefeff3bd3d282c50f",
+  "git_status_porcelain": "M custos/action_gate.py\n?? red-proof-injection-diff.patch\n?? red-proof-probe-clean.json\n?? red-proof-probe-injected.json",
+  "injection_diff_sha256": "74456f767f1cba7c70c98f2705ec2873b92552f5000ba7777c6dbccfb8d60838",
+  "policy_action": "allow",
+  "probe_phase": "injected",
+  "probe_script_sha256": "ae197f3ecee8a04df256e0e40f2ae9d0e83f9eb9672c83ece64b4152cd5a1fa2",
+  "probed_at_utc": "2026-10-27T00:23:26Z",
+  "reason": "No policy violations detected",
+  "registered_tools": [
+    "weather_lookup"
+  ],
+  "requested_tool": "payment_transfer",
+  "requested_tool_registered": false,
+  "run_id": "40426037722",
+  "tenant_id": "probe_tenant_003",
+  "triggered_rule": null
+}
