@@ -36,7 +36,7 @@ import threading
 import urllib.request
 import uuid
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, asdict, field
+from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional, Tuple
 
