@@ -31,7 +31,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        sabotage: ["001-weaken-admin-auth", "002-invert-opa-deny", "003-weaken-action-gate", "004-weaken-custody-verify"]
+        sabotage: ["001-weaken-admin-auth", "002-invert-opa-deny", "003-weaken-action-gate", "004-weaken-custody-verify", "005-weaken-citation"]
 
     steps:
       - uses: actions/checkout@v4
@@ -54,6 +54,14 @@ jobs:
         if: matrix.sabotage == '004-weaken-custody-verify'
         run: |
           echo "1fa2b6a6f757411c0adaa669489309c74549f6c6b14bf916492cf07bacb3ca44  docs/red-proof-records/sabotage-custody/DESIGN.md" | sha256sum -c -
+      - name: Verify pinned pre-registered design (004)
+        if: matrix.sabotage == '004-weaken-custody-verify'
+        run: |
+          echo "1fa2b6a6f757411c0adaa669489309c74549f6c6b14bf916492cf07bacb3ca44  docs/red-proof-records/sabotage-custody/DESIGN.md" | sha256sum -c -
+      - name: Verify pinned pre-registered design (005)
+        if: matrix.sabotage == '005-weaken-citation'
+        run: |
+          echo "8709bf77d98f87b90f4cebd1f8c5dba98b8f7d81617b192f3f4fb4ab6851ac5e  docs/red-proof-records/sabotage-citation/DESIGN.md" | sha256sum -c -
           echo "pre-registered design verified: frozen criteria match the pinned hash"
 
       - name: Control probe on clean build (003)
