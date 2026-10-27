@@ -9,6 +9,29 @@ open" format — no claims beyond what the code and tests demonstrate.
 
 ## [Unreleased]
 
+### Security — Red-proof class `custody` (pre-registered, infrastructure)
+- `docs/red-proof-records/sabotage-custody/DESIGN.md`: FROZEN pre-registration
+  for the custody class, SHA-256 pinned in the workflow. Part A:
+  `004-weaken-custody-verify` suite-sabotage — weaken the P2
+  anchored-head reconciliation; suite must go RED (extends the
+  faulty-green matrix to the custody module; disclosed weaker-blindness
+  position documented). Part B: attack class — the anchors must catch
+  what the internal chain cannot.
+- `scripts/ci-sabotage/004-weaken-custody-verify.sh`: known-bad patch with
+  integrity guard, mirroring classes 001-003.
+- `scripts/red-proof/custody_attack.py`: executes the three pre-registered
+  attacks at CI scale on a real deployment shape (SQLite chain +
+  GitAnchorSink on a real git repo): 001-rewrite-backend (internal verify
+  GREEN on a consistently rewritten store, external P2 CONTRADICTION),
+  002-truncate-tail (P4 CONTRADICTION), 003-suppress-anchor (gap recorded
+  in-band, enforcement unaffected — fail-visible). Job FAILS if any
+  expected verdict does not occur (faulty-green for custody).
+- Workflow: `004-weaken-custody-verify` joins the sabotage matrix;
+  new `custody-attacks` job (DESIGN.md hash verified before execution;
+  evidence records uploaded with if:always()).
+- First official execution of the class is the next workflow_dispatch run;
+  the run's records then freeze as the observation set.
+
 ### Security — Chain-head custody (docs/design/chain-head-custody.md, PR #60 design)
 - `custos/custody.py`: external custody of audit chain heads — per-tenant
   hash-chained anchors (epoch, chain_length, head_hash) emitted every
