@@ -1,0 +1,6 @@
+9354ca149f95fee7e8c95dce0d0b2b8682bf5d93d8663f9a66b5a385d3393997  README.md
+c78ddc687ff905f75d1f11f50283a2eff95c0e6a436e86a524a670e0d2dea00a  005-weaken-citation/red-proof-evidence.json
+4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865  005-weaken-citation/red-proof-exit-code.txt
+03dd4156ac8a047a9c895cd7487ebc2e606fbb6537722708ae10b1052e6cb600  005-weaken-citation/red-proof-injection-diff.patch
+b827abcabef43280e8a600c416d5087926c500ad331abf62d796b6f00d73334d  005-weaken-citation/red-proof-junit.xml
+322cfa33f7aa9458f85b0f748c5e82f6bd5543808ee35c02256f021c355f591f  005-weaken-citation/red-proof-pytest-output.txt
