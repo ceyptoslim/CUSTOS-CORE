@@ -205,6 +205,7 @@ CUSTOS-CORE/
 │   ├── policy_diff.py               # Compare decisions under current vs. proposed rules
 │   ├── rate_limiter.py              # Per-client quota enforcement (sliding windows)
 │   ├── audit.py                     # Hash-chained audit ledger, pluggable backends
+│   ├── custody.py                   # External chain-head custody: anchors, sinks, external re-walk
 │   ├── replay.py                    # Reproduce a historical decision by record hash
 │   ├── snapshot.py                  # Compliance-export snapshots of the audit chain
 │   ├── tenant.py                    # TenantManager — per-tenant isolation + policy restore
@@ -271,7 +272,7 @@ CUSTOS-CORE/
   fallback if the optional `opentelemetry` packages aren't installed.
 
 ## Planned (Not Yet Built)
-- Chain-head custody — external anchoring of audit chain heads (design: `docs/design/chain-head-custody.md`; companion red-proof class `custody`, pre-registered)
+- Chain-head custody — implemented (`custos/custody.py`, disabled by default); design: `docs/design/chain-head-custody.md`; red-proof class `custody` pre-registered
 - OPA integration to replace regex-based policy matching
 - Policy version registry with rollback
 - RS256 / JWKS auth for multi-tenant production use

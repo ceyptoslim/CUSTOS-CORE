@@ -1,6 +1,6 @@
 # Chain-Head Custody: External Anchoring for the Audit Chain
 
-**Status:** Design (pre-implementation). Companion red-proof class: `custody` (planned).
+**Status:** Implemented — `custos/custody.py`, disabled by default. Companion red-proof class `custody`: pre-registered, execution pending.
 **Scope:** Deployment-time external custody of audit chain heads. No change to the
 decision hot path beyond a head-read under the existing lock.
 

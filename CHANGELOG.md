@@ -9,6 +9,33 @@ open" format — no claims beyond what the code and tests demonstrate.
 
 ## [Unreleased]
 
+### Security — Chain-head custody (docs/design/chain-head-custody.md, PR #60 design)
+- `custos/custody.py`: external custody of audit chain heads — per-tenant
+  hash-chained anchors (epoch, chain_length, head_hash) emitted every
+  `CUSTOS_CUSTODY_ANCHOR_N` records / `CUSTOS_CUSTODY_ANCHOR_T` seconds.
+- Sinks: `GitAnchorSink` (append-only external git repo — append rights,
+  not history-rewrite rights) and `TSAAnchorSink` (RFC 3161 timestamps,
+  token stored as opaque bytes, verified externally via
+  `openssl ts -verify`). Pluggable `CustodySink` protocol.
+- `verify_custody()`: the external re-walk — recomputes the record chain
+  from a backend copy and reconciles it against the external anchor log,
+  emitting ESTABLISHED / CANNOT ESTABLISH / CONTRADICTION per proposition.
+  A consistent rewrite-and-rehash of the store passes internal
+  verification and CONTRADICTS the anchors (P2) — the boundary the
+  internal chain cannot draw on its own.
+- Fail-visible, not fail-blocking: sink outages never block enforcement;
+  gaps are recorded in the next successful anchor and surfaced via
+  `/ready` (ok / disabled / pending / stale / fail — reporting only,
+  never gates readiness) and `/metrics`
+  (`custos_custody_enabled`, `custos_custody_sink_health`,
+  `custos_custody_anchor_age_seconds`).
+- Additive and disabled by default (`CUSTOS_CUSTODY_ENABLED`); no hot-path
+  changes beyond a lock-scoped `AuditChain.head()` read.
+- Companion red-proof class `custody` pre-registered in the design
+  (custody-001 rewrite-backend, custody-002 truncate-tail,
+  custody-003 suppress-anchor); execution to follow the established
+  DESIGN.md-frozen discipline.
+
 ### Security — RS256/JWKS authentication (PR #57)
 - Dual-algorithm JWT verification: HS256 backward compatible, RS256
   production path (`CUSTOS_JWT_ALGORITHM=RS256` + `CUSTOS_JWT_PRIVATE_KEY`,

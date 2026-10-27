@@ -63,6 +63,7 @@ from custos.action_gate import ActionGate, ActionRequest
 from custos.tracing import tracer
 from custos.execution import HTTPExecutionAdapter
 from custos.validation import InputValidator
+from custos.custody import AnchorManager, build_custody_from_env
 
 VERSION = "1.3.3"
 
@@ -79,6 +80,23 @@ policy_store = PolicyStore()
 tenant_manager = TenantManager(policy_store=policy_store)
 action_gate = ActionGate(tenant_manager)
 validator = InputValidator()
+
+# ---------------------------------------------------------------------------
+# Chain-head custody (docs/design/chain-head-custody.md) — additive,
+# disabled by default (CUSTOS_CUSTODY_ENABLED). Fail-visible: a sink
+# outage never blocks enforcement; gaps are recorded and surfaced.
+# ---------------------------------------------------------------------------
+
+def _tenant_chains() -> dict:
+    out = {}
+    for tenant_id in tenant_manager.list_tenants():
+        ctx = tenant_manager.get(tenant_id)
+        if ctx is not None:
+            out[tenant_id] = ctx.audit_chain
+    return out
+
+
+custody_manager: AnchorManager | None = build_custody_from_env(_tenant_chains)
 policy_differ = PolicyDiffer()
 
 # Execution adapter — configurable target allowlist via CUSTOS_TARGET_ALLOWLIST
@@ -156,8 +174,13 @@ async def lifespan(app: FastAPI):
     # mode, a missing explicit private key.
     validate_production_secrets()
     validate_production_key()
+    if custody_manager is not None:
+        custody_manager.start()
+        logger.info("custos.custody.enabled")
     logger.info("custos.startup", extra={"version": VERSION})
     yield
+    if custody_manager is not None:
+        custody_manager.stop()
     logger.info("custos.shutdown")
 
 
@@ -200,6 +223,24 @@ async def health():
     )
 
 
+def custody_check_status() -> str:
+    """Custody state for /ready: ok / disabled / pending / stale / fail.
+
+    Fail-visible reporting only — a stale or failed sink surfaces here but
+    never flips overall readiness (enforcement is never blocked on custody).
+    """
+    if custody_manager is None:
+        return "disabled"
+    h = custody_manager.health()
+    if not h["sinks_healthy"]:
+        return "fail"
+    if not h["tenants"]:
+        return "pending"
+    if any(t.get("stale") or t.get("pending_gap") for t in h["tenants"].values()):
+        return "stale"
+    return "ok"
+
+
 @app.get("/ready", response_model=ReadyResponse)
 async def ready():
     try:
@@ -219,9 +260,13 @@ async def ready():
             "tenant_manager": False,
         }
     all_ready = all(checks.values())
+    checks_out = {k: "ok" if v else "fail" for k, v in checks.items()}
+    # Chain-head custody: fail-visible surface. Reports state; per the
+    # design (fail-visible, not fail-blocking) it never gates readiness.
+    checks_out["custody"] = custody_check_status()
     return ReadyResponse(
         status="ready" if all_ready else "not_ready",
-        checks={k: "ok" if v else "fail" for k, v in checks.items()},
+        checks=checks_out,
     )
 
 
@@ -255,7 +300,25 @@ async def metrics():
         "# HELP custos_uptime_seconds Seconds since startup",
         "# TYPE custos_uptime_seconds gauge",
         f"custos_uptime_seconds {uptime}",
+        "# HELP custos_custody_enabled Chain-head custody enabled",
+        "# TYPE custos_custody_enabled gauge",
+        f"custos_custody_enabled {1 if custody_manager is not None else 0}",
     ]
+    if custody_manager is not None:
+        h = custody_manager.health()
+        ages = [
+            t["anchor_age_seconds"]
+            for t in h["tenants"].values()
+            if t["anchor_age_seconds"] is not None
+        ]
+        lines += [
+            "# HELP custos_custody_sink_health All custody sinks healthy",
+            "# TYPE custos_custody_sink_health gauge",
+            f"custos_custody_sink_health {1 if h['sinks_healthy'] else 0}",
+            "# HELP custos_custody_anchor_age_seconds Age of newest anchor",
+            "# TYPE custos_custody_anchor_age_seconds gauge",
+            f"custos_custody_anchor_age_seconds {max(ages) if ages else -1}",
+        ]
     return "\n".join(lines) + "\n"
 
 

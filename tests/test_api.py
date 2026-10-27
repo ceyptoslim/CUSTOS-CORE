@@ -46,6 +46,11 @@ class TestReadyEndpoint:
     def test_all_checks_pass(self, client):
         checks = client.get("/ready").json()["checks"]
         for name, status in checks.items():
+            if name == "custody":
+                # Chain-head custody is additive and disabled by default;
+                # "disabled" is its honest state, not a failure.
+                assert status in ("ok", "disabled")
+                continue
             assert status == "ok", f"Check {name} failed"
 
 
