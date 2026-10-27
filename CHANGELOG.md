@@ -9,6 +9,19 @@ open" format — no claims beyond what the code and tests demonstrate.
 
 ## [Unreleased]
 
+### Documentation — benchmark receipt committed
+- `docs/benchmarks/bench-oct24.json`: the benchmark record backing the
+  publicly cited "1.47ms p50" (hs256 sequential, 1.475ms p50 / 1.679ms p95,
+  300 requests, zero errors) and "1,122 rps" (16-worker concurrent
+  throughput) figures, generated 2026-10-25T01:00Z, single uvicorn replica,
+  4-vCPU Linux sandbox. Includes rs256 mode. Committed so every public
+  performance claim is checkable against the artifact, per the same
+  receipts discipline as the red-proof records.
+- `docs/benchmarks/README.md`: record provenance, environment, and the
+  exact harness invocation for reproduction (`scripts/benchmark_evaluate.py`,
+  already in-repo). Numbers vary with hardware; the committed record is the
+  receipt for its stated environment, not a hardware-independent guarantee.
+
 ### Security — Red-proof class `custody` (pre-registered, infrastructure)
 - `docs/red-proof-records/sabotage-custody/DESIGN.md`: FROZEN pre-registration
   for the custody class, SHA-256 pinned in the workflow. Part A:

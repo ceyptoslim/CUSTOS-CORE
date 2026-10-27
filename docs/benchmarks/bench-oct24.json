@@ -1,0 +1,95 @@
+{
+  "benchmark_version": 1,
+  "generated_at_utc": "2026-10-25T01:00:27.667112+00:00",
+  "environment": {
+    "python": "3.11.15",
+    "platform": "Linux-4.19.0-gvisor-x86_64-with-glibc2.36",
+    "cpu_count": 4,
+    "server": "uvicorn (localhost, single replica, keep-alive)"
+  },
+  "config": {
+    "warmup_requests": 100,
+    "sequential_requests": 300,
+    "concurrent_workers": 16,
+    "requests_per_worker": 100,
+    "content_mix": "alternating ALLOW/DENY policy match"
+  },
+  "modes": {
+    "hs256": {
+      "auth": "hs256",
+      "sequential": {
+        "latency": {
+          "n": 300,
+          "p50_ms": 1.475,
+          "p95_ms": 1.679,
+          "p99_ms": 2.004,
+          "max_ms": 2.51,
+          "mean_ms": 1.497
+        },
+        "verdicts": {
+          "ALLOW": 150,
+          "DENY": 150
+        },
+        "errors": 0
+      },
+      "concurrent": {
+        "workers": 16,
+        "requests": 1600,
+        "wall_seconds": 1.426,
+        "throughput_rps": 1122.3,
+        "latency": {
+          "n": 1600,
+          "p50_ms": 13.523,
+          "p95_ms": 19.106,
+          "p99_ms": 31.806,
+          "max_ms": 47.209,
+          "mean_ms": 13.961
+        },
+        "verdicts": {
+          "ALLOW": 800,
+          "DENY": 800
+        },
+        "errors": 0
+      },
+      "all_requests_ok": true
+    },
+    "rs256": {
+      "auth": "rs256",
+      "sequential": {
+        "latency": {
+          "n": 300,
+          "p50_ms": 1.655,
+          "p95_ms": 1.983,
+          "p99_ms": 2.216,
+          "max_ms": 2.576,
+          "mean_ms": 1.697
+        },
+        "verdicts": {
+          "ALLOW": 150,
+          "DENY": 150
+        },
+        "errors": 0
+      },
+      "concurrent": {
+        "workers": 16,
+        "requests": 1600,
+        "wall_seconds": 1.659,
+        "throughput_rps": 964.4,
+        "latency": {
+          "n": 1600,
+          "p50_ms": 15.681,
+          "p95_ms": 21.949,
+          "p99_ms": 44.359,
+          "max_ms": 55.889,
+          "mean_ms": 16.36
+        },
+        "verdicts": {
+          "ALLOW": 800,
+          "DENY": 800
+        },
+        "errors": 0
+      },
+      "all_requests_ok": true
+    }
+  }
+}
