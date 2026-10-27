@@ -41,6 +41,10 @@ import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional
 
+from custos.policy_citation import (
+    canonical_policy_bytes,
+    policy_digest as compute_policy_digest,
+)
 from custos.policy_engine import PolicyAction, PolicyResult
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -133,16 +137,73 @@ _DANGEROUS_COMMAND_RULES: list[tuple[str, "re.Pattern[str]", str]] = [
 class ActionGate:
     """Deny-by-default pre-flight gate for proposed agent actions."""
 
-    def __init__(self, tenant_manager: "TenantManager"):
+    def __init__(self, tenant_manager: "TenantManager", custody=None):
         self._tm = tenant_manager
         self._tool_allowlists: dict[str, set[str]] = {}
+        # Policy-commit citation (docs/design/policy-commit-citation.md):
+        # every emitted record cites the digest of the in-force policy set.
+        self._custody = custody
+        self._last_anchored_digest: dict[str, str] = {}
+        # R5 hot-path cache: keyed by content (tools fingerprint + the
+        # engine's mutation-invalidated rules digest), so the very next
+        # record after any policy change still cites the new digest while
+        # steady-state emission is one cached read.
+        self._digest_cache: dict[str, tuple] = {}
 
     def register_tools(self, tenant_id: str, tools: "set[str] | list[str]") -> None:
         """Explicitly allowlist tools for a tenant. No registration = deny all."""
         self._tool_allowlists[tenant_id] = set(tools)
+        self._digest_cache.pop(tenant_id, None)  # in-force set changed
 
     def list_tools(self, tenant_id: str) -> "set[str]":
         return set(self._tool_allowlists.get(tenant_id, set()))
+
+    def set_custody(self, custody) -> None:
+        """Attach the custody manager for policy-commit anchoring (optional)."""
+        self._custody = custody
+
+    def _cited_policy_digest(self, tenant_id: str, ctx) -> str:
+        """Digest of the exact in-force policy set enforcement consults.
+
+        One measured operation on the enforcement path (R2): the digest is
+        computed from the same structures the decision read — the tool
+        allowlist and the tenant content rules — at decision time.
+        """
+        tools = frozenset(self._tool_allowlists.get(tenant_id, set()))
+        key = (tools, ctx.policy_engine.rules_digest)
+        cached = self._digest_cache.get(tenant_id)
+        if cached is not None and cached[0] == key:
+            return cached[1]
+        dg = compute_policy_digest(tools, ctx.policy_engine.rules)
+        self._digest_cache[tenant_id] = (key, dg)
+        return dg
+
+    def _maybe_anchor_policy_commit(
+        self, tenant_id: str, ctx, digest: str
+    ) -> None:
+        """First citation of a new digest anchors its policy commit (R3).
+
+        Fail-visible, never fail-blocking: a sink outage leaves the commit
+        unanchored and the external re-walk reports the citations as
+        unanchored (CONTRADICTION). Retried on the next evaluation.
+        """
+        if self._custody is None:
+            return
+        if self._last_anchored_digest.get(tenant_id) == digest:
+            return
+        canonical = canonical_policy_bytes(
+            self._tool_allowlists.get(tenant_id, set()),
+            ctx.policy_engine.rules,
+        ).decode("utf-8")
+        try:
+            self._custody.anchor_policy_commit(tenant_id, digest, canonical)
+            if self._custody.drain_policy_commits():
+                # Mark only when the commit actually landed; a failed
+                # anchor stays unmarked and retries on the next evaluation,
+                # while the gap surfaces through the external re-walk.
+                self._last_anchored_digest[tenant_id] = digest
+        except Exception:  # noqa: BLE001 — fail-visible, never fail-blocking
+            pass
 
     def _deny(self, rule: str, reason: str) -> PolicyResult:
         return PolicyResult(
@@ -163,6 +224,13 @@ class ActionGate:
 
         # 1. Fail-closed: unknown tenant -> deny, no ungoverned evaluation.
         ctx = self._tm.get_strict(tenant_id)
+        # R2: cited policy digest — computed at emission on the enforcement
+        # path, from the same structures the decision consults.
+        cited_digest = (
+            self._cited_policy_digest(tenant_id, ctx) if ctx is not None else None
+        )
+        if ctx is not None:
+            self._maybe_anchor_policy_commit(tenant_id, ctx, cited_digest)
         if ctx is None:
             decision = self._deny(
                 "action_gate_unknown_tenant",
@@ -183,6 +251,8 @@ class ActionGate:
                 reason=decision.reason,
                 content=blob,
                 triggered_rule=decision.triggered_rule,
+                policy_digest=cited_digest,
+                tenant_id=tenant_id,
             )
             return ActionGateResult(decision=decision, audit_record_hash=record.record_hash)
 
@@ -196,6 +266,8 @@ class ActionGate:
                     reason=decision.reason,
                     content=blob,
                     triggered_rule=decision.triggered_rule,
+                    policy_digest=cited_digest,
+                    tenant_id=tenant_id,
                 )
                 return ActionGateResult(decision=decision, audit_record_hash=record.record_hash)
 
@@ -209,5 +281,7 @@ class ActionGate:
             reason=decision.reason,
             content=blob,
             triggered_rule=decision.triggered_rule,
+            policy_digest=cited_digest,
+            tenant_id=tenant_id,
         )
         return ActionGateResult(decision=decision, audit_record_hash=record.record_hash)

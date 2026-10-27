@@ -35,6 +35,8 @@ class AuditRecord:
     record_hash: str = ""
     previous_hash: str = ""
     trace_id: Optional[str] = None
+    policy_digest: Optional[str] = None
+    tenant_id: Optional[str] = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -229,6 +231,8 @@ class AuditChain:
         content: str,
         triggered_rule: Optional[str] = None,
         trace_id: Optional[str] = None,
+        policy_digest: Optional[str] = None,
+        tenant_id: Optional[str] = None,
     ) -> AuditRecord:
         with self._lock:
             previous_hash = (
@@ -243,6 +247,8 @@ class AuditChain:
                 content_hash=self._hash_content(content),
                 previous_hash=previous_hash,
                 trace_id=trace_id,
+                policy_digest=policy_digest,
+                tenant_id=tenant_id,
             )
             entry.record_hash = self._compute_record_hash(entry, previous_hash)
             self._records.append(entry)
@@ -303,7 +309,7 @@ class AuditChain:
 
     @staticmethod
     def _compute_record_hash(record: AuditRecord, previous_hash: str) -> str:
-        payload = json.dumps({
+        fields = {
             "timestamp": record.timestamp,
             "client_id": record.client_id,
             "action": record.action,
@@ -311,5 +317,14 @@ class AuditChain:
             "reason": record.reason,
             "content_hash": record.content_hash,
             "previous_hash": previous_hash,
-        }, sort_keys=True)
-        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+        }
+        # Citation covered by the hash (R2): included only when set, so
+        # legacy records — emitted before policy-commit citation — hash
+        # byte-identically to the original preimage and old chains verify.
+        if record.policy_digest:
+            fields["policy_digest"] = record.policy_digest
+        if record.tenant_id:
+            fields["tenant_id"] = record.tenant_id
+        return hashlib.sha256(
+            json.dumps(fields, sort_keys=True).encode("utf-8")
+        ).hexdigest()

@@ -132,6 +132,7 @@ _POST_VALIDATION_RULES = {"block_pii_credit_card"}
 
 class PolicyEngine:
     def __init__(self, rules: Optional[List[PolicyRule]] = None):
+        self._rules_digest_cache: Optional[str] = None
         self._rules = rules if rules is not None else list(DEFAULT_RULES)
 
     def evaluate(self, content: str) -> PolicyResult:
@@ -181,6 +182,25 @@ class PolicyEngine:
 
     def add_rule(self, rule: PolicyRule) -> None:
         self._rules.append(rule)
+        self._rules_digest_cache = None  # in-force set changed
+
+    @property
+    def rules(self) -> List[PolicyRule]:
+        """In-force rule set (public read for policy-commit citation)."""
+        return list(self._rules)
+
+    @property
+    def rules_digest(self) -> str:
+        """Cached digest of the canonical in-force rule set.
+
+        Cache is content-keyed via invalidation at the mutation point:
+        add_rule is the only mutator, and it clears the cache. The digest
+        changes exactly when the canonical rule set changes.
+        """
+        if self._rules_digest_cache is None:
+            from custos.policy_citation import rules_canonical_digest
+            self._rules_digest_cache = rules_canonical_digest(self._rules)
+        return self._rules_digest_cache
 
     @property
     def rule_count(self) -> int:
