@@ -28,6 +28,7 @@ Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0)
 Commercial license available upon request.
 """
 
+import collections
 import hashlib
 import json
 import os
@@ -93,6 +94,51 @@ class AnchorRecord:
             anchored_at_utc=d["anchored_at_utc"],
             prev_anchor_hash=d["prev_anchor_hash"],
             gap=d.get("gap"),
+            anchor_hash=d.get("anchor_hash", ""),
+        )
+
+
+@dataclass
+class PolicyCommitRecord(AnchorRecord):
+    """An anchored policy-commit citation object (R3).
+
+    Same append-only custody machinery as chain-head anchors: the system
+    appends a commitment of the in-force policy set to the sinks, but can
+    never rewrite one. head_hash carries the policy digest; canonical_json
+    carries the exact canonical bytes the digest was computed from, so a
+    third party re-hashes the commitment and compares it against the digest
+    cited by runtime records — one step, never two reconciled assertions.
+    """
+
+    kind: str = "policy_commit"
+    canonical_json: str = ""
+
+    def compute_hash(self) -> str:
+        payload = json.dumps(
+            {
+                "tenant_id": self.tenant_id,
+                "epoch": self.epoch,
+                "head_hash": self.head_hash,
+                "anchored_at_utc": self.anchored_at_utc,
+                "prev_anchor_hash": self.prev_anchor_hash,
+                "kind": self.kind,
+                "canonical_json": self.canonical_json,
+            },
+            sort_keys=True,
+        )
+        return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+    @staticmethod
+    def from_dict(d: dict) -> "PolicyCommitRecord":
+        return PolicyCommitRecord(
+            tenant_id=d["tenant_id"],
+            epoch=int(d["epoch"]),
+            chain_length=int(d.get("chain_length", 0)),
+            head_hash=d["head_hash"],
+            anchored_at_utc=d["anchored_at_utc"],
+            prev_anchor_hash=d["prev_anchor_hash"],
+            kind=d.get("kind", "policy_commit"),
+            canonical_json=d.get("canonical_json", ""),
             anchor_hash=d.get("anchor_hash", ""),
         )
 
@@ -314,6 +360,8 @@ class AnchorManager:
         self._anchor_t = max(0.05, float(anchor_t))
         self._lock = threading.Lock()
         self._state: Dict[str, dict] = {}
+        self._policy_state: Dict[str, dict] = {}
+        self._policy_queue: "collections.deque" = collections.deque()
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
         self.last_error: Optional[str] = None
@@ -335,11 +383,84 @@ class AnchorManager:
 
     def anchor_due(self, force: bool = False) -> None:
         """Anchor every tenant whose chain advanced by >= anchor_n."""
+        self.drain_policy_commits()
         for tenant_id, chain in self._get_chains().items():
             length, head = chain.head()
             st = self._tenant_state(tenant_id)
             if force or (length - st["length"]) >= self._anchor_n:
                 self._emit(tenant_id, length, head)
+
+    # -- policy-commit anchoring (R3) ---------------------------------
+
+    def anchor_policy_commit(
+        self, tenant_id: str, digest: str, canonical_json: str
+    ) -> None:
+        """Queue an anchored commitment of a new in-force policy set.
+
+        Asynchronous and fail-visible: never blocks enforcement. A sink
+        outage leaves the commit unanchored and the external re-walk
+        surfaces the next records' citations as unanchored
+        (CONTRADICTION) — the gap is carried in-band, never hidden.
+        Failed commits are requeued and retried on later ticks.
+        """
+        with self._lock:
+            self._policy_queue.append((tenant_id, digest, canonical_json))
+
+    def drain_policy_commits(self) -> bool:
+        """Emit queued policy commits to all sinks (called by the anchor loop).
+
+        Returns True when every drained commit landed in all sinks; False
+        means at least one sink was unhealthy and the failed commits were
+        requeued for retry on a later tick (fail-visible, never blocking).
+        """
+        failed = []
+        while True:
+            with self._lock:
+                if not self._policy_queue:
+                    break
+                tenant_id, digest, canonical_json = self._policy_queue.popleft()
+            if not self._emit_policy_commit(tenant_id, digest, canonical_json):
+                failed.append((tenant_id, digest, canonical_json))
+        if failed:
+            with self._lock:
+                for item in reversed(failed):
+                    self._policy_queue.appendleft(item)
+        return not failed
+
+    def _emit_policy_commit(
+        self, tenant_id: str, digest: str, canonical_json: str
+    ) -> None:
+        st = self._policy_state.setdefault(
+            f"policy::{tenant_id}",
+            {"epoch": 0, "anchor_hash": GENESIS_ANCHOR_HASH},
+        )
+        commit = PolicyCommitRecord(
+            tenant_id=tenant_id,
+            epoch=st["epoch"] + 1,
+            chain_length=0,
+            head_hash=digest,
+            anchored_at_utc=_utc_now(),
+            prev_anchor_hash=st["anchor_hash"],
+            kind="policy_commit",
+            canonical_json=canonical_json,
+        )
+        commit.anchor_hash = commit.compute_hash()
+
+        errors: List[str] = []
+        for sink in self._sinks:
+            try:
+                sink.append(commit)
+            except Exception as exc:  # noqa: BLE001 — fail-visible, never fail-blocking
+                errors.append(f"{sink.name}: {exc}")
+
+        if errors:
+            # Fail-visible: surface the outage, do not advance state; the
+            # caller requeues for retry on a later tick.
+            self.last_error = "policy_commit: " + "; ".join(errors)
+            return False
+        st["epoch"] += 1
+        st["anchor_hash"] = commit.anchor_hash
+        return True
 
     def _emit(self, tenant_id: str, length: int, head: str) -> None:
         st = self._tenant_state(tenant_id)
@@ -471,8 +592,15 @@ def verify_custody(records: List[dict], anchors: List[dict]) -> dict:
     rewrite-and-rehash of the store passes P1 and fails P2, because the
     recomputed head no longer matches the externally anchored head.
     """
+    policy_commit_dicts = [
+        a for a in anchors if a.get("kind") == "policy_commit"
+    ]
+    head_anchor_dicts = [
+        a for a in anchors if a.get("kind") != "policy_commit"
+    ]
     anchors = sorted(
-        [AnchorRecord.from_dict(a) for a in anchors], key=lambda a: a.epoch
+        [AnchorRecord.from_dict(a) for a in head_anchor_dicts],
+        key=lambda a: a.epoch,
     )
     verdicts: Dict[str, str] = {}
     detail: Dict[str, object] = {}
@@ -561,6 +689,52 @@ def verify_custody(records: List[dict], anchors: List[dict]) -> dict:
                 f"{len(records) - last} records newer than the last anchor "
                 "are covered by the next anchor"
             )
+
+    # -- P5/P6: policy-commit citation dimension (R3/R4) ------------------
+    # Additive (R5): when no citations and no policy commits exist, the
+    # dimension is absent and no P5/P6 keys are reported — stores that
+    # predate citation keep their P1-P4 verdicts byte-identically.
+    if policy_commit_dicts:
+        p5 = ESTABLISHED
+        for d in policy_commit_dicts:
+            pc = PolicyCommitRecord.from_dict(d)
+            if pc.anchor_hash != pc.compute_hash():
+                p5 = CONTRADICTION
+                detail["p5_break"] = f"policy commit {pc.epoch}: hash mismatch"
+                break
+            if (
+                hashlib.sha256(
+                    pc.canonical_json.encode("utf-8")
+                ).hexdigest()
+                != pc.head_hash
+            ):
+                p5 = CONTRADICTION
+                detail["p5_break"] = (
+                    f"policy commit {pc.epoch}: canonical_json does not "
+                    "re-hash to the committed digest"
+                )
+                break
+        verdicts["P5_policy_commit_integrity"] = p5
+
+    anchored_digests: Dict[str, set] = {}
+    for d in policy_commit_dicts:
+        anchored_digests.setdefault(d["tenant_id"], set()).add(d["head_hash"])
+    cited = [
+        (i, rec.get("tenant_id") or rec.get("client_id", ""),
+         rec.get("policy_digest", ""))
+        for i, rec in enumerate(records)
+        if rec.get("policy_digest")
+    ]
+    if cited:
+        p6 = ESTABLISHED
+        unanchored = []
+        for i, tenant, dg in cited:
+            if dg not in anchored_digests.get(tenant, set()):
+                unanchored.append({"record": i, "tenant": tenant, "digest": dg})
+        if unanchored:
+            p6 = CONTRADICTION
+            detail["p6_unanchored_citations"] = unanchored
+        verdicts["P6_citation_membership"] = p6
 
     overall = (
         CONTRADICTION if CONTRADICTION in verdicts.values()

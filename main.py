@@ -97,6 +97,11 @@ def _tenant_chains() -> dict:
 
 
 custody_manager: AnchorManager | None = build_custody_from_env(_tenant_chains)
+# Policy-commit citation anchoring (docs/design/policy-commit-citation.md):
+# the gate stamps every record with the in-force policy digest; when custody
+# is enabled it also anchors each new policy commit to the same sinks.
+if custody_manager is not None:
+    action_gate.set_custody(custody_manager)
 policy_differ = PolicyDiffer()
 
 # Execution adapter — configurable target allowlist via CUSTOS_TARGET_ALLOWLIST
