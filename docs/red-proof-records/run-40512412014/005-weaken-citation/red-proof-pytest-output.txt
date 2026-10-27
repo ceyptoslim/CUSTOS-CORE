@@ -1,0 +1,93 @@
+........................................................................ [ 12%]
+...........................................s............................ [ 25%]
+...........................................sssssssssssssssssssssss...... [ 37%]
+..........................ssssssssssss.................................. [ 50%]
+.........................FF............................................. [ 62%]
+........................................................................ [ 75%]
+........................................................................ [ 87%]
+........................................................................ [100%]
+=================================== FAILURES ===================================
+_______ TestCitationAtEmission.test_record_cites_in_force_policy_digest ________
+tests/test_policy_citation.py:113: in test_record_cites_in_force_policy_digest
+    assert chain._records[1].policy_digest == expected2
+E   AssertionError: assert 'bcaef33088b9...5e4aa0cdc0ab0' == '60e6ce0be6d0...5a65690e49369'
+E     
+E     - 60e6ce0be6d0c654e05dfdfe0d88207a5536abbfa931dc21d3f5a65690e49369
+E     + bcaef33088b90cd266569ec227dd95699aa416e973f644b6a795e4aa0cdc0ab0
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-10-27T13:29:21Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+________ TestCitationAtEmission.test_rule_change_also_changes_citation _________
+tests/test_policy_citation.py:123: in test_rule_change_also_changes_citation
+    assert chain._records[1].policy_digest != d1
+E   AssertionError: assert 'e7b4aad623f34c689f588ea4f96c27ac1547f49fe37faf3c68d2455db7effef5' != 'e7b4aad623f34c689f588ea4f96c27ac1547f49fe37faf3c68d2455db7effef5'
+E    +  where 'e7b4aad623f34c689f588ea4f96c27ac1547f49fe37faf3c68d2455db7effef5' = AuditRecord(timestamp=1793107761.3259645, client_id='agent', action='deny', triggered_rule='action_gate_tool_not_allow...ee50', trace_id=None, policy_digest='e7b4aad623f34c689f588ea4f96c27ac1547f49fe37faf3c68d2455db7effef5', tenant_id='t1').policy_digest
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-10-27T13:29:21Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+=============================== warnings summary ===============================
+../../../../../opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/test_admin_auth.py: 1 warning
+tests/test_api.py: 1 warning
+tests/test_auth.py: 8 warnings
+tests/test_jwks.py: 2 warnings
+  /opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/jwt/api_jwt.py:149: InsecureKeyLengthWarning: The HMAC key is 31 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+    return self._jws.encode(
+
+tests/test_admin_auth.py::TestAdminEndpointsRequireAuth::test_valid_token_allows_audit_read
+tests/test_auth.py::TestTokenCreation::test_token_contains_correct_subject
+tests/test_auth.py::TestTokenCreation::test_token_has_expiry
+tests/test_auth.py::TestAuthEnforcement::test_expired_token_returns_401
+tests/test_auth.py::TestAuthEnforcement::test_valid_token_allows_request
+tests/test_auth.py::TestAuthEnforcement::test_valid_token_on_clean_content_returns_allow
+tests/test_auth.py::TestAuthEnforcement::test_cross_client_access_denied
+tests/test_auth.py::TestAuthEnforcement::test_same_client_access_allowed
+  /opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/jwt/api_jwt.py:370: InsecureKeyLengthWarning: The HMAC key is 31 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+    decoded = self.decode_complete(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_custody.py:328: CUSTOS_CUSTODY_TSA_URL not set — TSA integration tests require a running RFC 3161 timestamping service
+SKIPPED [1] tests/test_mineos_integration.py:73: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:77: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:81: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:85: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:90: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:106: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:113: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:120: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:125: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:152: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:161: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:167: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:173: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:211: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:217: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:222: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:235: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:241: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:260: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:273: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:280: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:285: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:293: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_opa_integration.py:37: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:42: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:53: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:61: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:69: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:77: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:86: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:99: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:112: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:123: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:136: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:150: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+FAILED tests/test_policy_citation.py::TestCitationAtEmission::test_record_cites_in_force_policy_digest - AssertionError: assert 'bcaef33088b9...5e4aa0cdc0ab0' == '60e6ce0be6d0...5a65690e49369'
+  
+  - 60e6ce0be6d0c654e05dfdfe0d88207a5536abbfa931dc21d3f5a65690e49369
+  + bcaef33088b90cd266569ec227dd95699aa416e973f644b6a795e4aa0cdc0ab0
+FAILED tests/test_policy_citation.py::TestCitationAtEmission::test_rule_change_also_changes_citation - AssertionError: assert 'e7b4aad623f34c689f588ea4f96c27ac1547f49fe37faf3c68d2455db7effef5' != 'e7b4aad623f34c689f588ea4f96c27ac1547f49fe37faf3c68d2455db7effef5'
+ +  where 'e7b4aad623f34c689f588ea4f96c27ac1547f49fe37faf3c68d2455db7effef5' = AuditRecord(timestamp=1793107761.3259645, client_id='agent', action='deny', triggered_rule='action_gate_tool_not_allow...ee50', trace_id=None, policy_digest='e7b4aad623f34c689f588ea4f96c27ac1547f49fe37faf3c68d2455db7effef5', tenant_id='t1').policy_digest
+2 failed, 538 passed, 36 skipped, 21 warnings in 2.93s
