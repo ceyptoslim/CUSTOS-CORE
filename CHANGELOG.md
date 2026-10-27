@@ -42,8 +42,17 @@ open" format — no claims beyond what the code and tests demonstrate.
 - Workflow: `004-weaken-custody-verify` joins the sabotage matrix;
   new `custody-attacks` job (DESIGN.md hash verified before execution;
   evidence records uploaded with if:always()).
-- First official execution of the class is the next workflow_dispatch run;
-  the run's records then freeze as the observation set.
+- First official execution complete (run 40426037722, workflow_dispatch
+  on 0fc516e): all seven classes confirmed — 004-weaken-custody-verify
+  RED-CONFIRMED with exactly the one pre-registered failing assertion
+  (TestRewriteAndRehash, P2 anchored-head reconciliation); custody attacks
+  001-rewrite-backend / 002-truncate-tail / 003-suppress-anchor all
+  DETECTED with actual == expected (internal verify GREEN on the
+  consistently rewritten store, external anchors CONTRADICTION at P2/P4;
+  gap recorded in-band, enforcement unaffected). Observation set frozen
+  permanently at `docs/red-proof-records/run-40426037722/` (27 files,
+  SHA-256 manifest). The weekly schedule re-proves all four sabotage
+  classes and all three attacks on every run.
 
 ### Security — Chain-head custody (docs/design/chain-head-custody.md, PR #60 design)
 - `custos/custody.py`: external custody of audit chain heads — per-tenant
@@ -186,10 +195,11 @@ gate's tests.
   the suite red (6 and 18 failures), restored suite green.
 
 ### Tests
-- **528 passed / 12 skipped / 90% coverage** (+34 since v1.3.3: +20 RS256/JWKS
+- **550 passed / 13 skipped / 88% coverage** (+56 since v1.3.3: +20 RS256/JWKS
   suite, +2 tenant-quota inheritance regression, +8 OPA custom-rule
   enforcement, +1 admin-router guard, +4 suite-integrity, +1 red-proof
-  records pipeline meta-test, and PostgreSQL policy-backend coverage).
+  records pipeline meta-test, PostgreSQL policy-backend coverage, and
+  +22 chain-head custody suite (+1 skipped)).
 
 ## [1.3.3] — Security Hardening (external audit reconciliation)
 
