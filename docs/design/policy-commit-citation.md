@@ -76,7 +76,33 @@ regress measurably; the benchmark harness is the check.
 - **Policy version history API.** The anchored commit sequence is the
   history; no additional API is promised in this arc.
 
+## Attester separation: recorded constraints (pre-registered)
+
+Recorded before that arc starts, not after. Source: external technical
+exchange, October 2026 — Hlias Staurou (nous-lang). Attribution is for
+the reconciliation requirement below; it is not an endorsement of
+CUSTOS-CORE or a joint effort, consistent with the separate-layers
+framing both sides held.
+
+- **R6 — digest identity across layers.** The enforcement citation must
+  bind to the same digest the monitor's proof is bound to, not to a
+  policy object name. If the guard cites hash A while the monitor's
+  manifest carries hash B (the policy re-signed or re-versioned between
+  the two), a third party sees two valid commitments that do not match.
+- **R7 — refuse on mismatch.** A guard/monitor digest mismatch is a
+  reconciliation failure, not a trust failure. The design must refuse on
+  mismatch rather than degrade to operator trust. This is a fail-closed
+  requirement on the reconciliation layer, not a feature: it belongs in
+  the pre-registered observation set of the attester-separation arc from
+  the start.
+
+These constraints bind the future arc. Citation-at-emission is necessary
+and not sufficient: the digest is computed inside the enforcement path,
+one measured operation, but a third party still cannot check that
+operation from outside until the attester is separated from the enforcer.
+
 ## Detection boundary and the red-proof class
+
 
 Per project discipline, the class is pre-registered before the first
 official execution: `docs/red-proof-records/sabotage-citation/DESIGN.md`
