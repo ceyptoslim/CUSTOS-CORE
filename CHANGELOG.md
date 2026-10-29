@@ -9,6 +9,22 @@ open" format — no claims beyond what the code and tests demonstrate.
 
 ## [Unreleased]
 
+### Security — Red-proof class `trace-binding` (pre-registered, 6th class)
+- `docs/red-proof-records/sabotage-trace-binding/DESIGN.md`: FROZEN pre-registration,
+  hash-pinned in `ci-red-proof.yml` and verified with `sha256sum -c` before the class runs.
+  Injected regression: `trace_id` deleted from the record-hash preimage while the `binding`
+  marker is left intact — the tidy-up a well-meaning refactor performs on a field that looks
+  redundant. Pre-registered failing assertions, named in advance and **exactly**:
+  `test_mutating_trace_id_breaks_verification` and `test_dropping_trace_id_breaks_verification`.
+  Predicted non-failures stated before the run (the downgrade test must still pass, which
+  isolates the identifier from the version marker).
+- `scripts/ci-sabotage/006-weaken-trace-binding.sh`: known-bad patch with dual integrity
+  guards, including one asserting the marker survived (the wrong weakening is a plausible
+  error and would test the wrong property).
+- Local dry-run against a scratch tree: **exactly the two pre-registered failures, 6 passed**,
+  matching the stated predictions. The class has NOT yet executed in CI; the permanent
+  observation record is produced by the workflow run, not by this pre-registration.
+
 ### Documentation — EABC conformance declared (partial, self-assessed)
 - `docs/design/EABC-CONFORMANCE.md`: self-assessment against the open
   Execution Authority Boundary Contract (EABC, `omwei-org/omwei-eabc`
