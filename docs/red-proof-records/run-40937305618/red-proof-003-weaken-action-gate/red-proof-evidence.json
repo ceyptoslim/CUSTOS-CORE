@@ -1,0 +1,62 @@
+{
+  "record_version": 3,
+  "identity": {
+    "run_id": "40937305618",
+    "run_number": "20",
+    "run_attempt": "1",
+    "commit_sha": "2e0cd4138515a26d07f763371895c4cd18725c18",
+    "injected_regression_id": "003-weaken-action-gate",
+    "sabotage_script_sha256": "daa1db43e62548cf8494d74999ef3221f15c0acbc6d293099dce8a9e3d6e2186",
+    "injection_diff_sha256": "247ecab611269f82b9bc1a2ad31adc8b4aed613ca4d0c9bf5d6822858cf1bb67"
+  },
+  "time": {
+    "tests_started_utc": "2026-10-29T19:08:32Z",
+    "tests_completed_utc": "2026-10-29T19:08:39Z",
+    "record_generated_at_utc": "2026-10-29T19:08:39Z"
+  },
+  "observations": {
+    "pytest_exit_code": 1,
+    "exit_code_artifact": {
+      "file": "red-proof-exit-code.txt",
+      "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+    },
+    "injection_diff": {
+      "file": "red-proof-injection-diff.patch",
+      "sha256": "247ecab611269f82b9bc1a2ad31adc8b4aed613ca4d0c9bf5d6822858cf1bb67"
+    },
+    "junit_xml": {
+      "file": "red-proof-junit.xml",
+      "sha256": "8404706dfb503d42d6b4166bb27f8b96b3b83f881e54bd9497b7decba1b54238"
+    },
+    "junit_failures": 7,
+    "pytest_output": {
+      "file": "red-proof-pytest-output.txt",
+      "sha256": "4568ed4db76ac26ee13a4343ac1eb7d78c5034903a1c2e932369ebcf0c13ae0f"
+    },
+    "ci_job_outcome": "success",
+    "control_probe_clean": {
+      "file": "red-proof-probe-clean.json",
+      "sha256": "d2e2e01f80097dec036c46a9752401e9c2eb32a38505541897e13d9fca3334c8"
+    },
+    "control_probe_injected": {
+      "file": "red-proof-probe-injected.json",
+      "sha256": "2aa5bf54b0e189c457ae638e859d6ee911bd6841544bc27baff595773431eb43"
+    }
+  },
+  "verdict": {
+    "expected": "RED",
+    "actual": "RED",
+    "verdict": "RED-CONFIRMED",
+    "rule": {
+      "id": "red-proof-verdict-rule",
+      "version": 3,
+      "mapping": "observations.pytest_exit_code != 0 -> RED-CONFIRMED; else FAULTY-GREEN"
+    }
+  },
+  "provenance": {
+    "workflow": "ci-red-proof",
+    "repo": "ceyptoslim/CUSTOS-CORE",
+    "runner": "github-actions",
+    "artifact": "red-proof-records-003-weaken-action-gate"
+  }
+}
