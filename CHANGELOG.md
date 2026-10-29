@@ -9,6 +9,25 @@ open" format — no claims beyond what the code and tests demonstrate.
 
 ## [Unreleased]
 
+### Added — EABC exit-class register (profile-level statement against EABC v1)
+- `docs/design/EABC-EXIT-CLASS-REGISTER.md`: four exit classes (`suppression`, `substitution`,
+  `attribution`, `coverage`), each with boundary, failure mode, declared status, threat-model
+  assumptions, artifact and falsification condition. Statuses drawn from a closed vocabulary:
+  `demonstrated-closed`, `declared-open`, `out-of-scope-by-construction`.
+- The register exists because EABC v1 grades evidence depth per property and cannot express that
+  P1's hole and P2's hole are different kinds of hole. This profile previously read "partial" four
+  times for four unrelated failures.
+- `out-of-scope-by-construction` requires an architectural argument and a falsification condition for
+  the declaration itself, demonstrated on pre-binding-v1 records: closing that class retroactively
+  would break byte-identical verification of historical chains, so it is closed by a constraint
+  rather than by a missing test.
+- `tests/test_exit_class_register.py` enforces the shape: six fields per class, closed status
+  vocabulary, closed class list, every cited artifact path must exist, non-trivial falsification
+  conditions, and the architectural argument for out-of-scope. Verified by three mutations before
+  committing (invented status, stripped argument, broken artifact path) — each one fails with its
+  own message.
+- Counts: 597 passed / 14 skipped, coverage 89% (measured).
+
 ### Changed — the published preimage formula is now a test
 - `tests/test_preimage_spec_truth.py`: intercepts the dict `compute_record_hash` actually passes
   to `json.dumps` and asserts it matches the field list published in
