@@ -9,6 +9,14 @@ open" format — no claims beyond what the code and tests demonstrate.
 
 ## [Unreleased]
 
+### Security — red-proof run 20: six classes, first clean class 006
+- Run 40937305618: all six pre-registered sabotage classes RED, all three custody attacks DETECTED.
+- Class `trace-binding` (006) RED-CONFIRMED on first clean execution; the two failures are the
+  two assertions named before the run, and the six other binding tests passed, including the
+  downgrade test that isolates the identifier from the marker.
+- Observation set frozen at `docs/red-proof-records/run-40937305618/` with per-file digests.
+- The preceding run's FAULTY-GREEN (stale attacker preimage) is documented, not frozen.
+
 ### Changed — documentation truth guards (numbers that cannot drift)
 - `tests/test_docs_truth.py`: static guards that fail the suite when the documented test
   count and the actual state diverge. Enforces one canonical count (README verified line),

@@ -1,0 +1,13 @@
+diff --git a/custos/action_gate.py b/custos/action_gate.py
+index 329b56d..54ce0cd 100644
+--- a/custos/action_gate.py
++++ b/custos/action_gate.py
+@@ -239,7 +239,7 @@ class ActionGate:
+             return ActionGateResult(decision=decision)
+ 
+         # 2. Deny-by-default tool allowlist: unconfigured tenant denies ALL tools.
+-        if action.tool not in self._tool_allowlists.get(tenant_id, set()):
++        if False:
+             decision = self._deny(
+                 "action_gate_tool_not_allowlisted",
+                 f"Tool '{action.tool}' is not in tenant '{tenant_id}'s allowlist. "

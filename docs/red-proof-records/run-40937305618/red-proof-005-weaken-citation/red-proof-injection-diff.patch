@@ -1,0 +1,21 @@
+diff --git a/custos/action_gate.py b/custos/action_gate.py
+index 329b56d..eaed992 100644
+--- a/custos/action_gate.py
++++ b/custos/action_gate.py
+@@ -153,7 +153,6 @@ class ActionGate:
+     def register_tools(self, tenant_id: str, tools: "set[str] | list[str]") -> None:
+         """Explicitly allowlist tools for a tenant. No registration = deny all."""
+         self._tool_allowlists[tenant_id] = set(tools)
+-        self._digest_cache.pop(tenant_id, None)  # in-force set changed
+ 
+     def list_tools(self, tenant_id: str) -> "set[str]":
+         return set(self._tool_allowlists.get(tenant_id, set()))
+@@ -172,7 +171,7 @@ class ActionGate:
+         tools = frozenset(self._tool_allowlists.get(tenant_id, set()))
+         key = (tools, ctx.policy_engine.rules_digest)
+         cached = self._digest_cache.get(tenant_id)
+-        if cached is not None and cached[0] == key:
++        if cached is not None:
+             return cached[1]
+         dg = compute_policy_digest(tools, ctx.policy_engine.rules)
+         self._digest_cache[tenant_id] = (key, dg)
