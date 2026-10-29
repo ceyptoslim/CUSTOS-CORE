@@ -9,6 +9,24 @@ open" format — no claims beyond what the code and tests demonstrate.
 
 ## [Unreleased]
 
+### Changed — mapping corrected on review (EX-1 was filed under the wrong property)
+- `EX-1 suppression` no longer implicates P6 Evidence Integrity. P6 governs whether a record that
+  exists was altered; suppression is a record never existing or not surviving to storage, and no
+  integrity property can observe a record it was never given. The class now implicates P2 Complete
+  Mediation, and the register states the integrity-versus-completeness distinction explicitly, with
+  the earlier reading preserved rather than silently replaced: a spec author told only the corrected
+  version cannot tell whether the reasoning was fixed or the wording.
+- The closure evidence for `EX-1` is named accurately: the anchor comparison against an external
+  completeness bound (P4 store-completeness reading), not P6.
+- `EX-4 coverage` retained with a distinctness test rather than a defence: a reviewable boundary
+  statement ("complete across an API surface, unproven across a deployment's effect-producing
+  paths") a reviewer can check against a deployment, plus the removal condition — if it reads as P2
+  restated with the word "deployment", merge it into the P2 row and shrink the vocabulary to three.
+- Mapping preamble now states that a mapped cell identifies an implicated property and neither
+  creates a property nor establishes conformance. Guarded by tests, including one that fails if
+  `EX-1` is ever filed under P6 again.
+- Counts: 607 passed / 14 skipped (measured).
+
 ### Added — exit-class register mapped to EABC v1 (profile-level, per review)
 - Mapping of each exit class onto existing EABC properties: `EX-1` -> P6/P2, `EX-2` -> P3/P4/P8,
   `EX-3` -> P1/P5 + docs/002 external-mapping rule, `EX-4` -> P2. None is one-to-one except `EX-4`,
@@ -24,7 +42,7 @@ open" format — no claims beyond what the code and tests demonstrate.
   cell; the mapping section may not introduce aggregation vocabulary and must carry its own
   "adds no levels" disclaimer. Verified by mutation: dropping a class from the mapping fails, and a
   "weighted total" sentence fails.
-- Counts: 603 passed / 14 skipped, coverage 89% (measured).
+- Counts: 607 passed / 14 skipped, coverage 89% (measured).
 
 ### Added — EABC exit-class register (profile-level statement against EABC v1)
 - `docs/design/EABC-EXIT-CLASS-REGISTER.md`: four exit classes (`suppression`, `substitution`,
@@ -43,7 +61,7 @@ open" format — no claims beyond what the code and tests demonstrate.
   conditions, and the architectural argument for out-of-scope. Verified by three mutations before
   committing (invented status, stripped argument, broken artifact path) — each one fails with its
   own message.
-- Counts: 603 passed / 14 skipped, coverage 89% (measured).
+- Counts: 607 passed / 14 skipped, coverage 89% (measured).
 
 ### Changed — the published preimage formula is now a test
 - `tests/test_preimage_spec_truth.py`: intercepts the dict `compute_record_hash` actually passes

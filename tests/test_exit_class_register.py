@@ -27,9 +27,15 @@ STATUSES = {"demonstrated-closed", "declared-open", "out-of-scope-by-constructio
 
 
 def _sections() -> dict:
+    """Class sections only. The register also carries prose subsections, which are not classes."""
     text = REGISTER.read_text(encoding="utf-8")
-    parts = re.split(r"\n### ", text)
+    parts = re.split(r"\n### (?=EX-\d )", text)
     return {p.splitlines()[0].strip(): p for p in parts[1:]}
+
+
+def _norm(text: str) -> str:
+    """Collapse whitespace so phrase assertions survive line wrapping."""
+    return re.sub(r"\s+", " ", text)
 
 
 def _field(section: str, label: str) -> str:
@@ -165,4 +171,59 @@ def test_out_of_scope_requires_an_architectural_argument():
     )
     assert "*Falsification condition for the declaration itself:*" in body, (
         "an out-of-scope declaration must say what would show it was mistaken"
+    )
+
+
+def _mapping_section() -> str:
+    text = REGISTER.read_text(encoding="utf-8")
+    return re.search(
+        r"## Mapping to EABC v1 properties and evidence requirements(.*?)\n## ", text, re.S
+    ).group(1)
+
+
+def test_mapping_identifies_properties_without_creating_them():
+    """A class that created a property would be a parallel conformance model."""
+    section = _mapping_section()
+    assert "does not create a property" in section, (
+        "the mapping must state that a mapped cell identifies an implicated property rather than "
+        "creating one"
+    )
+    assert "does not establish conformance" in section, (
+        "the mapping must state that implicating a property is not evidence of conformance"
+    )
+
+
+def test_suppression_is_not_filed_under_evidence_integrity():
+    """Integrity of what exists cannot answer completeness of what was emitted."""
+    rows = _mapping_rows()
+    row = rows["EX-1 suppression"]
+    cells = [c.strip() for c in row.strip().strip("|").split("|")]
+    assert cells[1].startswith("P2"), (
+        f"EX-1 must implicate P2 first, not P6; found {cells[1]!r}. P6 governs alteration of "
+        "existing records and cannot observe a record that was never emitted."
+    )
+    section = _mapping_section()
+    flat = _norm(section)
+    assert "Evidence integrity is a different question from evidence completeness" in flat
+    assert "P6 governs whether a record that exists has been altered" in flat
+
+
+def test_every_class_row_states_the_property_implicated():
+    for name in CLASSES:
+        cells = [c.strip() for c in _mapping_rows()[name].strip().strip("|").split("|")]
+        assert re.match(r"P[1-9]", cells[1]), f"{name} does not name the property it implicates first"
+
+
+def test_ex4_carries_a_reviewable_boundary_and_a_removal_condition():
+    """EX-4 survives only on distinctness, so the test it must pass is asserted."""
+    flat = _norm(_mapping_section())
+    assert "The distinctness test for `EX-4 coverage`" in flat
+    assert "API surface" in flat and "deployment" in flat, (
+        "EX-4 must state the API-surface versus deployment distinction that P2 cannot express"
+    )
+    assert "Removal condition" in flat, (
+        "EX-4 must state what would justify merging it into P2 and shrinking the vocabulary"
+    )
+    assert "terminates at the gate" in flat, (
+        "the boundary statement must be checkable by a reviewer looking at a deployment"
     )

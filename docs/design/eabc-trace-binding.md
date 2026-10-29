@@ -54,7 +54,7 @@ one.
   legacy record verifies; mixed chain verifies; SQLite round-trip preserves `policy_digest`,
   `tenant_id`, `trace_id`, `binding_version` and re-verifies after reload; an older database gains
   the columns in place without losing rows.
-* Full suite: 603 passed, 14 skipped (measured after the truth guards landed; the count in
+* Full suite: 607 passed, 14 skipped (measured after the truth guards landed; the count in
   README is canonical and guarded by `tests/test_docs_truth.py`).
 
 ## Still missing (stated, not implied)
