@@ -41,6 +41,8 @@ from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from typing import Callable, Dict, List, Optional, Tuple
 
+from custos.audit import compute_record_hash
+
 GENESIS_ANCHOR_HASH = "0" * 64
 _GENESIS_RECORD_HASH = "0" * 64
 
@@ -559,19 +561,14 @@ class AnchorManager:
 # ---------------------------------------------------------------------------
 
 def _record_hash(record: dict, previous_hash: str) -> str:
-    payload = json.dumps(
-        {
-            "timestamp": record["timestamp"],
-            "client_id": record["client_id"],
-            "action": record["action"],
-            "triggered_rule": record["triggered_rule"],
-            "reason": record["reason"],
-            "content_hash": record["content_hash"],
-            "previous_hash": previous_hash,
-        },
-        sort_keys=True,
-    )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    """Recompute the record hash with the emitter's own preimage.
+
+    Delegates to custos.audit.compute_record_hash so the external re-walk and
+    the internal chain cannot drift apart: the citation (policy_digest), the
+    tenant binding and the trace binding are all part of what gets recomputed,
+    not silently dropped from the external view.
+    """
+    return compute_record_hash(record, previous_hash)
 
 
 def verify_custody(records: List[dict], anchors: List[dict]) -> dict:
