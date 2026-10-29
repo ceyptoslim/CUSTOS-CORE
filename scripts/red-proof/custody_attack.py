@@ -39,7 +39,7 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from custos.audit import AuditChain
+from custos.audit import AuditChain, compute_record_hash
 from custos.custody import (
     AnchorManager,
     GitAnchorSink,
@@ -63,19 +63,20 @@ def _sha256_file(path: str) -> str:
 
 
 def _record_hash_fields(row: dict, previous_hash: str) -> str:
-    payload = json.dumps(
-        {
-            "timestamp": row["timestamp"],
-            "client_id": row["client_id"],
-            "action": row["action"],
-            "triggered_rule": row["triggered_rule"],
-            "reason": row["reason"],
-            "content_hash": row["content_hash"],
-            "previous_hash": previous_hash,
-        },
-        sort_keys=True,
-    )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    """Rehash a row with the emitter's own preimage.
+
+    The attacker has to be at least as strong as the verifier, or this attack
+    measures nothing. This used to implement the original six-field preimage
+    locally and silently went stale when the preimage grew (policy citation,
+    tenant binding, trace binding): the "consistent rewrite" then failed
+    INTERNAL verification instead of passing it, which inverted the
+    pre-registered expectation and turned a passing attack into FAULTY-GREEN.
+
+    Delegating to the canonical definition means a future preimage change
+    strengthens the attacker automatically. Run 40936323689 (2026-10-29)
+    caught this; see docs/red-proof-records/custody-attack-staleness.md.
+    """
+    return compute_record_hash(row, previous_hash)
 
 
 def _build_deployment(tmp: str):
