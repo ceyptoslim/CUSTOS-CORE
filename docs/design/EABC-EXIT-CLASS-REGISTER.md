@@ -30,8 +30,11 @@ currently express.
 
 ## Vocabulary
 
-Four classes, closed. An implementation that needs a fifth should propose it to the contract, not
-invent it locally — incomparability is cheaper to prevent than to repair.
+Four classes. **Closed for comparability, not for truth.** The list is fixed so that two profiles
+use the same word for the same hole; it is not a claim that four is the correct number of ways an
+execution boundary can fail. CI enforces the *shape* of the register, never its completeness, and a
+green build says nothing about whether the vocabulary is exhaustive. The revision procedure below is
+the intended route for a fifth class, and it is deliberately more work than editing a list.
 
 | Class | The claim it dents |
 |---|---|
@@ -139,6 +142,43 @@ tools); sabotage class `003-weaken-action-gate` in
 **Falsification condition.** Any effect-producing entry point in this repository that does not call
 `evaluate_action`. A test can find that one; no test can find the path a deployer adds later, which
 is why the deployment half stays open.
+
+## Mapping to EABC v1 properties and evidence requirements
+
+The test of whether this register is a comparability layer or a parallel conformance model is
+whether its classes map onto the contract's existing vocabulary. They do, and the mapping is not
+one-to-one, which is the whole claim.
+
+| Exit class | EABC properties it dents | Evidence requirement it constrains | Already covered by v1 | What the class adds |
+|---|---|---|---|---|
+| `EX-1 suppression` | P6 Evidence Integrity, P2 Complete Mediation | L2: the *existence* of a record, which every artifact requirement presupposes and none states | P6 covers tampering with records that exist | Non-existence is not a tampering case. A truncated tail is invisible to a verifier walking the records it was given; it becomes visible only by comparing the store against an external completeness bound. |
+| `EX-2 substitution` | P3 Deterministic Commit Semantics, P4 Context Binding, P8 Failure Semantics | L2: evidence about the effect, not only the decision | P3 requires a deterministic recorded outcome; P4 binds the payload of the decided action | Both bind the *decision*. Neither observes the effect. The class names the missing observer and therefore the missing evidence. |
+| `EX-3 attribution` | P1 Independent Execution Authority, P5 State Binding, docs/002 external-mapping rule | L2: who is entitled to supply the evidence | P1 states that execution authority is independent of the governed agent | Independence from the *agent* is the closed half; independence from the *operator* is the open half. The class separates two things the property names together. |
+| `EX-4 coverage` | P2 Complete Mediation | L2: totality of mediation across effect-producing paths | P2 names complete mediation directly | **Close to one-to-one.** This is the weakest justification in the register and is flagged as such below. |
+
+Two falsification conditions for the mapping itself, offered rather than hidden:
+
+1. If every class mapped one-to-one onto a single property, the register would be redundant and
+   should be withdrawn rather than maintained.
+2. `EX-4` is near one-to-one with P2. If the contract's author judges it redundant, drop it. The
+   register's remaining claim survives on `EX-1`–`EX-3`, each of which cuts across at least two
+   properties and names a failure their vocabulary cannot express alone.
+
+The register adds no levels, no scores, and no aggregation. A mapped cell is a statement about which
+existing requirement a failure implicates, not a new requirement.
+
+## Revision procedure for a fifth class
+
+CI cannot tell whether four is the right number, so the procedure is social and written down.
+
+1. **Name the failure mode** in one sentence of the form "an effect occurs that ___".
+2. **Show distinctness**: no existing class covers it, and the nearest class does not either. A
+   candidate that restates `EX-4` under a different noun is a vocabulary change, not a new class.
+3. **Property test**: name the EABC property it dents, and state why that property's own vocabulary
+   cannot express the failure without losing information. If it can, the class is not needed.
+4. **Evidence test**: state the artifact and the falsification condition for a closure claim.
+5. **Change the list, the mapping and the test in one commit.** A class present in one and absent
+   from another is a documentation defect, and the checker is written to catch exactly that.
 
 ## What "out of scope by construction" requires
 
