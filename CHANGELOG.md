@@ -9,6 +9,23 @@ open" format — no claims beyond what the code and tests demonstrate.
 
 ## [Unreleased]
 
+### Changed — documentation truth guards (numbers that cannot drift)
+- `tests/test_docs_truth.py`: static guards that fail the suite when the documented test
+  count and the actual state diverge. Enforces one canonical count (README verified line),
+  agreement from `NOTICE.md` and the README claims table, a dated + commit-addressed
+  verification line, and no competing *current* counts anywhere else in the docs.
+  Historical statements (CHANGELOG releases, dated essays, frozen red-proof records) are
+  exempt by design: retro-editing them would falsify the record.
+- Why this exists: README advertised 550 passed while the suite was at 571, and its own
+  claims table stated 90% coverage against a header claiming 88%. Both numbers were
+  plausible; two were wrong. The class of error is now a failing test instead of a habit.
+- The live cross-check (canonical count versus this environment's collected tests) is opt-in
+  via `CUSTOS_TEST_COUNT_STRICT=1`, because collection differs between local runs and the
+  red-proof workflow. A guard that fails for environmental reasons gets ignored, which is
+  worse than no guard.
+- Counts synced: README, NOTICE and the claims table now state **575 passed / 14 skipped**
+  (measured), coverage 89% (measured this run).
+
 ### Security — Red-proof class `trace-binding` (pre-registered, 6th class)
 - `docs/red-proof-records/sabotage-trace-binding/DESIGN.md`: FROZEN pre-registration,
   hash-pinned in `ci-red-proof.yml` and verified with `sha256sum -c` before the class runs.
