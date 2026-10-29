@@ -32,8 +32,8 @@ Verdicts: **satisfied** (property holds and the evidence to check it is publishe
 
 ## Evidence to check
 
-* Pre-registered designs: `docs/red-proof-records/sabotage-003/DESIGN.md`, `sabotage-custody/DESIGN.md`, `sabotage-citation/DESIGN.md`
-* Frozen runs and manifests: `docs/red-proof-records/run-38446904362`, `run-38610363998`, `run-38811246068`, `run-40426037722`, `run-40512412014`
+* Pre-registered designs: `docs/red-proof-records/sabotage-003/DESIGN.md`, `sabotage-custody/DESIGN.md`, `sabotage-citation/DESIGN.md`, `sabotage-trace-binding/DESIGN.md`
+* Frozen runs and manifests: `docs/red-proof-records/run-38446904362`, `run-38610363998`, `run-38811246068`, `run-40426037722`, `run-40512412014`, `run-40937305618`
 * Custody attack observations: `run-40426037722/custody-attacks/001-rewrite-backend`, `002-truncate-tail`, `003-suppress-anchor`
 * Independent reconstruction of run 11 and run 12 by a third party, published with attribution: `github.com/factnotebook/public-reconstructions` (FN-CUSTOS-003 `FN-da06acd59938f5b9`, FN-CUSTOS-004 `FN-b67b3d8fadbb891b`). That reconstruction is factual verification of the preserved records only; its authors state it is not a certification or endorsement, and it does not extend to this document's EABC claims.
 
@@ -45,7 +45,7 @@ Verdicts: **satisfied** (property holds and the evidence to check it is publishe
 | P2 | Deployment attestation covering all effect-producing paths, plus a bypass-detection test that must go red. |
 | P3 | A post-execution disposition record bound to the decision record hash. |
 | P4 | Single-use, payload-bound, time-bounded authority credential per action. |
-| P7 | Move `trace_id` inside the preimage (requires a versioned record schema and a documented migration, since legacy records must continue to verify). |
+| P7 | Nothing outstanding for records at binding version ≥ 1. Closed by the versioned preimage (#72) and the pre-registered class `trace-binding`, which went red on exactly the two named assertions in run [40937305618](https://github.com/ceyptoslim/CUSTOS-CORE/actions/runs/40937305618). The permanent boundary is the one stated in the row above: legacy records cannot be retroactively bound. |
 | P8 | Explicit terminal execution states in the record schema. |
 
 Maintained by the CUSTOS-CORE maintainer. Corrections welcome as issues or PRs; a claim here that

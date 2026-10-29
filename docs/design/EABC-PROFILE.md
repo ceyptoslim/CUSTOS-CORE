@@ -35,17 +35,20 @@ disposition.
 | P4 Context Binding | `content_hash` binds the payload; tenant + tool allowlist bind the scope. No per-action credential or validity interval. | `custos/action_gate.py`, `custos/models.py` |
 | P5 State Binding | `policy_digest` = sha256 of canonical in-force policy set, computed at emission, inside the record hash. | `custos/policy_citation.py`, `custos/audit.py` |
 | P6 Evidence Integrity | `record_hash` chained over `previous_hash`; external anchoring to append-only sinks (git, TSA), fail-visible, opt-in. | `custos/audit.py`, `custos/custody.py` |
-| P7 Evidence Correlation | `record_hash` / `previous_hash` / `content_hash` / `policy_digest` / `tenant_id` inside the preimage. `trace_id` present but outside it. | `custos/audit.py` |
+| P7 Evidence Correlation | `record_hash` / `previous_hash` / `content_hash` / `policy_digest` / `tenant_id` inside the preimage; since binding version 1 also `trace_id` plus a bound `binding` marker, so a record cannot be relabelled as legacy to drop it. Records at binding version 0 keep their historical unbound preimage and still verify. | `custos/audit.py::compute_record_hash`, `custos/custody.py` |
 | P8 Failure Semantics | Unknown tenant → DENY. Fail-closed on unreachable gate at the executor contract. Terminal execution states absent. | `custos/action_gate.py`, `docs/PRE-FLIGHT-ACTION-GATE.md` |
 
 ## Record schema (v1.3.3)
 
 `record_hash = sha256(canonical_json{ timestamp, client_id, action, triggered_rule, reason,
-content_hash, previous_hash [, policy_digest] [, tenant_id] })`
+content_hash, previous_hash [, policy_digest] [, tenant_id] [, binding, trace_id] })`
 
-Conditional fields are included only when set, so records emitted before citations existed hash
-byte-identically to the original preimage and old chains still verify. Field set is taken from
-`custos/audit.py::_compute_record_hash`.
+Conditional fields are included only when set, so records emitted before a field existed hash
+byte-identically to their original preimage and old chains still verify. `binding` (the value
+`v<binding_version>`) and `trace_id` are added together, and only for records at binding version
+≥ 1; a record at binding version 0 is hashed exactly as it was before trace binding existed.
+Field set is taken from `custos/audit.py::compute_record_hash`, which is also what the external
+custody re-walk imports, so there is one preimage definition rather than two.
 
 ## Lifecycle semantics
 
@@ -67,6 +70,8 @@ including the faulty-green position and disclosed blindness:
 * `sabotage-003` — action-gate allowlist weakening
 * `sabotage-custody` — backend rewrite, tail truncation, anchor suppression
 * `sabotage-citation` — citation binding weakening (must fail exactly two named assertions)
+* `sabotage-trace-binding` — `trace_id` removed from the preimage while the `binding` marker stays intact
+  (must fail exactly two named assertions; the marker-only assertions must stay green)
 
 Frozen per-run artefacts: `docs/red-proof-records/run-*` (manifest, injection diff, JUnit, exit code,
 probe pair where instrumented).
