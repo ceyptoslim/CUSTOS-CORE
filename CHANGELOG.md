@@ -9,6 +9,57 @@ open" format — no claims beyond what the code and tests demonstrate.
 
 ## [Unreleased]
 
+### Documentation — EABC conformance declared (partial, self-assessed)
+- `docs/design/EABC-CONFORMANCE.md`: self-assessment against the open
+  Execution Authority Boundary Contract (EABC, `omwei-org/omwei-eabc`
+  docs/001–004). Claims **Level 1 partial / Level 2 partial**, no Level 3
+  claim. Satisfied rows cite the artifact that proves them (P5 state
+  binding via the citation-at-emission arc and pre-registered class 005;
+  P6 conditionally on custody anchoring). Unsatisfied properties are named
+  with the work each requires rather than omitted: P1 (attester separation
+  — the operator sets policy and runs the gate), P3 (execution outcome not
+  recorded), P4 (no per-action authority credential), P2 (complete
+  mediation is a deployment property).
+- `docs/design/EABC-PROFILE.md`: implementation profile mapping components
+  and record fields onto the eight normative properties, with unsupported
+  capabilities stated explicitly.
+- Not a certification or third-party audit. The EABC specification is
+  published by another party; this document is a voluntary self-assessment
+  that a reader is expected to check against the code and frozen records.
+
+### Fixed — trace binding in the record hash (EABC P7)
+- `custos/audit.py`: `AuditRecord.binding_version` (default 0 = legacy
+  preimage, byte-identical, unchanged forever). Records emitted from
+  version 1 include a bound `"binding": "v1"` marker plus `trace_id` in the
+  `record_hash` preimage, so request-level correlation is covered by the
+  same integrity evidence as the record it correlates — and a record cannot
+  be relabelled legacy to drop its trace identifier.
+- `custos/audit.py`: `preimage_fields()` / `compute_record_hash()` are now
+  the single preimage definition.
+- `docs/design/eabc-trace-binding.md`: R1–R3, including the disclosed
+  limitation (pre-version-1 records cannot be retroactively bound).
+
+### Fixed — two defects found while mapping against EABC
+- `custos/custody.py`: the external custody re-walk (`verify_custody` P1)
+  recomputed the record hash from the original six fields only, ignoring
+  `policy_digest` and `tenant_id`. Any store containing cited records was
+  therefore reported as `CONTRADICTION` — the independent verifier was
+  checking a different record from the one the emitter wrote. It now
+  delegates to `compute_record_hash()`, so the external consumer recomputes
+  exactly what was emitted.
+- `custos/audit.py` (SQLite and PostgreSQL backends): `policy_digest`,
+  `tenant_id` and `binding_version` were not persisted, so a restart
+  silently stripped the citation and the reloaded chain failed
+  verification. Both backends now store and load them, with in-place
+  migration (`PRAGMA table_info` + `ALTER TABLE` for SQLite,
+  `ADD COLUMN IF NOT EXISTS` for PostgreSQL).
+- `tests/test_audit_trace_binding.py`: 8 tests — binding at emission,
+  mutation of `trace_id` fails, deletion fails, version downgrade fails,
+  legacy record verifies unchanged, mixed legacy/bound chain verifies,
+  SQLite round-trip preserves citation and binding, older database migrates
+  in place.
+- Test suite: **571 passed / 13 skipped** (was 550/13).
+
 ### Documentation — benchmark receipt committed
 - `docs/benchmarks/bench-oct24.json`: the benchmark record backing the
   publicly cited "1.47ms p50" (hs256 sequential, 1.475ms p50 / 1.679ms p95,
