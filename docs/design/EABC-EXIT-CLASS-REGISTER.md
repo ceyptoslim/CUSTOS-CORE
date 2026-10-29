@@ -145,24 +145,59 @@ is why the deployment half stays open.
 
 ## Mapping to EABC v1 properties and evidence requirements
 
-The test of whether this register is a comparability layer or a parallel conformance model is
-whether its classes map onto the contract's existing vocabulary. They do, and the mapping is not
-one-to-one, which is the whole claim.
+A mapped cell does one thing: it identifies which existing EABC property a failure implicates. It
+does not create a property, and it does not establish conformance. A class is a failure mode; the
+property is the requirement it dents. The register is a comparability layer only while that stays
+true, and the checker asserts the wording.
 
-| Exit class | EABC properties it dents | Evidence requirement it constrains | Already covered by v1 | What the class adds |
+| Exit class | Property implicated | Evidence requirement it constrains | Already covered by v1 | What the class adds |
 |---|---|---|---|---|
-| `EX-1 suppression` | P6 Evidence Integrity, P2 Complete Mediation | L2: the *existence* of a record, which every artifact requirement presupposes and none states | P6 covers tampering with records that exist | Non-existence is not a tampering case. A truncated tail is invisible to a verifier walking the records it was given; it becomes visible only by comparing the store against an external completeness bound. |
+| `EX-1 suppression` | P2 Complete Mediation | L2: the existence of a record, which every artifact requirement presupposes and none states | P2 covers mediation of the action itself | The failure is of *representation*, not of mediation or alteration. See the integrity/completeness note below; the class is not a P6 case. |
 | `EX-2 substitution` | P3 Deterministic Commit Semantics, P4 Context Binding, P8 Failure Semantics | L2: evidence about the effect, not only the decision | P3 requires a deterministic recorded outcome; P4 binds the payload of the decided action | Both bind the *decision*. Neither observes the effect. The class names the missing observer and therefore the missing evidence. |
 | `EX-3 attribution` | P1 Independent Execution Authority, P5 State Binding, docs/002 external-mapping rule | L2: who is entitled to supply the evidence | P1 states that execution authority is independent of the governed agent | Independence from the *agent* is the closed half; independence from the *operator* is the open half. The class separates two things the property names together. |
-| `EX-4 coverage` | P2 Complete Mediation | L2: totality of mediation across effect-producing paths | P2 names complete mediation directly | **Close to one-to-one.** This is the weakest justification in the register and is flagged as such below. |
+| `EX-4 coverage` | P2 Complete Mediation | L2: totality of mediation across a deployment's effect-producing paths | P2 names complete mediation directly | An operationally distinct boundary: complete within an API surface, unproven across a deployment. See the distinctness test below, which is also its removal condition. |
 
-Two falsification conditions for the mapping itself, offered rather than hidden:
+### Evidence integrity is a different question from evidence completeness
 
-1. If every class mapped one-to-one onto a single property, the register would be redundant and
-   should be withdrawn rather than maintained.
-2. `EX-4` is near one-to-one with P2. If the contract's author judges it redundant, drop it. The
-   register's remaining claim survives on `EX-1`–`EX-3`, each of which cuts across at least two
-   properties and names a failure their vocabulary cannot express alone.
+An earlier draft of this table listed P6 Evidence Integrity against `EX-1`, and that was wrong in a
+way worth recording rather than quietly editing. P6 governs whether a record that exists has been
+altered since emission. The question presupposes existence. Suppression is the failure of a record
+never existing, or not surviving to durable storage, and no integrity property can observe it: a
+chain containing one record verifies perfectly whether the system emitted one decision or ten
+thousand, because a verifier walking records cannot see the ones it was never given.
+
+So the accurate statement is that no EABC v1 property covers completeness of representation, and the
+nearest one is P2, because suppression is a decision that never mediated anything visible. What
+*does* answer the completeness question here is the anchor comparison — the store is checked against
+an external bound that covers more records than the store holds — which is the P4 store-completeness
+reading, not P6. The class is closed by that comparison, on the storage boundary, and by nothing in
+the integrity property.
+
+Recording the correction rather than replacing it silently is the same rule the repository applies
+to frozen runs: the earlier reading stays visible, because a spec author who is told only the
+corrected version cannot tell whether the reasoning was fixed or the wording.
+
+### The distinctness test for `EX-4 coverage`
+
+Ruling recorded: `EX-4` stays only if it states a boundary the P2 mapping and the profile cannot
+already express, and only if that statement is independently reviewable. The boundary statement:
+
+> Mediation can be complete across an API surface and incomplete across a deployment's
+> effect-producing paths. CUSTOS-CORE demonstrates the first and cannot demonstrate the second from
+> inside the artifact. A deployment satisfies Complete Mediation only if every effect-producing path
+> terminates at the gate, and no artifact in this repository can establish that for a deployment it
+> has not observed.
+
+It is reviewable in one direction only, which is the point: a reviewer checks the *deployment*, not
+the register, by enumerating effect-producing paths and asking whether each reaches the gate. That
+question is not answerable from the P2 row, because P2 is a requirement and the sentence is a
+boundary claim with a stated limit of demonstration.
+
+**Removal condition.** If a reviewer concludes that the statement is P2 restated with the word
+"deployment" added, `EX-4` should be merged into the P2 row and the vocabulary reduced to three.
+
+One falsification condition for the mapping as a whole: if every class mapped one-to-one onto a
+single property, the register would be redundant and should be withdrawn rather than maintained.
 
 The register adds no levels, no scores, and no aggregation. A mapped cell is a statement about which
 existing requirement a failure implicates, not a new requirement.
@@ -174,8 +209,9 @@ CI cannot tell whether four is the right number, so the procedure is social and 
 1. **Name the failure mode** in one sentence of the form "an effect occurs that ___".
 2. **Show distinctness**: no existing class covers it, and the nearest class does not either. A
    candidate that restates `EX-4` under a different noun is a vocabulary change, not a new class.
-3. **Property test**: name the EABC property it dents, and state why that property's own vocabulary
-   cannot express the failure without losing information. If it can, the class is not needed.
+3. **Property test**: name the EABC property it implicates, and state why that property's own
+   vocabulary cannot express the failure without losing information. If it can, the class is not
+   needed.
 4. **Evidence test**: state the artifact and the falsification condition for a closure claim.
 5. **Change the list, the mapping and the test in one commit.** A class present in one and absent
    from another is a documentation defect, and the checker is written to catch exactly that.
