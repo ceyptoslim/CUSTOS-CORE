@@ -37,12 +37,78 @@ def _field(section: str, label: str) -> str:
     return match.group(1).strip() if match else ""
 
 
-def test_vocabulary_is_closed():
-    """A new class must be a deliberate contract change, not a local invention."""
+def test_vocabulary_is_stable_across_profiles():
+    """The list is closed for comparability, not because four is the true number.
+
+    This test prevents a class appearing in one profile and being compared against
+    another profile that never heard of it. It cannot tell you the list is complete,
+    and the register says so in its own text: adding a class is a deliberate revision
+    (see "Revision procedure for a fifth class"), not a local convenience.
+    """
     found = list(_sections())
     assert found == CLASSES, (
-        f"register classes are {found}, expected {CLASSES}. Adding a class locally makes two "
-        "profiles incomparable; propose it to the contract first."
+        f"register classes are {found}, expected {CLASSES}. Changing the vocabulary is allowed, "
+        "but only deliberately: update the list, the mapping table and this test in one commit, "
+        "and say why the new class names a failure the existing ones cannot. The green build "
+        "enforces shape, never completeness."
+    )
+
+
+def _mapping_rows() -> dict:
+    text = REGISTER.read_text(encoding="utf-8")
+    section = re.search(
+        r"## Mapping to EABC v1 properties and evidence requirements(.*?)\n## ", text, re.S
+    )
+    assert section, "the mapping section is missing"
+    rows = {}
+    for line in section.group(1).splitlines():
+        match = re.match(r"\|\s*`(EX-\d [a-z]+)`\s*\|", line.strip())
+        if match:
+            rows[match.group(1)] = line
+    return rows
+
+
+@pytest.mark.parametrize("name", CLASSES)
+def test_every_class_is_mapped_to_eabc_properties(name):
+    """A class with no EABC mapping would be a parallel conformance model."""
+    rows = _mapping_rows()
+    assert name in rows, f"{name} has no row in the EABC mapping table"
+    row = rows[name]
+    assert re.search(r"P[1-9]\b", row), f"{name} is mapped to no EABC property"
+    cells = [c.strip() for c in row.strip().strip("|").split("|")]
+    assert len(cells) >= 5, (
+        f"{name} mapping row is missing a column: expected class, properties, evidence, "
+        f"existing coverage and what it adds, got {len(cells)} cells"
+    )
+    assert all(cells[1:]), f"{name} has an empty mapping cell; state what it constrains and adds"
+
+
+def test_mapping_does_not_introduce_a_parallel_model():
+    """The mapping must cite the contract, not scores, levels or arithmetic."""
+    text = REGISTER.read_text(encoding="utf-8")
+    section = re.search(
+        r"## Mapping to EABC v1 properties and evidence requirements(.*?)\n## ", text, re.S
+    ).group(1)
+    lowered = section.lower()
+    forbidden = [w for w in ("conformance level", "weighted total", "aggregate score") if w in lowered]
+    assert not forbidden, (
+        f"the mapping section introduces aggregation vocabulary {forbidden}. A set of closed "
+        "exits does not imply a level; the register makes scope comparable and stops there."
+    )
+    assert "adds no levels" in lowered, (
+        "the mapping section must state in its own words that it introduces no levels, scores "
+        "or aggregation — the disclaimer is what keeps it from becoming a parallel model"
+    )
+
+
+def test_revision_procedure_exists():
+    text = REGISTER.read_text(encoding="utf-8")
+    assert "## Revision procedure for a fifth class" in text, (
+        "without a stated revision route, a vocabulary enforced by CI reads as a claim of "
+        "exhaustiveness, which it is not"
+    )
+    assert "Closed for comparability, not for truth" in text, (
+        "the register must say in its own words that CI enforces shape, not completeness"
     )
 
 

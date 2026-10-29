@@ -9,6 +9,23 @@ open" format — no claims beyond what the code and tests demonstrate.
 
 ## [Unreleased]
 
+### Added — exit-class register mapped to EABC v1 (profile-level, per review)
+- Mapping of each exit class onto existing EABC properties: `EX-1` -> P6/P2, `EX-2` -> P3/P4/P8,
+  `EX-3` -> P1/P5 + docs/002 external-mapping rule, `EX-4` -> P2. None is one-to-one except `EX-4`,
+  which is close enough to be flagged in the document as the weakest justification in the register.
+  If the contract's author judges `EX-4` redundant, it should be dropped; the claim survives on the
+  three classes that each cut across at least two properties.
+- Non-exhaustiveness stated where the vocabulary is defined: "closed for comparability, not for
+  truth". CI enforces shape and never completeness, and the checker's failure message now says so.
+- Written revision procedure for a fifth class: name the failure mode, show distinctness from the
+  nearest existing class, name the property it dents and why that property cannot express it, state
+  the artifact and falsification condition, and change list, mapping and test in one commit.
+- Checkers added: every class must appear in the mapping table with a property citation and no empty
+  cell; the mapping section may not introduce aggregation vocabulary and must carry its own
+  "adds no levels" disclaimer. Verified by mutation: dropping a class from the mapping fails, and a
+  "weighted total" sentence fails.
+- Counts: 603 passed / 14 skipped, coverage 89% (measured).
+
 ### Added — EABC exit-class register (profile-level statement against EABC v1)
 - `docs/design/EABC-EXIT-CLASS-REGISTER.md`: four exit classes (`suppression`, `substitution`,
   `attribution`, `coverage`), each with boundary, failure mode, declared status, threat-model
@@ -26,7 +43,7 @@ open" format — no claims beyond what the code and tests demonstrate.
   conditions, and the architectural argument for out-of-scope. Verified by three mutations before
   committing (invented status, stripped argument, broken artifact path) — each one fails with its
   own message.
-- Counts: 597 passed / 14 skipped, coverage 89% (measured).
+- Counts: 603 passed / 14 skipped, coverage 89% (measured).
 
 ### Changed — the published preimage formula is now a test
 - `tests/test_preimage_spec_truth.py`: intercepts the dict `compute_record_hash` actually passes
