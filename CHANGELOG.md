@@ -9,6 +9,21 @@ open" format — no claims beyond what the code and tests demonstrate.
 
 ## [Unreleased]
 
+### Changed — the published preimage formula is now a test
+- `tests/test_preimage_spec_truth.py`: intercepts the dict `compute_record_hash` actually passes
+  to `json.dumps` and asserts it matches the field list published in
+  `docs/design/EABC-PROFILE.md`. Interception, not reconstruction: the guard reads the real
+  preimage instead of re-deriving it, so it cannot become the fourth stale copy.
+- Also guards the two consumers that were stale copies in production —
+  `custos/custody.py` and `scripts/red-proof/custody_attack.py` — and structurally (AST) rejects
+  any module outside `custos/audit.py` that assembles a preimage dict of its own. `custody.py`
+  reading `previous_hash` during a re-walk is not flagged; building the dict is.
+- Verified in both directions before committing: deleting `trace_id` from the published formula
+  fails with "an independent implementer would compute a different hash", and a synthetic
+  duplicate module is detected while `hybrid_engine`'s decision dict and the custody re-walk are
+  correctly ignored.
+- Counts: 579 passed / 14 skipped, coverage 89% (measured).
+
 ### Security — red-proof run 20: six classes, first clean class 006
 - Run 40937305618: all six pre-registered sabotage classes RED, all three custody attacks DETECTED.
 - Class `trace-binding` (006) RED-CONFIRMED on first clean execution; the two failures are the
