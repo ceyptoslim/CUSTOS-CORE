@@ -9,6 +9,22 @@ open" format — no claims beyond what the code and tests demonstrate.
 
 ## [Unreleased]
 
+### Added — status semantics, and the conformance boundary stated explicitly
+- `## Status semantics` records the ruling that these three words mean one thing across profiles:
+  `demonstrated-closed` (closure supported by an artifact within an explicitly stated boundary and
+  threat model, and nothing wider), `declared-open` (an acknowledged gap with a stated route), and
+  `out-of-scope-by-construction` (architecture plus a falsification condition; absence of a test is
+  not an argument).
+- The register now states that EABC conformance remains a separate judgment against the applicable
+  properties, EBP, threat model and required evidence, and that no row, and no combination of rows,
+  establishes that verdict. Four closure claims are not a conformance total.
+- `EX-4 coverage` recorded as **retained provisionally**, on the author's stated condition: it must
+  require an explicit assessment of the deployment's effect-producing paths rather than restating
+  P2. The removal condition stands if that distinction cannot be maintained.
+- Three guard tests: the semantics section defines all three statuses with their limits, the
+  no-combination clause is present, and EX-4 stays marked provisional with its condition.
+- Counts: 610 passed / 14 skipped (measured).
+
 ### Changed — mapping corrected on review (EX-1 was filed under the wrong property)
 - `EX-1 suppression` no longer implicates P6 Evidence Integrity. P6 governs whether a record that
   exists was altered; suppression is a record never existing or not surviving to storage, and no
@@ -25,7 +41,7 @@ open" format — no claims beyond what the code and tests demonstrate.
 - Mapping preamble now states that a mapped cell identifies an implicated property and neither
   creates a property nor establishes conformance. Guarded by tests, including one that fails if
   `EX-1` is ever filed under P6 again.
-- Counts: 607 passed / 14 skipped (measured).
+- Counts: 610 passed / 14 skipped (measured).
 
 ### Added — exit-class register mapped to EABC v1 (profile-level, per review)
 - Mapping of each exit class onto existing EABC properties: `EX-1` -> P6/P2, `EX-2` -> P3/P4/P8,
@@ -42,7 +58,7 @@ open" format — no claims beyond what the code and tests demonstrate.
   cell; the mapping section may not introduce aggregation vocabulary and must carry its own
   "adds no levels" disclaimer. Verified by mutation: dropping a class from the mapping fails, and a
   "weighted total" sentence fails.
-- Counts: 607 passed / 14 skipped, coverage 89% (measured).
+- Counts: 610 passed / 14 skipped, coverage 89% (measured).
 
 ### Added — EABC exit-class register (profile-level statement against EABC v1)
 - `docs/design/EABC-EXIT-CLASS-REGISTER.md`: four exit classes (`suppression`, `substitution`,
@@ -61,7 +77,7 @@ open" format — no claims beyond what the code and tests demonstrate.
   conditions, and the architectural argument for out-of-scope. Verified by three mutations before
   committing (invented status, stripped argument, broken artifact path) — each one fails with its
   own message.
-- Counts: 607 passed / 14 skipped, coverage 89% (measured).
+- Counts: 610 passed / 14 skipped, coverage 89% (measured).
 
 ### Changed — the published preimage formula is now a test
 - `tests/test_preimage_spec_truth.py`: intercepts the dict `compute_record_hash` actually passes

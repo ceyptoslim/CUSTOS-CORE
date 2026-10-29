@@ -45,6 +45,28 @@ the intended route for a fifth class, and it is deliberately more work than edit
 
 Status values, also closed: `demonstrated-closed`, `declared-open`, `out-of-scope-by-construction`.
 
+### Status semantics
+
+Ruled on review by the contract author, and recorded here because the register is only comparable if
+these three words mean the same thing in every profile that uses them.
+
+**`demonstrated-closed`** means closure is supported by an artifact within an explicitly stated
+boundary and threat model. It does not mean the class is closed everywhere, and it does not mean the
+implementation conforms to EABC. The claim is exactly as wide as the artifact and the threat model,
+and no wider.
+
+**`declared-open`** records an acknowledged gap. The class is not closed, the limitation is visible to
+a reader, and the same row states what would close it.
+
+**`out-of-scope-by-construction`** requires an explicit architectural argument and a falsification
+condition for the declaration itself. The absence of a test is not an argument, and this label is
+where a missing test would go to hide.
+
+The register reports scoped claims and their evidence. **EABC conformance remains a separate
+judgment** against the applicable properties, EBP, threat model and required evidence. No row, and no
+combination of rows by itself, establishes that verdict. A reader who adds up four closure claims has
+computed something the register does not assert.
+
 ### EX-1 suppression
 
 **Boundary.** For every decision the gate returns, exactly one audit record was appended before the
@@ -179,8 +201,11 @@ corrected version cannot tell whether the reasoning was fixed or the wording.
 
 ### The distinctness test for `EX-4 coverage`
 
-Ruling recorded: `EX-4` stays only if it states a boundary the P2 mapping and the profile cannot
-already express, and only if that statement is independently reviewable. The boundary statement:
+Ruling recorded: `EX-4` is **retained provisionally**. It is reviewable only if it requires an
+explicit assessment of the deployment's effect-producing paths rather than restating P2. P2 states the
+property; `EX-4` makes a specific coverage failure visible at the deployment boundary, and the removal
+condition below is the safeguard if that distinction cannot be maintained in practice. The boundary
+statement:
 
 > Mediation can be complete across an API surface and incomplete across a deployment's
 > effect-producing paths. CUSTOS-CORE demonstrates the first and cannot demonstrate the second from

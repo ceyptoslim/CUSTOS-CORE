@@ -227,3 +227,36 @@ def test_ex4_carries_a_reviewable_boundary_and_a_removal_condition():
     assert "terminates at the gate" in flat, (
         "the boundary statement must be checkable by a reviewer looking at a deployment"
     )
+
+
+def test_status_semantics_are_defined():
+    """Three words carry the whole register; each must say what it may not claim."""
+    flat = _norm(REGISTER.read_text(encoding="utf-8"))
+    assert "### Status semantics" in flat
+    assert "closure is supported by an artifact within an explicitly stated boundary and threat model" in flat, (
+        "demonstrated-closed must be scoped to an artifact and a threat model, not to the class "
+        "being closed everywhere"
+    )
+    assert "it does not mean the implementation conforms to EABC" in flat
+    assert "records an acknowledged gap" in flat
+    assert "The absence of a test is not an argument" in flat
+
+
+def test_no_row_or_combination_establishes_conformance():
+    """The register reports scoped claims; the verdict is a separate judgment."""
+    flat = _norm(REGISTER.read_text(encoding="utf-8"))
+    assert "No row, and no combination of rows by itself, establishes that verdict" in flat, (
+        "the register must state that summing closure claims does not produce a conformance verdict"
+    )
+    assert "EABC conformance remains a separate judgment" in flat
+
+
+def test_ex4_is_retained_provisionally_with_a_condition():
+    flat = _norm(_mapping_section())
+    assert "retained provisionally" in flat, (
+        "EX-4's review status is provisional; the document must say so rather than implying it "
+        "survived review permanently"
+    )
+    assert "explicit assessment of the deployment's effect-producing paths" in flat, (
+        "EX-4 is reviewable only if it requires deployment-path assessment rather than restating P2"
+    )
