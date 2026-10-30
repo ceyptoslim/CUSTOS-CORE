@@ -81,9 +81,10 @@ Three words, and each says what it may **not** claim:
   implementation conforms to EABC. The claim is exactly as wide as the artifact and the threat model.
 - **`declared-open`** — an acknowledged gap. The class is not closed, the limitation is visible to a
   reader, and the same row states what would close it.
-- **`out-of-scope-by-construction`** — requires an architectural argument and a falsification
-  condition for the declaration itself (Part C.3). The absence of a test is not an argument, and this
-  label is where a missing test would go to hide.
+- **`out-of-scope-by-construction`** — requires an architectural argument in one of two forms, each
+  with its own falsification condition (Part C.3): a competing constraint, or a mechanism the
+  architecture does not contain. The absence of a test is not an argument, and this label is where a
+  missing test would go to hide.
 
 A single status may describe a class that is half closed and half open. When it does, the profile must
 say which half is which, because a reader will otherwise assume the wider claim.
@@ -110,15 +111,43 @@ computed something the profile does not assert.
 ### C.3 What "out of scope by construction" requires
 
 The label is the most easily abused, because "we did not test it" and "a test cannot change this" look
-identical from outside. An architectural argument is required, and it must be a *constraint* that runs
-in the opposite direction from a test:
+identical from outside. An architectural argument is required, and there are two legitimate forms. A
+profile must say which one it is using, because they are checked by looking for different things.
 
-- The constraint: what structural fact makes closure impossible without damaging another property.
-- The falsification condition for the declaration itself: what would show the author was mistaken
-  rather than merely convenient.
+**Form A — competing constraint.** Closing the class would damage another property the
+implementation also provides. The argument names the trade: closure requires an act that breaks
+something else the profile claims.
 
-A profile that cannot state both must use `declared-open` instead. That is not a demotion; it is the
-accurate word.
+> *Worked example:* a record emitted before a binding version existed cannot have a new field added to
+> its preimage without changing its stored hash, which would destroy byte-identical verification of
+> historical chains. The class is closed by a constraint that runs opposite to a test: any attempt to
+> close it damages evidence integrity for existing data.
+>
+> *Falsification of the declaration:* a technique that closes the class without altering the stored
+> hashes. If one exists, the declaration was convenient rather than structural.
+
+**Form B — mechanism absent.** The class presupposes a mechanism the architecture does not contain, so
+there is no path for the failure to occur. The argument names the mechanism and shows it is absent,
+not merely untested.
+
+> *Worked example:* an implementation that never persists a decision has no "record lost between
+> append and durable storage" failure, because there is no append and no storage. The class is
+> inapplicable rather than open.
+>
+> *Falsification of the declaration:* a path by which the mechanism enters the architecture, or an
+> equivalent mechanism under a different name. Persistence added later, or a queue that behaves as
+> one, makes the declaration false — which is why the argument must name the mechanism precisely
+> enough for a reader to look for it.
+
+Both forms require a falsification condition for the declaration itself. A profile that cannot state
+one must use `declared-open` instead. That is not a demotion; it is the accurate word.
+
+**Why the distinction earns its own section.** Form A is checked by asking whether the stated trade is
+real: does the act that would close the class actually damage the other property? Form B is checked by
+enumerating the architecture and finding no instance of the named mechanism. A profile that gives a
+Form A argument where the truth is Form B is usually hiding a mechanism nobody looked for, and a
+profile that gives Form B where the trade is real is usually avoiding an admission. Neither error is
+visible from the status word alone.
 
 ### C.4 Artifacts
 
@@ -137,8 +166,10 @@ For a third party reading a completed profile, in order:
 4. Does every `demonstrated-closed` cite an artifact that is openable and shows what the boundary
    claims?
 5. Is every threat model both stated and bounded, or does it silently expand to "everything"?
-6. Does every `out-of-scope-by-construction` carry a constraint and a falsification condition for the
-   declaration itself?
+6. Does every `out-of-scope-by-construction` name which form it uses — competing constraint (A) or
+   absent mechanism (B) — with the falsification condition for that form? Form A should be checked by
+   asking whether the stated trade is real; Form B by enumerating the architecture for the named
+   mechanism.
 7. Does anything in the profile aggregate statuses into a conformance statement?
 8. Is the attribution boundary explicit, so findings read as the author's?
 
