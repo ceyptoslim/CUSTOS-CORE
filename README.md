@@ -21,7 +21,7 @@ CUSTOS-CORE and LORL-9.1 provide the open-core governance and agent infrastructu
 
 [github.com/ceyptoslim/CUSTOS-CORE](https://github.com/ceyptoslim/CUSTOS-CORE)
 
-**Verified:** 2026-10-30 live run on `main` (`dd454b1`) | **Tests:** 666 passed, 14 skipped | **Coverage:** 89%
+**Verified:** 2026-10-30 live run on `main` (`dd454b1`) | **Tests:** 670 passed, 14 skipped | **Coverage:** 89%
 
 Verified implementation:
 
@@ -151,7 +151,18 @@ Deployment platform with template/plugin marketplace.
 through the gate: a denial returns the rule and the audit record hash and never
 reaches the upstream server; a gate that times out, errors, or answers malformed
 denies without forwarding. One record per call, written by the gate before any
-effect. Transport binding is not wired yet; the core is transport-agnostic.
+effect.
+
+`custos/mcp_stdio.py` is the transport: it spawns the upstream over stdio, lists
+its tools, and routes every call through the core. The smoke test in
+`tests/test_mcp_stdio_smoke.py` proves the denial end to end against a real MCP
+server — the upstream writes a marker file on every call, and the marker is absent
+after a denied one. Pinned `mcp>=1,<2`; a resolver guard fails the build if 2.x is
+ever installed, since the binding targets the 1.x API.
+
+The binding is stdio only. HTTP and SSE transport are not implemented, and the
+tool list is passed through unfiltered for v1, so `tools/list` is not itself a
+policy surface.
 
 Mediation holds only when the proxy is the agent's sole path to the upstream
 server. That is exit class `EX-4` in the exit-class register: closed for the API
@@ -202,7 +213,7 @@ Architecture targets that are NOT yet implemented. These should not be presented
 | "Google OAuth in Base44 apps" | ✅ | |
 | "Google OAuth in CUSTOS-CORE" | | ❌ — not in the codebase |
 | "Solana/Ethereum/ZK implemented" | | ❌ — architecture target |
-| "666 tests, 89% coverage" (CUSTOS-CORE) | ✅ | |
+| "670 tests, 89% coverage" (CUSTOS-CORE) | ✅ | |
 | "129 tests, 93% coverage" (LORL-9.1) | ✅ | |
 
 For formal audit: authoritative evidence should be commit SHA + CI run + test output + coverage artifact, not a document stating test counts.
