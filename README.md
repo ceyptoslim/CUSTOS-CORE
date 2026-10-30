@@ -202,7 +202,7 @@ Architecture targets that are NOT yet implemented. These should not be presented
 | "Google OAuth in Base44 apps" | ✅ | |
 | "Google OAuth in CUSTOS-CORE" | | ❌ — not in the codebase |
 | "Solana/Ethereum/ZK implemented" | | ❌ — architecture target |
-| "662 tests, 89% coverage" (CUSTOS-CORE) | ✅ | |
+| "666 tests, 89% coverage" (CUSTOS-CORE) | ✅ | |
 | "129 tests, 93% coverage" (LORL-9.1) | ✅ | |
 
 For formal audit: authoritative evidence should be commit SHA + CI run + test output + coverage artifact, not a document stating test counts.
