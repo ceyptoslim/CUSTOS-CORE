@@ -1,0 +1,48 @@
+{
+  "record_version": 3,
+  "identity": {
+    "run_id": "41014270661",
+    "attack_id": "001-rewrite-backend",
+    "commit_sha": "ef37ce304206ca829fa0906be351f955b184fe77",
+    "attack_script_sha256": "43813e5d13a17781df70a62b86d71aaba0a6d5e7334938ef7f1f916030087b5d",
+    "pre_registered_design": "docs/red-proof-records/sabotage-custody/DESIGN.md"
+  },
+  "time": {
+    "executed_at_utc": "2026-10-30T06:28:34Z"
+  },
+  "observations": {
+    "internal_verify_message": "OK",
+    "tampered_row_id": 5,
+    "external_detail": "anchor 1: recomputed head dc3935a9315d\u2026 != anchored head 2aa3c485e18a\u2026 (rewrite detected)",
+    "external_verdicts": {
+      "P1_record_chain_consistency": "ESTABLISHED",
+      "P3_anchor_chain_integrity": "ESTABLISHED",
+      "P2_anchored_heads_match_store": "CONTRADICTION",
+      "P4_store_completeness": "ESTABLISHED"
+    },
+    "anchor_repo": "/tmp/custody-attack-q0vpg5th/anchor-repo"
+  },
+  "verdict": {
+    "expected": {
+      "internal_verify": true,
+      "P2_anchored_heads_match_store": "CONTRADICTION",
+      "overall": "CONTRADICTION"
+    },
+    "actual": {
+      "internal_verify": true,
+      "P2_anchored_heads_match_store": "CONTRADICTION",
+      "overall": "CONTRADICTION"
+    },
+    "verdict": "DETECTED",
+    "rule": {
+      "id": "custody-attack-verdict-rule",
+      "version": 1,
+      "mapping": "actual == expected -> DETECTED; else FAULTY-GREEN"
+    }
+  },
+  "provenance": {
+    "workflow": "ci-red-proof (custody-attacks)",
+    "repo": "ceyptoslim/CUSTOS-CORE",
+    "runner": "true"
+  }
+}
