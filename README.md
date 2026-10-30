@@ -155,7 +155,7 @@ effect.
 
 `custos/mcp_stdio.py` is the transport: it spawns the upstream over stdio, lists
 its tools, and routes every call through the core. The smoke test in
-`tests/test_mcp_stdio_smoke.py` proves the denial end to end against a real MCP
+`tests/test_mcp_stdio_smoke.py` shows the denial end to end against a real MCP
 server — the upstream writes a marker file on every call, and the marker is absent
 after a denied one. Pinned `mcp>=1,<2`; a resolver guard fails the build if 2.x is
 ever installed, since the binding targets the 1.x API.
