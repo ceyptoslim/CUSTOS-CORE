@@ -30,14 +30,23 @@ is not that claim.
    imports nothing from `custos`, holds no allowlist, and authorizes only on a
    literal `True` — the same rule the OPA engine applies to its own response. A
    test fails if the core imports `custos` or grows an allowlist.
-2. **One record per call**, written by the gate, at decision time. Verified end to
-   end: `tests/test_mcp_gate_integration.py` reads the chain and asserts the hash
-   returned to the proxy is the hash the gate wrote.
+2. **One record per decided call**, written by the gate, at decision time.
+   Verified end to end: `tests/test_mcp_gate_integration.py` reads the chain and
+   asserts the hash returned to the proxy is the hash the gate wrote. "Decided" is
+   load-bearing: the timeout path does not produce a citable record (item 4).
 3. **The proxy mints the correlation id** and passes `trace_id` into
    `evaluate_action`, which threads it into the record's preimage. That parameter
    was added by this integration; before it, correlation was only reachable by
    calling `AuditChain.record` directly.
-4. **Bounded, fail-closed waiting.** Default 2s. A timeout, an exception, or a
+4. **A timed-out decision is not citable, and that is a real gap.** The denial is
+   fail-closed: nothing forwards. But the proxy returns no record hash for it, and
+   whether the gate managed to write a record at all depends on where its work was
+   cancelled — before the write it never lands, after it, it lands and nobody holds
+   its hash. So "one record per call" holds for decided verdicts and does not hold
+   for the timeout and error paths. Closing it means reconciling by `trace_id`
+   after the timeout inside the same bound; that is not implemented, and until it
+   is, a timeout denial is evidence-free rather than mis-evidenced.
+5. **Bounded, fail-closed waiting.** Default 2s. A timeout, an exception, or a
    verdict that is not an explicit allow all deny without forwarding. A zero,
    negative, infinite, NaN or missing timeout refuses to start, because a bound
    that cannot fire turns a refusal into a hang.
@@ -67,8 +76,11 @@ consequences worth knowing:
 
 * `evaluate_action` is synchronous and runs in a worker thread. The timeout bounds
   how long the agent waits and denies the call; it cannot interrupt a gate call
-  already running. The denial is what matters, and the orphaned call's record is
-  written but never acted on.
+  already running. The orphaned call keeps running to completion, so it may or may
+  not reach its record write depending on where it was when the bound fired (item 4
+  above). Under sustained timeouts that orphaned work keeps occupying worker threads,
+  which is a throughput boundary worth knowing about rather than a correctness one:
+  the denials stay correct while latency grows.
 * `client_id` is fixed to `mcp-proxy`, so records distinguish mediated calls from
   direct API calls without a second field.
 
