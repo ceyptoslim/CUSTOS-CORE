@@ -213,6 +213,49 @@ class ActionGate:
             reason=reason,
         )
 
+    def record_reconciliation(
+        self,
+        tenant_id: str,
+        *,
+        client_id: str,
+        trace_id: str,
+        rule: str,
+        reason: str,
+        content: str,
+    ) -> bool:
+        """Record a deny that happened outside this gate, citing in-force policy.
+
+        Exists so a mediator (the MCP proxy) never has to reach into ``_tm`` or
+        ``_cited_policy_digest`` to write one record: the tenant context and the
+        citation are resolved here, where the invariants live, and the append goes
+        through ``AuditChain.append_reconciliation``. Returns False when nothing
+        could be written rather than raising, because the caller has already
+        denied and must not be turned into an error path by an audit outage.
+        """
+        try:
+            ctx = self._tm.get_strict(tenant_id)
+        except Exception:  # noqa: BLE001 - unknown tenant: nothing to record against
+            return False
+        if ctx is None:
+            return False
+        try:
+            digest = self._cited_policy_digest(tenant_id, ctx)
+        except Exception:  # noqa: BLE001
+            digest = None
+        try:
+            ctx.audit_chain.append_reconciliation(
+                client_id,
+                trace_id=trace_id,
+                rule=rule,
+                content=content,
+                reason=reason,
+                policy_digest=digest,
+                tenant_id=tenant_id,
+            )
+        except Exception:  # noqa: BLE001 - an unwritable store leaves the deny standing
+            return False
+        return True
+
     def evaluate_action(
         self,
         tenant_id: str,

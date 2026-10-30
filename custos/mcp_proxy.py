@@ -211,14 +211,27 @@ class McpProxy:
         args = dict(arguments or {})
         trace_id = self.mint_trace_id()
 
-        if self._breaker_open():
+        if self._breaker_denies():
             # The gate is not answering. Denying here is the same decision a
             # timeout would produce, made without paying the timeout each time.
+            # Recorded as well, because a denial nobody wrote down is the
+            # suppression class: the call was refused and the chain cannot say so.
+            reconciled = await self._reconcile(
+                tool,
+                trace_id,
+                rule=REASON_CIRCUIT_OPEN,
+                reason=(
+                    "proxy circuit breaker open: the gate did not answer the last "
+                    "calls within the bound, so this one was not forwarded and the "
+                    "gate was not asked"
+                ),
+            )
             return ProxyOutcome(
                 forwarded=False,
                 trace_id=trace_id,
                 reason=REASON_CIRCUIT_OPEN,
                 rule=REASON_CIRCUIT_OPEN,
+                reconciled=reconciled,
             )
 
         try:
@@ -233,7 +246,15 @@ class McpProxy:
             )
         except asyncio.TimeoutError:
             self._record_answer(timed_out=True)
-            reconciled = await self._reconcile_timeout(tool, trace_id)
+            reconciled = await self._reconcile(
+                tool,
+                trace_id,
+                rule=REASON_TIMEOUT,
+                reason=(
+                    "proxy timeout: the gate was asked and did not answer within the "
+                    "bound, so the call was not forwarded"
+                ),
+            )
             return ProxyOutcome(
                 forwarded=False,
                 trace_id=trace_id,
@@ -268,6 +289,7 @@ class McpProxy:
     def _record_answer(self, *, timed_out: bool) -> None:
         """Track consecutive timeouts and open the breaker at the limit."""
         state = self._breakers
+        state["probing"] = False
         if timed_out:
             state["consecutive"] = state.get("consecutive", 0) + 1
             if state["consecutive"] >= self._timeout_limit:
@@ -276,36 +298,46 @@ class McpProxy:
             state["consecutive"] = 0
             state["open_until"] = None
 
-    def _breaker_open(self) -> bool:
-        """True while the gate is presumed not answering.
+    def _breaker_denies(self) -> bool:
+        """True when the caller should be denied without touching the gate.
 
-        When the cooldown lapses the breaker goes half-open rather than closed: one
-        call is allowed through to see whether the gate recovered, and a single
-        timeout re-opens it. That keeps recovery observable without a stampede.
+        Half-open admits **exactly one** probe. The check above sets ``probing``
+        before the caller awaits anything, and Python runs it to completion, so
+        concurrent callers on the same loop cannot both see an empty slot and both
+        probe: the first takes it, the rest are denied. The probe clears the flag
+        when it answers, whichever way it answers.
         """
-        open_until = self._breakers.get("open_until")
+        state = self._breakers
+        if state.get("probing"):
+            return True
+        open_until = state.get("open_until")
         if open_until is None:
             return False
         if self._clock() < open_until:
             return True
-        self._breakers["open_until"] = None
-        self._breakers["consecutive"] = max(self._timeout_limit - 1, 0)
+        # Cooldown lapsed: this call is the probe, and nobody else may be.
+        state["probing"] = True
+        state["open_until"] = None
+        state["consecutive"] = max(self._timeout_limit - 1, 0)
         return False
 
     # -- reconciliation ----------------------------------------------------
-    async def _reconcile_timeout(self, tool: str, trace_id: str) -> bool:
-        """Ask the adapter to append a linked deny for a timed-out call.
+    async def _reconcile(self, tool: str, trace_id: str, *, rule: str, reason: str) -> bool:
+        """Ask the adapter to append a linked deny for a proxy-side refusal.
 
-        Optional by design: an adapter without the hook leaves the timeout
-        uncited, which is the pre-existing behaviour and is reported honestly as
-        ``reconciled=False`` rather than papered over. Failures here never change
-        the denial, because the denial is already the safe answer.
+        Optional by design: an adapter without the hook leaves the refusal
+        uncited, which is reported honestly as ``reconciled=False`` rather than
+        papered over. Failures here never change the denial, because the denial is
+        already the safe answer.
         """
-        hook = getattr(self._gate, "record_timeout_denial", None)
+        hook = getattr(self._gate, "record_denial", None)
         if not callable(hook):
             return False
         try:
-            result = hook(tenant_id=self._tenant_id, tool=tool, trace_id=trace_id)
+            result = hook(
+                tenant_id=self._tenant_id, tool=tool, trace_id=trace_id,
+                rule=rule, reason=reason,
+            )
             if inspect.isawaitable(result):
                 await asyncio.wait_for(result, timeout=RECONCILE_BUDGET_SECONDS)
         except Exception:  # noqa: BLE001 - the denial stands either way

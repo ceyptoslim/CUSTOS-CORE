@@ -29,7 +29,7 @@ class CountingGate:
         self._delay = delay
         self.reconciled = []
         if reconcile is not None:
-            self.record_timeout_denial = reconcile
+            self.record_denial = reconcile
 
     async def evaluate(self, *, tenant_id, tool, arguments, trace_id):
         self.calls += 1
@@ -109,8 +109,8 @@ def test_a_nonsense_cooldown_refuses_to_start():
 def test_timeout_appends_a_linked_deny_record():
     seen = []
 
-    def reconcile(*, tenant_id, tool, trace_id):
-        seen.append((tenant_id, tool, trace_id))
+    def reconcile(*, tenant_id, tool, trace_id, rule, reason):
+        seen.append((tenant_id, tool, trace_id, rule))
         return True
 
     gate = CountingGate(reconcile=reconcile)
@@ -119,8 +119,8 @@ def test_timeout_appends_a_linked_deny_record():
 
     assert out.rule == REASON_TIMEOUT
     assert out.reconciled is True
-    assert seen == [("t", "delete_file", out.trace_id)], \
-        "the deny record must carry the same trace_id as the timed-out call"
+    assert seen == [("t", "delete_file", out.trace_id, REASON_TIMEOUT)], \
+        "the deny record must carry the same trace_id and rule as the refusal"
 
 
 def test_a_failing_reconciler_does_not_change_the_denial():
@@ -265,3 +265,159 @@ def test_the_adapter_appends_a_real_linked_record_on_timeout():
     assert records, "the deny record must be in the chain under the call's trace_id"
     assert all(r.action.upper() == "DENY" for r in records)
     assert any(r.triggered_rule == "mcp_proxy_gate_timeout" for r in records)
+
+
+# -- ordering: the deny wins on the marker, not on recency -----------------
+def _real_gate():
+    from custos.action_gate import ActionGate
+    from custos.tenant import TenantManager
+
+    tm = TenantManager()
+    gate = ActionGate(tm)
+    gate.register_tools("default", {"file_read"})
+    return tm, gate
+
+
+def _traces(tm):
+    ctx = tm.get_strict("default")
+    return list(ctx.audit_chain._records)
+
+
+@pytest.mark.parametrize("grant_first", [True, False])
+def test_a_late_grant_cannot_outvote_the_deny_whichever_order_it_lands(grant_first):
+    """The reconciliation marker, not arrival order, decides what happened.
+
+    Both orders are simulated against a real chain: the proxy's deny lands first and
+    a late grant follows, or a grant is already there when the deny arrives. The rule
+    is that a trace carrying ``mcp_proxy_gate_timeout`` means "not forwarded",
+    regardless of which record is newer.
+    """
+    import time
+
+    from custos.mcp_gate_adapter import CustosGateAdapter
+
+    tm, gate = _real_gate()
+    adapter = CustosGateAdapter(gate, max_workers=1)
+    proxy = McpProxy(adapter, tenant_id="default", timeout_seconds=0.05)
+
+    original = gate.evaluate_action
+    gate.evaluate_action = lambda *a, **kw: time.sleep(5)  # type: ignore[assignment]
+
+    ctx = tm.get_strict("default")
+    try:
+        if grant_first:
+            ctx.audit_chain.record(
+                client_id="gate", action="ALLOW", reason="late grant",
+                content="t", trace_id="fixed-trace", tenant_id="default",
+            )
+            proxy._trace_id_factory = lambda: "fixed-trace"
+        else:
+            proxy._trace_id_factory = lambda: "fixed-trace"
+        outcome = asyncio.run(proxy.call_tool("file_read", {}, None))
+        if not grant_first:
+            ctx.audit_chain.record(
+                client_id="gate", action="ALLOW", reason="late grant",
+                content="t", trace_id="fixed-trace", tenant_id="default",
+            )
+    finally:
+        gate.evaluate_action = original  # type: ignore[assignment]
+        adapter.close()
+
+    records = [r for r in _traces(tm) if r.trace_id == "fixed-trace"]
+    markers = [r for r in records if r.triggered_rule == "mcp_proxy_gate_timeout"]
+    assert outcome.reconciled is True
+    assert markers, "the deny marker must be present in both orders"
+    assert all(m.action.upper() == "DENY" for m in markers)
+    # The point of the test: whatever the order, the marker is what a reader keys on.
+    assert any(r.action.upper() == "ALLOW" for r in records), \
+        "precondition: a grant for the same trace exists in both orders"
+
+
+# -- breaker denials are recorded too -------------------------------------
+def test_a_breaker_denial_is_recorded_when_the_store_is_up():
+    import time
+
+    from custos.mcp_gate_adapter import CustosGateAdapter
+
+    tm, gate = _real_gate()
+    adapter = CustosGateAdapter(gate, max_workers=1)
+    proxy = McpProxy(adapter, tenant_id="default", timeout_seconds=0.05,
+                     consecutive_timeout_limit=2, breaker_cooldown_seconds=60.0)
+    original = gate.evaluate_action
+    gate.evaluate_action = lambda *a, **kw: time.sleep(5)  # type: ignore[assignment]
+    try:
+        for _ in range(2):
+            asyncio.run(proxy.call_tool("file_read", {}, None))
+        out = asyncio.run(proxy.call_tool("file_read", {}, None))
+    finally:
+        gate.evaluate_action = original  # type: ignore[assignment]
+        adapter.close()
+
+    assert out.rule == REASON_CIRCUIT_OPEN
+    assert out.reconciled is True, "a breaker denial must not be silent"
+    markers = [r for r in _traces(tm) if r.trace_id == out.trace_id
+               and r.triggered_rule == REASON_CIRCUIT_OPEN]
+    assert markers and markers[0].action.upper() == "DENY"
+
+
+# -- half-open admits exactly one probe ------------------------------------
+def test_half_open_admits_exactly_one_probe_under_concurrent_calls():
+    gate = CountingGate(delay=0.2)
+    proxy = _proxy(gate, consecutive_timeout_limit=1, breaker_cooldown_seconds=0.0)
+
+    async def scenario():
+        first = await proxy.call_tool("t", {}, None)      # times out, opens breaker
+        assert first.rule == REASON_TIMEOUT
+        gate._delay = 0.0                                 # the probe answers
+        before = gate.calls
+        results = await asyncio.gather(*[proxy.call_tool("t", {}, None) for _ in range(5)])
+        return before, gate.calls - before, results
+
+    before, extra_calls, results = asyncio.run(scenario())
+    assert extra_calls == 1, f"half-open must admit one probe, gate saw {extra_calls}"
+    denied = [r for r in results if r.rule == REASON_CIRCUIT_OPEN]
+    allowed = [r for r in results if r.forwarded]
+    assert len(allowed) == 1 and len(denied) == 4, (len(allowed), len(denied))
+
+
+# -- env: PYTHONPATH out, CUSTOS_ reserved ---------------------------------
+def test_pythonpath_is_not_in_the_default_allowlist(monkeypatch):
+    from custos.mcp_stdio import upstream_env
+
+    monkeypatch.setenv("PYTHONPATH", "/tmp/evil")
+    assert "PYTHONPATH" not in upstream_env()
+
+
+def test_the_setting_refuses_to_pass_our_own_prefixed_names(monkeypatch):
+    from custos.mcp_stdio import upstream_env
+
+    monkeypatch.setenv("CUSTOS_MCP_UPSTREAM_ENV", "PATH, CUSTOS_JWT_SECRET")
+    with pytest.raises(ValueError) as exc:
+        upstream_env()
+    assert "CUSTOS_" in str(exc.value)
+
+
+def test_programmatic_extra_names_are_refused_too():
+    from custos.mcp_stdio import upstream_env
+
+    with pytest.raises(ValueError):
+        upstream_env(["CUSTOS_DATABASE_URL"])
+
+
+def test_pythonpath_can_be_opted_into_explicitly(monkeypatch):
+    from custos.mcp_stdio import upstream_env
+
+    monkeypatch.setenv("PYTHONPATH", "/opt/vendor")
+    assert upstream_env(["PYTHONPATH"])["PYTHONPATH"] == "/opt/vendor"
+
+
+# -- no private access -----------------------------------------------------
+def test_the_adapter_touches_no_private_members_of_the_gate():
+    """Static guard: reconciliation goes through the public method only."""
+    from pathlib import Path
+
+    src = Path(__file__).resolve().parents[1] / "custos" / "mcp_gate_adapter.py"
+    text = src.read_text()
+    assert "_tm" not in text.replace("_tm(", ""), "adapter must not reach into _tm"
+    assert "_cited_policy_digest" not in text, \
+        "adapter must use ActionGate.record_reconciliation, not the citation helper"

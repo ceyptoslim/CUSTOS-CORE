@@ -13,11 +13,11 @@ rather than assumed:
   denies the call, but cannot interrupt a gate call already running; keeping that
   orphaned work away from the default pool stops a stalled gate from starving
   every other ``asyncio.to_thread`` user in the process.
-* ``record_timeout_denial`` appends the reconciliation record for a timed-out call.
-  It uses two private members of ``ActionGate`` (``_tm``, ``_cited_policy_digest``)
-  because there is no public hook for "record a deny I decided"; if that internal
-  shape changes, this returns ``False`` and the timeout stays uncited and reported
-  as such rather than crashing the denial path.
+* ``record_denial`` appends the reconciliation record for a call the proxy denied
+  without a gate verdict (timeout, open breaker). It goes through
+  ``ActionGate.record_reconciliation`` — a public method added for this — so no
+  private member is touched and the chain's lock and save-before-append ordering
+  stay in one place. Nothing here forks the chain.
 * ``trace_id`` is passed straight through to the gate, which threads it into the
   decision record's preimage. That parameter was added for this integration; a
   record emitted through the proxy therefore correlates with the agent's request
@@ -88,49 +88,34 @@ class CustosGateAdapter:
 
 
     # -- reconciliation ----------------------------------------------------
-    def record_timeout_denial(
-        self, *, tenant_id: str, tool: str, trace_id: str
+    def record_denial(
+        self, *, tenant_id: str, tool: str, trace_id: str, rule: str, reason: str
     ) -> bool:
-        """Append a linked DENY record for a call the proxy denied on timeout.
+        """Append a linked DENY for a call the proxy refused without a verdict.
 
-        The record carries the same ``trace_id`` as the abandoned gate call, so an
-        auditor joining on that id sees both: the late ALLOW (if the gate got that
-        far) and this deny saying the call was never forwarded. Two records for one
-        timeout is the deliberate cost of not leaving authorisation in the chain for
-        an action that did not happen.
+        The record carries the same ``trace_id`` as the call and the proxy's own rule
+        marker, so a reader joining on that id sees this deny next to any late grant
+        from the gate. Two records for one such call is the deliberate cost of not
+        leaving authorisation in the chain for an action that did not happen, and the
+        marker is what makes the deny authoritative regardless of arrival order.
 
-        Returns ``False`` when nothing could be appended (unknown tenant, audit
-        store unreachable, bound-evidence required but no digest available). That
-        limit is declared rather than engineered around: if the store is down,
-        nothing can be recorded by anyone.
+        Returns ``False`` when nothing could be written (unknown tenant, audit store
+        unreachable, bound evidence required but unavailable). That limit is declared
+        rather than engineered around: if the store is down, nobody can record.
         """
         try:
-            ctx = self._gate._tm.get_strict(tenant_id)  # noqa: SLF001 - see module note
-        except Exception:  # noqa: BLE001
-            return False
-        if ctx is None:
-            return False
-        try:
-            digest = self._gate._cited_policy_digest(tenant_id, ctx)  # noqa: SLF001
-        except Exception:  # noqa: BLE001
-            digest = None
-        try:
-            ctx.audit_chain.record(
-                client_id=self._client_id,
-                action=PolicyAction.DENY.value,
-                reason=(
-                    "proxy timeout: the gate was asked and did not answer within the "
-                    "bound, so the call was not forwarded"
-                ),
-                content=f"mcp_proxy_timeout tool={tool}",
-                triggered_rule=TIMEOUT_RULE,
-                trace_id=trace_id,
-                policy_digest=digest,
-                tenant_id=tenant_id,
+            return bool(
+                self._gate.record_reconciliation(
+                    tenant_id,
+                    client_id=self._client_id,
+                    trace_id=trace_id,
+                    rule=rule,
+                    reason=reason,
+                    content=f"{rule} tool={tool}",
+                )
             )
-        except Exception:  # noqa: BLE001 - never let reconciliation break the denial
+        except Exception:  # noqa: BLE001 - never let reconciliation break a denial
             return False
-        return True
 
     def close(self) -> None:
         """Shut down the gate executor if this adapter created it."""

@@ -28,8 +28,22 @@ except Exception:  # pragma: no cover - exercised only without the SDK
 # The upstream is the thing being governed, and this process holds credentials
 # (JWT secret, database URL). So it gets an allowlist, never os.environ: whatever
 # the governed component cannot read, it cannot leak or repurpose.
-UPSTREAM_ENV_ALLOW = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "PYTHONPATH")
+UPSTREAM_ENV_ALLOW = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR")
 UPSTREAM_ENV_EXTRA_VAR = "CUSTOS_MCP_UPSTREAM_ENV"
+# Prefix reserved for this process's own configuration and secrets. An upstream is
+# the component being governed; it has no business reading our keys, and an operator
+# typo should fail loudly rather than quietly hand them over.
+RESERVED_ENV_PREFIX = "CUSTOS_"
+
+
+def _refuse_reserved(names) -> None:
+    """Reject any attempt to hand this process's own CUSTOS_* config downstream."""
+    reserved = sorted(n for n in names if n.startswith(RESERVED_ENV_PREFIX))
+    if reserved:
+        raise ValueError(
+            f"{UPSTREAM_ENV_EXTRA_VAR} may not pass {reserved}: names beginning "
+            f"{RESERVED_ENV_PREFIX} are this proxy's own configuration and secrets"
+        )
 
 
 def upstream_env(extra_names: Optional[list[str]] = None) -> dict[str, str]:
@@ -38,14 +52,22 @@ def upstream_env(extra_names: Optional[list[str]] = None) -> dict[str, str]:
     Names come from ``UPSTREAM_ENV_ALLOW``, the comma-separated
     ``CUSTOS_MCP_UPSTREAM_ENV`` setting, and ``extra_names``. Everything else in
     this process's environment — secrets included — stays here.
+
+    ``PYTHONPATH`` is deliberately not in the default allowlist: it decides what
+    code a Python upstream imports, and that upstream is the thing being governed.
+    An operator who wants it can name it explicitly. Names beginning ``CUSTOS_``
+    are refused outright, in the setting and in ``extra_names`` alike.
     """
-    allowed = set(UPSTREAM_ENV_ALLOW)
-    allowed.update(
+    configured = [
         name.strip()
         for name in os.environ.get(UPSTREAM_ENV_EXTRA_VAR, "").split(",")
         if name.strip()
-    )
-    allowed.update(extra_names or ())
+    ]
+    extra = [n for n in (extra_names or []) if n]
+    _refuse_reserved(configured + extra)
+    allowed = set(UPSTREAM_ENV_ALLOW)
+    allowed.update(configured)
+    allowed.update(extra)
     return {name: os.environ[name] for name in sorted(allowed) if name in os.environ}
 
 
