@@ -9,6 +9,7 @@ differs; _resolver_guard in the tests fails the build if 2.x is ever resolved.
 """
 from __future__ import annotations
 
+import os
 import sys
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Optional
@@ -24,12 +25,66 @@ except Exception:  # pragma: no cover - exercised only without the SDK
     stdio_client = None  # type: ignore[assignment]
 
 
+# The upstream is the thing being governed, and this process holds credentials
+# (JWT secret, database URL). So it gets an allowlist, never os.environ: whatever
+# the governed component cannot read, it cannot leak or repurpose.
+UPSTREAM_ENV_ALLOW = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR")
+UPSTREAM_ENV_EXTRA_VAR = "CUSTOS_MCP_UPSTREAM_ENV"
+# Prefix reserved for this process's own configuration and secrets. An upstream is
+# the component being governed; it has no business reading our keys, and an operator
+# typo should fail loudly rather than quietly hand them over.
+RESERVED_ENV_PREFIX = "CUSTOS_"
+
+
+def _refuse_reserved(names) -> None:
+    """Reject any attempt to hand this process's own CUSTOS_* config downstream."""
+    reserved = sorted(n for n in names if n.startswith(RESERVED_ENV_PREFIX))
+    if reserved:
+        raise ValueError(
+            f"{UPSTREAM_ENV_EXTRA_VAR} may not pass {reserved}: names beginning "
+            f"{RESERVED_ENV_PREFIX} are this proxy's own configuration and secrets"
+        )
+
+
+def upstream_env(extra_names: Optional[list[str]] = None) -> dict[str, str]:
+    """Environment for a spawned upstream: PATH/HOME and what an operator names.
+
+    Names come from ``UPSTREAM_ENV_ALLOW``, the comma-separated
+    ``CUSTOS_MCP_UPSTREAM_ENV`` setting, and ``extra_names``. Everything else in
+    this process's environment — secrets included — stays here.
+
+    ``PYTHONPATH`` is deliberately not in the default allowlist: it decides what
+    code a Python upstream imports, and that upstream is the thing being governed.
+    An operator who wants it can name it explicitly. Names beginning ``CUSTOS_``
+    are refused outright, in the setting and in ``extra_names`` alike.
+    """
+    configured = [
+        name.strip()
+        for name in os.environ.get(UPSTREAM_ENV_EXTRA_VAR, "").split(",")
+        if name.strip()
+    ]
+    extra = [n for n in (extra_names or []) if n]
+    _refuse_reserved(configured + extra)
+    allowed = set(UPSTREAM_ENV_ALLOW)
+    allowed.update(configured)
+    allowed.update(extra)
+    return {name: os.environ[name] for name in sorted(allowed) if name in os.environ}
+
+
 def upstream_params(command: str, args: Optional[list[str]] = None,
                     env: Optional[dict[str, str]] = None,
-                    cwd: Optional[str] = None) -> "StdioServerParameters":
-    """Build spawn parameters for an upstream server."""
+                    cwd: Optional[str] = None,
+                    allow_env: Optional[list[str]] = None) -> "StdioServerParameters":
+    """Build spawn parameters for an upstream server.
+
+    ``env=None`` means the allowlist from ``upstream_env()``, not the inherited
+    environment. Pass an explicit dict only when the caller really wants full
+    control of what the governed process can read.
+    """
     if StdioServerParameters is None:  # pragma: no cover
         raise RuntimeError("the mcp SDK is required for the stdio binding")
+    if env is None:
+        env = upstream_env(allow_env)
     return StdioServerParameters(command=command, args=args or [], env=env, cwd=cwd)
 
 

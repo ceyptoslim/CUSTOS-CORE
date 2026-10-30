@@ -397,6 +397,42 @@ class AuditChain:
             self._records.append(entry)
             return entry
 
+    def append_reconciliation(
+        self,
+        client_id: str,
+        *,
+        trace_id: str,
+        rule: str,
+        content: str,
+        reason: str,
+        policy_digest: Optional[str] = None,
+        tenant_id: Optional[str] = None,
+    ) -> AuditRecord:
+        """Append a corrective DENY for a call that was denied outside the gate.
+
+        A proxy can deny without asking the gate (timeout, open breaker). Anything
+        that writes that fact must go through here rather than reconstructing the
+        chain itself, so the lock and the save-before-append ordering stay in one
+        place and a second writer cannot fork the chain by appending around them.
+
+        ``trace_id`` and ``rule`` are required: a reconciliation record whose trace
+        cannot be joined, or whose rule cannot be recognised, is not evidence.
+        """
+        if not trace_id or not isinstance(trace_id, str):
+            raise ValueError("a reconciliation record needs the trace_id it reconciles")
+        if not rule or not isinstance(rule, str):
+            raise ValueError("a reconciliation record needs the rule that identifies it")
+        return self.record(
+            client_id=client_id,
+            action="DENY",
+            reason=reason,
+            content=content,
+            triggered_rule=rule,
+            trace_id=trace_id,
+            policy_digest=policy_digest,
+            tenant_id=tenant_id,
+        )
+
     def verify(self) -> tuple:
         with self._lock:
             if not self._records:
