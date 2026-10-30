@@ -76,8 +76,11 @@ consequences worth knowing:
 
 * `evaluate_action` is synchronous and runs in a worker thread. The timeout bounds
   how long the agent waits and denies the call; it cannot interrupt a gate call
-  already running. The denial is what matters, and the orphaned call's record is
-  written but never acted on.
+  already running. The orphaned call keeps running to completion, so it may or may
+  not reach its record write depending on where it was when the bound fired (item 4
+  above). Under sustained timeouts that orphaned work keeps occupying worker threads,
+  which is a throughput boundary worth knowing about rather than a correctness one:
+  the denials stay correct while latency grows.
 * `client_id` is fixed to `mcp-proxy`, so records distinguish mediated calls from
   direct API calls without a second field.
 
