@@ -1,0 +1,22 @@
+diff --git a/custos/mcp_proxy.py b/custos/mcp_proxy.py
+index 20bb16a..5901967 100644
+--- a/custos/mcp_proxy.py
++++ b/custos/mcp_proxy.py
+@@ -173,7 +173,7 @@ class McpProxy:
+                     arguments=args,
+                     trace_id=trace_id,
+                 ),
+-                timeout=self._timeout,
++                timeout=None,
+             )
+         except asyncio.TimeoutError:
+             return ProxyOutcome(
+@@ -182,7 +182,7 @@ class McpProxy:
+                 reason=REASON_TIMEOUT,
+                 rule=REASON_TIMEOUT,
+             )
+-        except Exception as exc:  # noqa: BLE001 - any gate failure must deny
++        except ValueError as exc:  # noqa: BLE001 - narrowed: other errors propagate
+             return ProxyOutcome(
+                 forwarded=False,
+                 trace_id=trace_id,

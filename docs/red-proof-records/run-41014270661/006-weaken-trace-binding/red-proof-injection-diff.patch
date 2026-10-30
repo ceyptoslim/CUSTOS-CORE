@@ -1,0 +1,14 @@
+diff --git a/custos/audit.py b/custos/audit.py
+index b785552..8a87141 100644
+--- a/custos/audit.py
++++ b/custos/audit.py
+@@ -319,9 +319,6 @@ def preimage_fields(record, previous_hash: str) -> dict:
+     binding_version = _field(record, "binding_version") or 0
+     if binding_version >= 1:
+         fields["binding"] = f"v{binding_version}"
+-        trace_id = _field(record, "trace_id")
+-        if trace_id:
+-            fields["trace_id"] = trace_id
+     return fields
+ 
+ 
