@@ -9,6 +9,17 @@ open" format — no claims beyond what the code and tests demonstrate.
 
 ## [Unreleased]
 
+### Fixed — public surface and enforcement (outbound review)
+- Public README no longer carries commercial detail: prospect deal-value range, marketplace
+  item pricing, and per-app record counts are gone. A public repo is a specification, not a
+  business dossier.
+- `AuditChain.record` now persists before appending to memory. A failed storage write
+  previously left the in-memory chain one record ahead of the store, so the next successful
+  save would chain onto a predecessor the store never received.
+- `CUSTOS_AUDIT_REQUIRE_BOUND=1` makes a missing `policy_digest` or `trace_id` a hard error.
+  Both remain optional by construction so legacy records verify byte-identically, but a
+  deployment claiming them can now enforce the claim.
+
 ### Added — status semantics, and the conformance boundary stated explicitly
 - `## Status semantics` records the ruling that these three words mean one thing across profiles:
   `demonstrated-closed` (closure supported by an artifact within an explicitly stated boundary and
