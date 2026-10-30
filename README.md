@@ -15,11 +15,13 @@ CUSTOS-CORE and LORL-9.1 provide the open-core governance and agent infrastructu
 
 ## Open Source Core
 
+**Citation is supplied by the gate, enforced on demand:** every decision the ActionGate records carries `policy_digest` and `trace_id`. `custos/audit.py` does not require them by default, because legacy records must keep verifying; setting `CUSTOS_AUDIT_REQUIRE_BOUND=1` turns a missing citation or correlation id into a hard error, so a deployment that claims them can prove the claim.
+
 ### CUSTOS-CORE
 
 [github.com/ceyptoslim/CUSTOS-CORE](https://github.com/ceyptoslim/CUSTOS-CORE)
 
-**Verified:** 2026-10-29 live run on `main` (`27112e9`) | **Tests:** 610 passed, 14 skipped | **Coverage:** 89%
+**Verified:** 2026-10-30 live run on `main` (`dd454b1`) | **Tests:** 614 passed, 14 skipped | **Coverage:** 89%
 
 Verified implementation:
 
@@ -115,7 +117,7 @@ Base44-hosted applications providing operational interfaces, workflows, and comm
 
 ### CUSTOS-CORE Media Bridge
 Media governance and YouTube management dashboard.
-- Channel management (5 channels)
+- Channel management
 - Agent task orchestration (20 running tasks: Trend Spotter, SEO Optimizer, Comment Moderator, Competitor Analyst, Playlist Manager)
 - AEGIS Engine audit events
 - YouTube connection management with Google OAuth
@@ -123,9 +125,9 @@ Media governance and YouTube management dashboard.
 ### QueryForge
 CUSTOS business operations hub and data analysis platform.
 - CUSTOS policy management (3 active policies)
-- Agent registry (10 registered agents)
+- Agent registry
 - Project milestones (13 across two phases)
-- Sales CRM (observed prospect deal-value range: $1.2K–$240K)
+- Sales CRM (pipeline and deal tracking)
 - CSV/SQL analysis tools
 
 ### InsightFlow
@@ -138,7 +140,7 @@ Audit logging and YouTube video upload workflow.
 Deployment platform with template/plugin marketplace.
 - App deployment tracking (4 apps across React, Node, Next.js, Vue)
 - CI/CD pipeline management (5 deployment records with commit tracking)
-- Template/plugin marketplace (8 items, $15–$59)
+- Template/plugin marketplace
 - Analytics event infrastructure
 
 ---
@@ -188,7 +190,7 @@ Architecture targets that are NOT yet implemented. These should not be presented
 | "Google OAuth in Base44 apps" | ✅ | |
 | "Google OAuth in CUSTOS-CORE" | | ❌ — not in the codebase |
 | "Solana/Ethereum/ZK implemented" | | ❌ — architecture target |
-| "610 tests, 89% coverage" (CUSTOS-CORE) | ✅ | |
+| "614 tests, 89% coverage" (CUSTOS-CORE) | ✅ | |
 | "129 tests, 93% coverage" (LORL-9.1) | ✅ | |
 
 For formal audit: authoritative evidence should be commit SHA + CI run + test output + coverage artifact, not a document stating test counts.

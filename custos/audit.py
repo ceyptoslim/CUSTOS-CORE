@@ -30,6 +30,14 @@ from typing import List, Optional
 # correlation is intrinsically bound rather than merely stored alongside.
 RECORD_BINDING_CURRENT = 1
 
+# When set, a record must carry the policy citation and the correlation
+# identifier. The gate supplies both; this makes the requirement checkable
+# rather than conventional. Off by default so deployments that never enabled
+# citation keep emitting verifiable records.
+REQUIRE_BOUND_EVIDENCE = os.environ.get(
+    "CUSTOS_AUDIT_REQUIRE_BOUND", ""
+).strip().lower() in ("1", "true", "yes")
+
 
 @dataclass
 class AuditRecord:
@@ -352,9 +360,25 @@ class AuditChain:
                 tenant_id=tenant_id,
                 binding_version=RECORD_BINDING_CURRENT,
             )
+            if REQUIRE_BOUND_EVIDENCE:
+                missing = [
+                    name for name, value in (
+                        ("policy_digest", policy_digest),
+                        ("trace_id", trace_id),
+                    ) if not value
+                ]
+                if missing:
+                    raise ValueError(
+                        "CUSTOS_AUDIT_REQUIRE_BOUND is set but the record is missing "
+                        + ", ".join(missing)
+                        + " -- the preimage would carry an unbound record"
+                    )
             entry.record_hash = self._compute_record_hash(entry, previous_hash)
-            self._records.append(entry)
+            # Persist before appending: a failed write must not leave the in-memory
+            # chain ahead of storage, or a later save would silently succeed with a
+            # length the store never reached.
             self._backend.save(entry)
+            self._records.append(entry)
             return entry
 
     def verify(self) -> tuple:
