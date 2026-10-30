@@ -9,6 +9,69 @@ open" format — no claims beyond what the code and tests demonstrate.
 
 ## [Unreleased]
 
+_Nothing yet._
+
+## [1.4.0] — 2026-10-30
+
+**CUSTOS-CORE is a fail-closed gate for autonomous AI agents.** It decides whether a
+proposed action executes, records that decision with the exact policy version that produced it,
+and publishes runs that prove its own test suite goes red when the gate is deliberately weakened.
+
+In one sentence: the thing it sells is evidence, not enforcement theory.
+
+### Added
+
+- **Policy citation at emission.** Every record carries `policy_digest`, the sha256 of the in-force
+  policy set that produced the decision, bound inside the record hash. Sabotage class
+  `005-weaken-citation` proves the suite detects its removal.
+- **Trace binding, version 1.** Records at `binding_version >= 1` bind `trace_id` and a `binding`
+  marker inside the preimage, so a record cannot be relabelled as legacy to escape verification.
+  Sabotage class `006-weaken-trace-binding` proves the suite detects it (run 40937305618, frozen
+  observation set in `docs/red-proof-records/`).
+- **External custody anchoring.** Chain heads are anchored to append-only sinks and compared on
+  re-walk; a mismatch is reported as a contradiction, never repaired.
+- **`CUSTOS_AUDIT_REQUIRE_BOUND`.** When set, a record missing `policy_digest` or `trace_id` is a
+  hard error. **`CUSTOS_ENV=production` now implies it** — production already refused to boot on a
+  development JWT secret, and it no longer emits uncited records by default either.
+- **Documentation truth guards.** CI fails if the README test count drifts from the measured count,
+  if the published hash-preimage formula in `docs/design/EABC-PROFILE.md` disagrees with
+  `compute_record_hash`, or if the exit-class register loses a required field.
+- **Exit-class register** (`docs/design/EABC-EXIT-CLASS-REGISTER.md`): a profile-level statement
+  against EABC v1 declaring, per failure mode, what is demonstrated, what is open, and what is out
+  of scope by construction.
+
+### Fixed
+
+- **The custody re-walk verified a different record than the emitter wrote.** `custody.py`
+  recomputed the preimage without `policy_digest` and `tenant_id`, so a correct chain could report
+  a contradiction. It now imports the single canonical `compute_record_hash`.
+- **SQLite and PostgreSQL backends silently dropped `policy_digest` and `tenant_id` on write**,
+  which broke verification after a restart while the live process still looked healthy.
+- **A failed audit write left the in-memory chain one record ahead of storage**, so the next save
+  chained onto a predecessor the store never received — a later contradiction that would read as
+  tampering rather than an I/O failure. Storage is now written before the chain advances.
+- **The custody attack harness carried a stale copy of the preimage**, which produced a false
+  FAULTY-GREEN on run 19. It now imports the canonical definition, and run 20 is clean across six
+  sabotage classes and three attacks.
+
+### Changed
+
+- Test suite 550 → 616 passing (14 skipped), coverage 88% → 89%.
+- The public README no longer states commercial figures (deal-value ranges, marketplace pricing,
+  per-application record counts). A public specification is not a business dossier.
+- RS256/JWKS verification, rate limiting, circuit breakers and SSRF hardening are covered by
+  CI gates that fail closed.
+
+### Upgrading
+
+- Records emitted before binding version 1 keep their historical preimage and continue to verify;
+  their `trace_id` cannot be retroactively protected, and the conformance statement says so.
+- If you run with `CUSTOS_ENV=production`, callers must now supply `policy_digest` (the gate does
+  this automatically) and `trace_id`. Set `CUSTOS_AUDIT_REQUIRE_BOUND=0` explicitly if you need the
+  previous permissive behaviour, and expect the README's claim to be weaker when you do.
+
+
+
 ### Fixed — public surface and enforcement (outbound review)
 - Public README no longer carries commercial detail: prospect deal-value range, marketplace
   item pricing, and per-app record counts are gone. A public repo is a specification, not a
