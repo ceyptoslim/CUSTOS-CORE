@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import math
+import os
 import uuid
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Optional, Protocol, runtime_checkable
@@ -96,6 +97,26 @@ def _validated_timeout(value: Any) -> float:
     return seconds
 
 
+def timeout_from_env(var: str = "CUSTOS_MCP_GATE_TIMEOUT",
+                     default: float = DEFAULT_TIMEOUT_SECONDS) -> float:
+    """Read a bounded timeout from the environment, failing at startup.
+
+    A malformed value must not fall back to the default: an operator who typed
+    ``CUSTOS_MCP_GATE_TIMEOUT=1e9`` or ``30s`` believes a bound is in force, and a
+    silent fallback would leave them believing it while the proxy waits forever.
+    """
+    raw = os.environ.get(var)
+    if raw is None or raw.strip() == "":
+        return _validated_timeout(default)
+    try:
+        return _validated_timeout(float(raw))
+    except ValueError as exc:
+        raise ValueError(f"invalid {var}: {exc}") from exc
+
+
+_UNSET: Any = object()
+
+
 class McpProxy:
     """Mediates ``tools/call`` for one tenant through an injected gate adapter."""
 
@@ -104,7 +125,7 @@ class McpProxy:
         gate: GateAdapter,
         *,
         tenant_id: str,
-        timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+        timeout_seconds: Any = _UNSET,
         trace_id_factory: Optional[Callable[[], str]] = None,
     ) -> None:
         if not tenant_id:
@@ -113,7 +134,12 @@ class McpProxy:
             raise ValueError("gate adapter must expose an async evaluate() method")
         self._gate = gate
         self._tenant_id = tenant_id
-        self._timeout = _validated_timeout(timeout_seconds)
+        # Omitted means "read the environment, else the default". An explicit
+        # None still refuses: it is a caller asking for an unbounded wait.
+        if timeout_seconds is _UNSET:
+            self._timeout = timeout_from_env()
+        else:
+            self._timeout = _validated_timeout(timeout_seconds)
         self._trace_id_factory = trace_id_factory or (lambda: uuid.uuid4().hex)
 
     # -- correlation -------------------------------------------------------

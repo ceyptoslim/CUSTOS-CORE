@@ -6,6 +6,7 @@ every call, and nothing short of a literal ``True`` may authorize a forward.
 """
 
 import ast
+import os
 import asyncio
 import inspect
 from pathlib import Path
@@ -297,3 +298,44 @@ def test_the_proxy_exposes_no_verdict_shortcut():
         if callable(member) and any(k in name.lower() for k in ("is_allowed", "permit", "authorize"))
     ]
     assert shortcuts == []
+
+
+# --- timeout configuration (reconciled from an independently written draft) ---
+
+def test_env_timeout_is_read_and_bounded():
+    import custos.mcp_proxy as m
+    os.environ["CUSTOS_MCP_GATE_TIMEOUT"] = "0.75"
+    try:
+        assert m.timeout_from_env() == 0.75
+    finally:
+        os.environ.pop("CUSTOS_MCP_GATE_TIMEOUT", None)
+
+
+def test_blank_env_timeout_falls_back_to_the_default():
+    import custos.mcp_proxy as m
+    os.environ["CUSTOS_MCP_GATE_TIMEOUT"] = "   "
+    try:
+        assert m.timeout_from_env(default=3.0) == 3.0
+    finally:
+        os.environ.pop("CUSTOS_MCP_GATE_TIMEOUT", None)
+
+
+def test_malformed_env_timeout_fails_at_startup_not_into_unbounded_waiting():
+    import custos.mcp_proxy as m
+    for bad in ("30s", "1e9x", "-1", "0", "inf", "nan"):
+        os.environ["CUSTOS_MCP_GATE_TIMEOUT"] = bad
+        try:
+            with pytest.raises(ValueError):
+                m.timeout_from_env()
+        finally:
+            os.environ.pop("CUSTOS_MCP_GATE_TIMEOUT", None)
+
+
+def test_proxy_defaults_to_the_environment_bound():
+    from custos.mcp_proxy import McpProxy
+    os.environ["CUSTOS_MCP_GATE_TIMEOUT"] = "0.5"
+    try:
+        proxy = McpProxy(RecordingGate(GateVerdict(allowed=True)), tenant_id="t")
+        assert proxy._timeout == 0.5
+    finally:
+        os.environ.pop("CUSTOS_MCP_GATE_TIMEOUT", None)
