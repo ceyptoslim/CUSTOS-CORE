@@ -218,6 +218,7 @@ class ActionGate:
         tenant_id: str,
         action: ActionRequest,
         client_id: str = "agent",
+        trace_id: Optional[str] = None,
     ) -> ActionGateResult:
         """Evaluate a proposed action. DENY means the action must not run."""
         blob = action.serialize()
@@ -253,6 +254,7 @@ class ActionGate:
                 triggered_rule=decision.triggered_rule,
                 policy_digest=cited_digest,
                 tenant_id=tenant_id,
+                trace_id=trace_id,
             )
             return ActionGateResult(decision=decision, audit_record_hash=record.record_hash)
 
@@ -268,6 +270,7 @@ class ActionGate:
                     triggered_rule=decision.triggered_rule,
                     policy_digest=cited_digest,
                     tenant_id=tenant_id,
+                    trace_id=trace_id,
                 )
                 return ActionGateResult(decision=decision, audit_record_hash=record.record_hash)
 
@@ -283,5 +286,6 @@ class ActionGate:
             triggered_rule=decision.triggered_rule,
             policy_digest=cited_digest,
             tenant_id=tenant_id,
+            trace_id=trace_id,
         )
         return ActionGateResult(decision=decision, audit_record_hash=record.record_hash)

@@ -21,7 +21,7 @@ CUSTOS-CORE and LORL-9.1 provide the open-core governance and agent infrastructu
 
 [github.com/ceyptoslim/CUSTOS-CORE](https://github.com/ceyptoslim/CUSTOS-CORE)
 
-**Verified:** 2026-10-30 live run on `main` (`dd454b1`) | **Tests:** 614 passed, 14 skipped | **Coverage:** 89%
+**Verified:** 2026-10-30 live run on `main` (`dd454b1`) | **Tests:** 662 passed, 14 skipped | **Coverage:** 89%
 
 Verified implementation:
 
@@ -145,6 +145,18 @@ Deployment platform with template/plugin marketplace.
 
 ---
 
+### MCP proxy (public core)
+
+`custos/mcp_proxy.py` + `custos/mcp_gate_adapter.py` — mediates MCP `tools/call`
+through the gate: a denial returns the rule and the audit record hash and never
+reaches the upstream server; a gate that times out, errors, or answers malformed
+denies without forwarding. One record per call, written by the gate before any
+effect. Transport binding is not wired yet; the core is transport-agnostic.
+
+Mediation holds only when the proxy is the agent's sole path to the upstream
+server. That is exit class `EX-4` in the exit-class register: closed for the API
+surface, open at deployment. See `docs/design/mcp-proxy.md`.
+
 ## Integrations
 
 External service integrations live in the application layer (Base44 apps), NOT in the CUSTOS-CORE or LORL-9.1 GitHub repositories.
@@ -190,7 +202,7 @@ Architecture targets that are NOT yet implemented. These should not be presented
 | "Google OAuth in Base44 apps" | ✅ | |
 | "Google OAuth in CUSTOS-CORE" | | ❌ — not in the codebase |
 | "Solana/Ethereum/ZK implemented" | | ❌ — architecture target |
-| "614 tests, 89% coverage" (CUSTOS-CORE) | ✅ | |
+| "662 tests, 89% coverage" (CUSTOS-CORE) | ✅ | |
 | "129 tests, 93% coverage" (LORL-9.1) | ✅ | |
 
 For formal audit: authoritative evidence should be commit SHA + CI run + test output + coverage artifact, not a document stating test counts.

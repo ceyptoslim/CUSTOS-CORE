@@ -9,6 +9,28 @@ open" format — no claims beyond what the code and tests demonstrate.
 
 ## [Unreleased]
 
+### Added — MCP proxy (first integration)
+- `custos/mcp_proxy.py`: transport-agnostic core. Decides nothing (injected
+  adapter, literal-`True` authorization, no `custos` import, no allowlist),
+  mints `trace_id`, and denies on timeout, exception or malformed verdict.
+  Timeouts that cannot bound (`0`, negative, `inf`, `nan`, missing) refuse to
+  start rather than turning a refusal into a hang.
+- `custos/mcp_gate_adapter.py`: the only module that knows both sides. Translates
+  a tool call into `ActionRequest` and the verdict out of `PolicyResult`.
+- `ActionGate.evaluate_action` accepts `trace_id` and threads it into all three
+  decision-record sites, so a mediated call's record correlates with the agent's
+  request instead of only with tenant and tool labels.
+- Pre-registered sabotage class `007-weaken-fail-closed-proxy` (two edits, two
+  named failures, non-failure list, blindness disclosed), hash-pinned in CI.
+- Docs: `docs/design/mcp-proxy.md`. Stated up front there: a proxy mediates only
+  as the sole path (EX-4, open at deployment) and records no outcomes (EX-2 stays
+  open).
+
+### Changed
+- Suite 662 passed / 14 skipped.
+
+
+
 _Nothing yet._
 
 ## [1.4.0] — 2026-10-30
