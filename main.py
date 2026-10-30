@@ -65,7 +65,7 @@ from custos.execution import HTTPExecutionAdapter
 from custos.validation import InputValidator
 from custos.custody import AnchorManager, build_custody_from_env
 
-VERSION = "1.3.3"
+VERSION = "1.4.0"
 
 # ---------------------------------------------------------------------------
 # Logging
