@@ -7,13 +7,22 @@ Design rules, each of which exists because something went wrong before it:
    ``custos``, holds no allowlist, and authorizes only on a literal ``True``
    (the same rule the OPA engine applies to its response). A second copy of a
    decision is how three separate preimage duplicates drifted in this repo.
-2. **One record per call, written by the gate, before any effect.** The proxy
-   records nothing and does not record outcomes; post-execution binding is
-   exit class EX-2 and stays declared open.
+2. **One record per decided call, written by the gate, before any effect.** The
+   proxy does not record outcomes; post-execution binding is exit class EX-2 and
+   stays declared open. The single exception is reconciled in rule 5, on purpose.
+
 3. **The proxy mints the correlation id** and passes it on every call, so a
    record produced under a proxy has a trace a third party can follow.
 4. **Bounded, fail-closed waiting.** A timeout, an exception, or a malformed
-   verdict all deny without forwarding.
+   verdict all deny without forwarding. The gate gets its own bounded executor, and
+   after N consecutive timeouts the proxy denies fast without calling the gate at
+   all: a saturated gate must not become a saturated proxy.
+5. **A timed-out call is reconciled, not merely uncited.** A late-landing ALLOW for
+   a call the proxy denied would put authorisation in the chain for an action that
+   never happened. So on timeout the proxy asks the adapter to append a linked
+   DENY record for that ``trace_id``. That makes two records for the timeout case,
+   which is the intended cost. If the audit store is itself unreachable, nothing
+   can be recorded: that limit is declared, not engineered around.
 
 Caveat that belongs at the top rather than in a footnote: a proxy mediates only
 when it is the agent's sole path to the upstream server. Point an agent at the
@@ -24,8 +33,10 @@ API surface and open at deployment.
 from __future__ import annotations
 
 import asyncio
+import inspect
 import math
 import os
+import time
 import uuid
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Optional, Protocol, runtime_checkable
@@ -37,6 +48,17 @@ DEFAULT_TIMEOUT_SECONDS = 2.0
 REASON_TIMEOUT = "mcp_proxy_gate_timeout"
 REASON_ERROR = "mcp_proxy_gate_error"
 REASON_MALFORMED = "mcp_proxy_malformed_verdict"
+REASON_CIRCUIT_OPEN = "mcp_proxy_gate_circuit_open"
+
+# How many timeouts in a row open the breaker, and how long it stays open before
+# one probe call is allowed through. Both are deliberately small: the breaker
+# exists to stop a saturated gate from turning into an all-denied proxy, not to
+# add a second opinion about authorisation.
+DEFAULT_CONSECUTIVE_TIMEOUT_LIMIT = 3
+DEFAULT_BREAKER_COOLDOWN_SECONDS = 5.0
+# Budget for the reconciliation record. It must not re-introduce an unbounded wait
+# on the path that just proved the gate can hang.
+RECONCILE_BUDGET_SECONDS = 0.5
 
 
 @dataclass(frozen=True)
@@ -58,6 +80,9 @@ class ProxyOutcome:
     record_hash: Optional[str] = None
     rule: Optional[str] = None
     reason: str = ""
+    # True when a linked deny was appended for a timed-out call, so the caller can
+    # tell a reconciled timeout from an unreconciled one without parsing strings.
+    reconciled: bool = False
 
 
 @runtime_checkable
@@ -114,6 +139,16 @@ def timeout_from_env(var: str = "CUSTOS_MCP_GATE_TIMEOUT",
         raise ValueError(f"invalid {var}: {exc}") from exc
 
 
+def _validated_cooldown(value: Any) -> float:
+    """A cooldown must be a real, finite, non-negative number of seconds."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"breaker_cooldown_seconds must be a number, got {value!r}")
+    value = float(value)
+    if math.isnan(value) or math.isinf(value) or value < 0:
+        raise ValueError(f"breaker_cooldown_seconds must be finite and >= 0, got {value!r}")
+    return value
+
+
 _UNSET: Any = object()
 
 
@@ -127,6 +162,9 @@ class McpProxy:
         tenant_id: str,
         timeout_seconds: Any = _UNSET,
         trace_id_factory: Optional[Callable[[], str]] = None,
+        consecutive_timeout_limit: int = DEFAULT_CONSECUTIVE_TIMEOUT_LIMIT,
+        breaker_cooldown_seconds: float = DEFAULT_BREAKER_COOLDOWN_SECONDS,
+        clock: Optional[Callable[[], float]] = None,
     ) -> None:
         if not tenant_id:
             raise ValueError("tenant_id is required: an unlabelled call has no policy to apply")
@@ -141,6 +179,14 @@ class McpProxy:
         else:
             self._timeout = _validated_timeout(timeout_seconds)
         self._trace_id_factory = trace_id_factory or (lambda: uuid.uuid4().hex)
+        # Breaker state. Small and local on purpose: it answers "is the gate
+        # answering at all" and nothing about whether an action is allowed.
+        if consecutive_timeout_limit < 1:
+            raise ValueError("consecutive_timeout_limit must be at least 1")
+        self._timeout_limit = consecutive_timeout_limit
+        self._breakers = {}
+        self._cooldown = _validated_cooldown(breaker_cooldown_seconds)
+        self._clock = clock or time.monotonic
 
     # -- correlation -------------------------------------------------------
     def mint_trace_id(self) -> str:
@@ -165,6 +211,16 @@ class McpProxy:
         args = dict(arguments or {})
         trace_id = self.mint_trace_id()
 
+        if self._breaker_open():
+            # The gate is not answering. Denying here is the same decision a
+            # timeout would produce, made without paying the timeout each time.
+            return ProxyOutcome(
+                forwarded=False,
+                trace_id=trace_id,
+                reason=REASON_CIRCUIT_OPEN,
+                rule=REASON_CIRCUIT_OPEN,
+            )
+
         try:
             verdict = await asyncio.wait_for(
                 self._gate.evaluate(
@@ -176,11 +232,14 @@ class McpProxy:
                 timeout=self._timeout,
             )
         except asyncio.TimeoutError:
+            self._record_answer(timed_out=True)
+            reconciled = await self._reconcile_timeout(tool, trace_id)
             return ProxyOutcome(
                 forwarded=False,
                 trace_id=trace_id,
                 reason=REASON_TIMEOUT,
                 rule=REASON_TIMEOUT,
+                reconciled=reconciled,
             )
         except Exception as exc:  # noqa: BLE001 - any gate failure must deny
             return ProxyOutcome(
@@ -189,6 +248,8 @@ class McpProxy:
                 reason=f"{REASON_ERROR}: {type(exc).__name__}",
                 rule=REASON_ERROR,
             )
+
+        self._record_answer(timed_out=False)
 
         refusal = self._refusal(verdict, trace_id)
         if refusal is not None:
@@ -202,6 +263,54 @@ class McpProxy:
             trace_id=trace_id,
             record_hash=getattr(verdict, "record_hash", None),
         )
+
+    # -- gate health -------------------------------------------------------
+    def _record_answer(self, *, timed_out: bool) -> None:
+        """Track consecutive timeouts and open the breaker at the limit."""
+        state = self._breakers
+        if timed_out:
+            state["consecutive"] = state.get("consecutive", 0) + 1
+            if state["consecutive"] >= self._timeout_limit:
+                state["open_until"] = self._clock() + self._cooldown
+        else:
+            state["consecutive"] = 0
+            state["open_until"] = None
+
+    def _breaker_open(self) -> bool:
+        """True while the gate is presumed not answering.
+
+        When the cooldown lapses the breaker goes half-open rather than closed: one
+        call is allowed through to see whether the gate recovered, and a single
+        timeout re-opens it. That keeps recovery observable without a stampede.
+        """
+        open_until = self._breakers.get("open_until")
+        if open_until is None:
+            return False
+        if self._clock() < open_until:
+            return True
+        self._breakers["open_until"] = None
+        self._breakers["consecutive"] = max(self._timeout_limit - 1, 0)
+        return False
+
+    # -- reconciliation ----------------------------------------------------
+    async def _reconcile_timeout(self, tool: str, trace_id: str) -> bool:
+        """Ask the adapter to append a linked deny for a timed-out call.
+
+        Optional by design: an adapter without the hook leaves the timeout
+        uncited, which is the pre-existing behaviour and is reported honestly as
+        ``reconciled=False`` rather than papered over. Failures here never change
+        the denial, because the denial is already the safe answer.
+        """
+        hook = getattr(self._gate, "record_timeout_denial", None)
+        if not callable(hook):
+            return False
+        try:
+            result = hook(tenant_id=self._tenant_id, tool=tool, trace_id=trace_id)
+            if inspect.isawaitable(result):
+                await asyncio.wait_for(result, timeout=RECONCILE_BUDGET_SECONDS)
+        except Exception:  # noqa: BLE001 - the denial stands either way
+            return False
+        return True
 
     def _refusal(self, verdict: Any, trace_id: str) -> Optional[ProxyOutcome]:
         """Return a refusal when the verdict does not explicitly allow.

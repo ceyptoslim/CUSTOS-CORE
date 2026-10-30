@@ -21,7 +21,7 @@ CUSTOS-CORE and LORL-9.1 provide the open-core governance and agent infrastructu
 
 [github.com/ceyptoslim/CUSTOS-CORE](https://github.com/ceyptoslim/CUSTOS-CORE)
 
-**Verified:** 2026-10-30 live run on `main` (`dd454b1`) | **Tests:** 673 passed, 14 skipped | **Coverage:** 89%
+**Verified:** 2026-10-30 live run on `main` (`dd454b1`) | **Tests:** 686 passed, 14 skipped | **Coverage:** 89%
 
 Verified implementation:
 
@@ -213,7 +213,7 @@ Architecture targets that are NOT yet implemented. These should not be presented
 | "Google OAuth in Base44 apps" | ✅ | |
 | "Google OAuth in CUSTOS-CORE" | | ❌ — not in the codebase |
 | "Solana/Ethereum/ZK implemented" | | ❌ — architecture target |
-| "673 tests, 89% coverage" (CUSTOS-CORE) | ✅ | |
+| "686 tests, 89% coverage" (CUSTOS-CORE) | ✅ | |
 | "129 tests, 93% coverage" (LORL-9.1) | ✅ | |
 
 For formal audit: authoritative evidence should be commit SHA + CI run + test output + coverage artifact, not a document stating test counts.

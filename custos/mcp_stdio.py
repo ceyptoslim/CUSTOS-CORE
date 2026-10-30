@@ -9,6 +9,7 @@ differs; _resolver_guard in the tests fails the build if 2.x is ever resolved.
 """
 from __future__ import annotations
 
+import os
 import sys
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Optional
@@ -24,12 +25,44 @@ except Exception:  # pragma: no cover - exercised only without the SDK
     stdio_client = None  # type: ignore[assignment]
 
 
+# The upstream is the thing being governed, and this process holds credentials
+# (JWT secret, database URL). So it gets an allowlist, never os.environ: whatever
+# the governed component cannot read, it cannot leak or repurpose.
+UPSTREAM_ENV_ALLOW = ("PATH", "HOME", "LANG", "LC_ALL", "TMPDIR", "PYTHONPATH")
+UPSTREAM_ENV_EXTRA_VAR = "CUSTOS_MCP_UPSTREAM_ENV"
+
+
+def upstream_env(extra_names: Optional[list[str]] = None) -> dict[str, str]:
+    """Environment for a spawned upstream: PATH/HOME and what an operator names.
+
+    Names come from ``UPSTREAM_ENV_ALLOW``, the comma-separated
+    ``CUSTOS_MCP_UPSTREAM_ENV`` setting, and ``extra_names``. Everything else in
+    this process's environment — secrets included — stays here.
+    """
+    allowed = set(UPSTREAM_ENV_ALLOW)
+    allowed.update(
+        name.strip()
+        for name in os.environ.get(UPSTREAM_ENV_EXTRA_VAR, "").split(",")
+        if name.strip()
+    )
+    allowed.update(extra_names or ())
+    return {name: os.environ[name] for name in sorted(allowed) if name in os.environ}
+
+
 def upstream_params(command: str, args: Optional[list[str]] = None,
                     env: Optional[dict[str, str]] = None,
-                    cwd: Optional[str] = None) -> "StdioServerParameters":
-    """Build spawn parameters for an upstream server."""
+                    cwd: Optional[str] = None,
+                    allow_env: Optional[list[str]] = None) -> "StdioServerParameters":
+    """Build spawn parameters for an upstream server.
+
+    ``env=None`` means the allowlist from ``upstream_env()``, not the inherited
+    environment. Pass an explicit dict only when the caller really wants full
+    control of what the governed process can read.
+    """
     if StdioServerParameters is None:  # pragma: no cover
         raise RuntimeError("the mcp SDK is required for the stdio binding")
+    if env is None:
+        env = upstream_env(allow_env)
     return StdioServerParameters(command=command, args=args or [], env=env, cwd=cwd)
 
 

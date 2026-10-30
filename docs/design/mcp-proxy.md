@@ -38,14 +38,26 @@ is not that claim.
    `evaluate_action`, which threads it into the record's preimage. That parameter
    was added by this integration; before it, correlation was only reachable by
    calling `AuditChain.record` directly.
-4. **A timed-out decision is not citable, and that is a real gap.** The denial is
-   fail-closed: nothing forwards. But the proxy returns no record hash for it, and
-   whether the gate managed to write a record at all depends on where its work was
-   cancelled — before the write it never lands, after it, it lands and nobody holds
-   its hash. So "one record per call" holds for decided verdicts and does not hold
-   for the timeout and error paths. Closing it means reconciling by `trace_id`
-   after the timeout inside the same bound; that is not implemented, and until it
-   is, a timeout denial is evidence-free rather than mis-evidenced.
+4. **A timed-out decision is reconciled, and the cost is two records.** A missing
+   hash would be an evidence gap; a late-landing ALLOW is worse, because the chain
+   would carry authorisation for an action that never happened. So the timeout path
+   asks the adapter to append a linked DENY for the same `trace_id`:
+
+   * the abandoned gate call may write its own record (ALLOW or DENY) if it got
+     that far, and
+   * the proxy's corrective DENY says the call was not forwarded.
+
+   Joining on `trace_id` shows both, so a reader sees what was authorised and what
+   actually ran. Two records for one timed-out call is deliberate, not a leak of the
+   one-record rule: the rule governs decided calls, and a timeout is the one case
+   where the decision and the outcome can disagree. `ProxyOutcome.reconciled`
+   reports whether the corrective record landed.
+
+   **Declared limit:** if the audit store is itself unreachable, nothing can be
+   recorded by anyone — not the gate, not the proxy. Reconciliation then returns
+   `False` and the timeout stays uncited, which the caller can see. That is stated
+   rather than engineered around.
+
 5. **Bounded, fail-closed waiting.** Default 2s. A timeout, an exception, or a
    verdict that is not an explicit allow all deny without forwarding. A zero,
    negative, infinite, NaN or missing timeout refuses to start, because a bound
@@ -74,23 +86,34 @@ GateVerdict(allowed=result.decision.action == PolicyAction.ALLOW,
 These names are verified against `custos/action_gate.py`, not assumed. Two
 consequences worth knowing:
 
-* `evaluate_action` is synchronous and runs in a worker thread. The timeout bounds
-  how long the agent waits and denies the call; it cannot interrupt a gate call
-  already running. The orphaned call keeps running to completion, so it may or may
-  not reach its record write depending on where it was when the bound fired (item 4
-  above). Under sustained timeouts that orphaned work keeps occupying worker threads,
-  which is a throughput boundary worth knowing about rather than a correctness one:
-  the denials stay correct while latency grows.
+* `evaluate_action` is synchronous and runs in a **bounded executor of its own**
+  (`GATE_EXECUTOR_WORKERS`, threads named `custos-gate`), not in the loop's shared
+  default pool. A timeout bounds how long the agent waits and denies the call; it
+  cannot interrupt a gate call already running, so the orphaned work finishes where
+  it is — but it can now only exhaust the gate's pool, not every other
+  `asyncio.to_thread` user in the process.
+* **The breaker.** After `consecutive_timeout_limit` timeouts in a row (default 3)
+  the proxy denies fast with `mcp_proxy_gate_circuit_open` without calling the gate
+  at all, so a saturated gate cannot turn into an all-denied proxy that pays the
+  timeout on every request. After a cooldown (default 5s) it half-opens: one probe
+  call decides whether the gate is back, and a single timeout re-opens it.
+* **The upstream environment is an allowlist.** `upstream_env()` passes `PATH`,
+  `HOME`, `LANG`, `LC_ALL`, `TMPDIR`, `PYTHONPATH` and any names in
+  `CUSTOS_MCP_UPSTREAM_ENV` — never `os.environ`. This process holds the JWT secret
+  and the database URL, and the upstream is the component being governed.
 * `client_id` is fixed to `mcp-proxy`, so records distinguish mediated calls from
   direct API calls without a second field.
 
 ## Tests
 
-46 tests: `tests/test_mcp_proxy.py` (36, fake adapter — mediation rules, literal-True
+66 tests: `tests/test_mcp_proxy.py` (40, fake adapter — mediation rules, literal-True
 authorization, timeout arithmetic, malformed verdicts, structural checks that the
-core cannot become a second gate) and `tests/test_mcp_gate_integration.py` (10, real
+core cannot become a second gate), `tests/test_mcp_gate_integration.py` (10, real
 gate — allow, deny without upstream contact, dangerous command inside an allowed
-tool, trace id landing in the record, two calls two records).
+tool, trace id landing in the record, two calls two records),
+`tests/test_mcp_proxy_timeout_evidence.py` (3, what a timeout leaves behind) and
+`tests/test_mcp_gate_isolation.py` (13, own executor, breaker, reconciliation
+against a real chain, upstream env allowlist).
 
 ## Pre-registered sabotage
 
