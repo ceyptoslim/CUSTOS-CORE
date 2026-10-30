@@ -31,7 +31,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        sabotage: ["001-weaken-admin-auth", "002-invert-opa-deny", "003-weaken-action-gate", "004-weaken-custody-verify", "005-weaken-citation", "006-weaken-trace-binding"]
+        sabotage: ["001-weaken-admin-auth", "002-invert-opa-deny", "003-weaken-action-gate", "004-weaken-custody-verify", "005-weaken-citation", "006-weaken-trace-binding", "007-weaken-fail-closed-proxy"]
 
     steps:
       - uses: actions/checkout@v4
@@ -62,6 +62,12 @@ jobs:
         if: matrix.sabotage == '005-weaken-citation'
         run: |
           echo "8709bf77d98f87b90f4cebd1f8c5dba98b8f7d81617b192f3f4fb4ab6851ac5e  docs/red-proof-records/sabotage-citation/DESIGN.md" | sha256sum -c -
+          echo "pre-registered design verified: frozen criteria match the pinned hash"
+
+      - name: Verify pinned pre-registered design (007)
+        if: matrix.sabotage == '007-weaken-fail-closed-proxy'
+        run: |
+          echo "7e517dcff88dad94dc5375d652dc4605006d8fad386454a151d214c4347caf42  docs/red-proof-records/sabotage-mcp-proxy/DESIGN.md" | sha256sum -c -
           echo "pre-registered design verified: frozen criteria match the pinned hash"
 
       - name: Verify pinned pre-registered design (006)
