@@ -10,6 +10,13 @@ on:
 jobs:
   test:
     name: Lint & Test (Python ${{ matrix.python-version }})
+    # Collection is stable in this job: integration tests skip at runtime but still
+    # collect, so the guard that compares the documented count to the live suite can
+    # run here. It stays off in ci-red-proof.yml, where the sabotage matrix changes
+    # collection and a guard failing for environmental reasons teaches people to
+    # ignore guards.
+    env:
+      CUSTOS_TEST_COUNT_STRICT: "1"
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
