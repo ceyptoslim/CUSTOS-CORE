@@ -265,6 +265,22 @@ def _build_backend(
     return InMemoryBackend()
 
 
+def bound_evidence_required() -> bool:
+    """Whether a record must carry a policy citation and a correlation id.
+
+    Two ways in: the explicit flag, or a production environment. Production
+    already refuses to start on a dev JWT secret, so a production deployment
+    that emitted uncited records would be failing open in the one place this
+    library promises to fail closed. Evaluated per call, not at import, so
+    tests and long-running processes can change their mind.
+    """
+    if os.environ.get("CUSTOS_AUDIT_REQUIRE_BOUND", "").strip().lower() in (
+        "1", "true", "yes", "on"
+    ):
+        return True
+    return os.environ.get("CUSTOS_ENV", "").strip().lower() == "production"
+
+
 def _field(record, name: str):
     """Read a record field from an AuditRecord or from its to_dict() form."""
     if isinstance(record, dict):
@@ -360,7 +376,7 @@ class AuditChain:
                 tenant_id=tenant_id,
                 binding_version=RECORD_BINDING_CURRENT,
             )
-            if REQUIRE_BOUND_EVIDENCE:
+            if bound_evidence_required():
                 missing = [
                     name for name, value in (
                         ("policy_digest", policy_digest),

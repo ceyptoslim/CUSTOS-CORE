@@ -71,3 +71,39 @@ def test_failed_storage_write_leaves_the_chain_unchanged(monkeypatch):
     # Memory must not run ahead of storage: a later successful write would
     # otherwise persist a record whose predecessor never reached the store.
     assert _count(chain) == 0
+
+
+def test_production_environment_requires_bound_evidence(monkeypatch):
+    """CUSTOS_ENV=production must not emit an uncited record, flag or no flag."""
+    monkeypatch.delenv("CUSTOS_AUDIT_REQUIRE_BOUND", raising=False)
+    monkeypatch.setenv("CUSTOS_ENV", "production")
+    import importlib
+    import custos.audit as audit
+    importlib.reload(audit)
+
+    chain = audit.AuditChain()
+    with pytest.raises(ValueError):
+        chain.record(
+            client_id="tenant-a",
+            action="tool.invoke",
+            reason="allow",
+            content="payload",
+        )
+
+
+def test_development_environment_still_permissive(monkeypatch):
+    """Default stays permissive outside production so legacy callers keep working."""
+    monkeypatch.delenv("CUSTOS_AUDIT_REQUIRE_BOUND", raising=False)
+    monkeypatch.setenv("CUSTOS_ENV", "development")
+    import importlib
+    import custos.audit as audit
+    importlib.reload(audit)
+
+    chain = audit.AuditChain()
+    rec = chain.record(
+        client_id="tenant-a",
+        action="tool.invoke",
+        reason="allow",
+        content="payload",
+    )
+    assert rec.record_hash
