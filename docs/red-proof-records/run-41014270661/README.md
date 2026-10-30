@@ -20,7 +20,14 @@ exactly two failing assertions in advance:
 | `test_mcp_proxy::test_gate_timeout_denies_without_forwarding` | failed |
 | `test_mcp_proxy::test_gate_exception_denies` | failed |
 
-Two failures observed, two named in advance, no others. The weakening propagates two
+Two failures observed, two named in advance, no others.
+
+**What the verdict can and cannot say.** The frozen rule is `pytest_exit_code != 0`,
+so it reports that the suite went red, not that it went red on the pre-registered
+names. The set match above is established by reading the JUnit XML in this record and
+comparing it against DESIGN.md, which any re-walker can do in a minute. A third failure
+would have left the verdict unchanged and been recorded here as an observation rather
+than a pre-registration, which is the honest boundary of an exit-code rule. The weakening propagates two
 independent regressions — the wait is unbounded again, and a gate exception raises
 through the proxy instead of denying — so the class proves the fail-closed tests hold
 that behaviour rather than merely describing it in prose.
@@ -42,7 +49,15 @@ which is the part that makes the two a signal rather than a general breakage.
 Class 003 is worth reading twice this run: three of its ten failures are end-to-end MCP
 proxy tests. A weakened allowlist now shows up through the integration surface as well
 as through the gate's own tests, which is the property that makes an integration worth
-having.
+having. The sabotage itself is unchanged from earlier runs — the disturbance is the
+suite growing around a fixed weakening, not the class changing shape.
+
+Section added 2026-10-30 after review: the exit-code rule cannot enforce set equality,
+and the skip count moved from 36 to 37 because one new guard (`CUSTOS_TEST_COUNT_STRICT`)
+skips outside a live-count environment. No test of the MCP proxy skips: the class's
+transport binding does not exist yet, so there is nothing environment-gated to skip.
+Artefacts in this directory are byte-identical to the run; only this prose changed, and
+MANIFEST.md was regenerated for it.
 
 ## Custody attacks
 
