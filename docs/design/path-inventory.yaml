@@ -1,0 +1,103 @@
+# Execution path inventory — reference deployment (public repository, no enterprise package).
+#
+# One row per path a reviewer must consider. "Status" uses the same closed vocabulary
+# as the exit-class register: mediated | not-effect-producing | unmediated-declared |
+# not-present | out-of-scope-by-construction.
+#
+# The inventory declares; it does not establish. Completeness of this file is a
+# deployment attestation, not a property derived from the code. See
+# docs/design/EXECUTION-PATH-INVENTORY.md.
+inventory:
+  schema: 1
+  deployment: "reference (public repository, custos-enterprise NOT installed)"
+  eabc_version: 1
+  declared_by: "Tavares Heath"
+  limit: >-
+    A process that never connects to a mediated surface leaves no binding record and
+    cannot be enumerated from inside this repository. This file bounds what we claim
+    the deployment contains; it does not bound what the deployment might contain.
+
+paths:
+  - id: P1
+    name: "MCP tools/call through the stdio proxy"
+    effect: "Invokes a tool on an upstream MCP server, which may act on the world."
+    status: mediated
+    enforcement_point: "custos/mcp_proxy.py McpProxy.call_tool asks the gate before forwarding"
+    evidence:
+      - "tests/test_mcp_proxy.py"
+      - "tests/test_mcp_gate_isolation.py"
+      - "tests/test_mcp_stdio_smoke.py (marker file absent after a denied call, real SDK)"
+    binding_fields: ["transport=stdio", "upstream_command", "tool_list_digest", "entry_ids contains P1"]
+    falsification: >-
+      An effect on the upstream with no record carrying that trace_id, or a tools/call
+      that reaches the upstream after a DENY, a timeout, or an open breaker.
+
+  - id: P2
+    name: "HTTP decision API (/v1/evaluate_action, /v1/evaluate)"
+    effect: "None by itself. Returns a decision; the caller may ignore it."
+    status: not-effect-producing
+    enforcement_point: "custos/action_gate.py evaluate_action records the decision"
+    evidence:
+      - "tests/test_action_gate.py"
+      - "main.py endpoint definitions at /v1/evaluate_action and /v1/evaluate"
+    binding_fields: ["build_commit", "config"]
+    falsification: >-
+      Any code path in these handlers that forwards to a target, which would make this
+      row a mediated execution path instead of a decision surface.
+
+  - id: P3
+    name: "HTTPExecutionAdapter.forward (library, downstream HTTP target)"
+    effect: "Performs an outbound HTTP request to the decided target."
+    status: not-present
+    enforcement_point: "custos/execution.py forwards only after an ALLOW; fail-closed on error"
+    evidence:
+      - "tests/test_execution.py"
+      - "main.py constructs the adapter and passes it only to the enterprise router"
+    binding_fields: ["deployment_id", "config"]
+    falsification: >-
+      An endpoint in a public-only deployment that calls forward(), which would make this
+      row reachable without the enterprise package.
+    notes: >-
+      Present as code, unreachable as a service: no public endpoint invokes it. An
+      enterprise deployment must replace this row with its own, status mediated.
+
+  - id: P4
+    name: "Direct connection to the upstream (agent bypasses the proxy)"
+    effect: "Produces the same protected effect without passing the decision point."
+    status: unmediated-declared
+    enforcement_point: "none — this is exit class EX-4"
+    evidence:
+      - "docs/design/EABC-EXIT-CLASS-REGISTER.md (EX-4)"
+      - "custos/mcp_proxy.py module caveat"
+    binding_fields: ["none — a bypassing process writes no binding record"]
+    falsification: >-
+      An effect observed on the upstream that no mediated path explains. That is a
+      finding, not a documentation error.
+
+  - id: P5
+    name: "Custody anchoring (git push of the chain head, RFC 3161 timestamp)"
+    effect: "Writes to an external repository and a timestamp authority."
+    status: out-of-scope-by-construction
+    enforcement_point: "custos/custody.py; the effect is evidence durability, not the protected action"
+    evidence:
+      - "tests/test_custody.py"
+      - "docs/design/chain-head-custody.md"
+    binding_fields: ["config.custody_mode"]
+    falsification: >-
+      An anchoring implementation that establishes the same durability with no outbound
+      effect. If one exists, this row is a convenience rather than a construction.
+    notes: >-
+      Architectural argument: removing anchoring removes the property the record depends
+      on, so the outbound effect runs opposite to the test that would check it.
+
+  - id: P6
+    name: "Enterprise /v1/execute surface"
+    effect: "Would forward decided actions to downstream targets."
+    status: not-present
+    enforcement_point: "mounted from custos_enterprise.enterprise_router when installed"
+    evidence:
+      - "main.py conditional mount (ImportError falls through to public-only)"
+    binding_fields: ["build_commit", "config"]
+    falsification: >-
+      /v1/execute responding in a deployment where the enterprise package is not
+      installed, which would contradict the conditional mount.
