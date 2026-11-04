@@ -178,6 +178,18 @@ class ActionGate:
         self._digest_cache[tenant_id] = (key, dg)
         return dg
 
+    def cited_policy_digest(self, tenant_id: str) -> Optional[str]:
+        """The digest enforcement would cite for this tenant right now.
+
+        Public so a startup record can cite the policy in force at the moment
+        the binding is written, rather than inventing a citation of its own.
+        Returns None when the tenant is not configured.
+        """
+        ctx = self._tm.get(tenant_id) if self._tm is not None else None
+        if ctx is None:
+            return None
+        return self._cited_policy_digest(tenant_id, ctx)
+
     def _maybe_anchor_policy_commit(
         self, tenant_id: str, ctx, digest: str
     ) -> None:

@@ -56,16 +56,24 @@ scope:
 # second from the first.
 binding:
   mechanism: "custos/deployment_binding.py"
-  mechanism_status: implemented
+  mechanism_detail: "record_binding(), called from the main.py lifespan"
+  mechanism_status: wired
+  wiring: "enabled by CUSTOS_DEPLOYMENT_BINDING; off by default"
+  enabled_in_reference_deployment: false
   established_at_runtime: false
   why: >-
-    The module is not called from main.py startup and no deployment wires it yet.
-    Implementing a recorder establishes nothing about any running process.
+    The mechanism is implemented AND wired, but the reference deployment does not
+    enable it, so no binding record exists for any process in this deployment. Wiring
+    is a capability of the code; a record is a fact about a running process. Those
+    are different claims and this file will not merge them.
   how_a_reviewer_tells: >-
-    A binding exists for a process only if that process's chain contains a record with
-    triggered_rule deployment_binding_startup whose content hash matches a payload the
-    deployment publishes beside it. The module's presence in the tree establishes no
-    record for any process.
+    A binding exists for a process only if that process set CUSTOS_DEPLOYMENT_BINDING
+    with a CUSTOS_DEPLOYMENT_ID and completed startup, in which case /v1/info reports
+    deployment_binding.established true with a binding digest that matches a record in
+    the chain carrying triggered_rule deployment_binding_startup. The module's
+    presence in the tree establishes no record for anything. When binding is enabled
+    and the record cannot be written, startup is refused rather than continued
+    unbound.
   payload_coverage:
     tool_identity: >-
       tool_descriptor_digest covers name, description, input schema and annotations,

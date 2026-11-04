@@ -137,10 +137,15 @@ def test_out_of_scope_rows_are_covered_by_the_definition(inv):
     assert "custody" in excluded or "anchoring" in excluded
 
 
-def test_binding_is_declared_implemented_but_not_established(inv):
+def test_binding_is_wired_but_not_established_in_the_reference_deployment(inv):
+    """Wiring is a capability of the code. A record is a fact about a process."""
     binding = inv["binding"]
-    assert binding["mechanism_status"] == "implemented"
+    assert binding["mechanism_status"] in {"implemented", "wired"}
     assert binding["established_at_runtime"] is False
+    assert binding["enabled_in_reference_deployment"] is False
+    assert "CUSTOS_DEPLOYMENT_BINDING" in binding["wiring"]
+    said = binding["how_a_reviewer_tells"].lower()
+    assert "refused" in said, "a deployment that cannot bind must refuse to start"
     assert (ROOT / binding["mechanism"]).exists(), "named mechanism does not exist"
     said = binding["how_a_reviewer_tells"].lower()
     assert "establishes no" in said or "establishes nothing" in said

@@ -89,6 +89,30 @@ a claim that nothing could refute, which is the shape this whole exercise exists
 
 ## Implemented mechanism versus established binding
 
+### The wiring that closes the gap, and why it stays off
+
+`record_binding` is now called from the startup lifespan, gated on
+`CUSTOS_DEPLOYMENT_BINDING`. Two decisions are worth stating because both are
+choices, not defaults:
+
+**Off by default.** Enabling it changes what a deployment writes and how it fails,
+so it is opt-in and the reference deployment does not opt in. The inventory keeps
+`established_at_runtime: false` for the same reason it kept it before: wiring is a
+capability of the code, a record is a fact about a process.
+
+**Fail-closed when enabled.** If a deployment sets the flag and the record cannot
+be written, startup is refused. The alternative, logging a warning and starting
+anyway, produces the exact confusion this artifact exists to prevent: a running
+process described by an inventory that says the mechanism is in place, bound by
+nothing. A refused start is loud, and it is the only failure that cannot be
+mistaken for success.
+
+`/v1/info` reports `deployment_binding.established` for the running process, so a
+reviewer checks the process rather than the tree. Credentials still appear only as
+fingerprints, and the payload is returned to the caller to be written beside the
+deployment, since the chain stores digests rather than payloads.
+
+
 The binding module is in this tree and, at the time of writing, nothing calls it from
 startup. That gap has to be visible to a reviewer rather than inferable from the presence
 of a file.

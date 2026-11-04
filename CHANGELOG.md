@@ -27,7 +27,18 @@ open" format — no claims beyond what the code and tests demonstrate.
   open).
 
 ### Changed
-- Suite 662 passed / 14 skipped.
+- Suite 751 passed / 14 skipped.
+- Execution path inventory (`docs/design/path-inventory.yaml`) with a defined
+  protected effect, per-row assertion / falsification condition / detection
+  signal, and guards that fail when those collapse into one another.
+- Deployment binding record (`custos/deployment_binding.py`): tool descriptor
+  digests that cover schema and annotations rather than names, config digests
+  that fingerprint secret values, and credential bindings tagged as the value
+  presented at runtime.
+- Startup binding wired behind `CUSTOS_DEPLOYMENT_BINDING`, off by default and
+  fail-closed when enabled: a deployment that asks to be bound and cannot write
+  its record refuses to start. `/v1/info` reports the binding state of the
+  running process, not of the mechanism.
 
 
 
