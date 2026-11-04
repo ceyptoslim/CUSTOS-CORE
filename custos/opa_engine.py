@@ -32,6 +32,8 @@ logger = logging.getLogger(__name__)
 class OPAPolicyEngine:
     """OPA-backed policy engine. Queries OPA /v1/data/custos/governance/allow."""
 
+    engine_kind = "opa"
+
     def __init__(self, opa_url: str | None = None) -> None:
         self.opa_url = (opa_url or os.getenv("CUSTOS_OPA_URL", "http://localhost:8181")).rstrip("/")
         # Custom (tenant) rules are enforced LOCALLY with deny-union
@@ -127,6 +129,31 @@ class OPAPolicyEngine:
             triggered_rule=triggered,
             reason="Allowed by OPA policy",
         )
+
+    @property
+    def citation_rules(self):
+        """Locally enforced tenant rules: the part of the policy set held in-process."""
+        return list(self._custom_rules.rules)
+
+    @property
+    def opa_policy_digest(self) -> "str | None":
+        """sha256 the operator pins for the Rego policy bundle this server enforces.
+
+        The process does not hold the Rego rules, so it cannot hash them. A pin
+        is the only honest way to cite them; without one there is no citation
+        that covers the decision, and enforcement says so instead of citing the
+        smaller set it can see.
+        """
+        raw = (os.getenv("CUSTOS_OPA_POLICY_DIGEST") or "").strip().lower()
+        if not raw:
+            return None
+        if len(raw) != 64 or any(c not in "0123456789abcdef" for c in raw):
+            logger.warning(
+                "CUSTOS_OPA_POLICY_DIGEST is set but is not a sha256 hex digest; ignoring it "
+                "and emitting no policy citation for this engine"
+            )
+            return None
+        return raw
 
     @property
     def rule_count(self) -> int:

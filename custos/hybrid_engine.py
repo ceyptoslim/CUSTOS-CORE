@@ -34,6 +34,8 @@ logger = logging.getLogger(__name__)
 class HybridPolicyEngine:
     """Regex + OPA hybrid engine. Regex is the fast first-pass, OPA is the deep second-pass."""
 
+    engine_kind = "hybrid"
+
     def __init__(
         self,
         regex_engine: RegexEngine | None = None,
@@ -157,6 +159,16 @@ class HybridPolicyEngine:
             return regex_result
 
         return opa_result
+
+    @property
+    def citation_rules(self):
+        """The regex rules, which this engine always consults before OPA."""
+        return list(self._regex.rules)
+
+    @property
+    def opa_policy_digest(self) -> "str | None":
+        """Delegated to the OPA engine: the Rego pin, or None when unpinned."""
+        return self._opa.opa_policy_digest
 
     @property
     def rule_count(self) -> int:

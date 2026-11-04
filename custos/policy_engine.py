@@ -131,6 +131,10 @@ _POST_VALIDATION_RULES = {"block_pii_credit_card"}
 
 
 class PolicyEngine:
+    # Which engine produced a decision, cited alongside the policy digest so a
+    # record is readable without knowing how the deployment was configured.
+    engine_kind = "regex"
+
     def __init__(self, rules: Optional[List[PolicyRule]] = None):
         self._rules_digest_cache: Optional[str] = None
         self._rules = rules if rules is not None else list(DEFAULT_RULES)
@@ -188,6 +192,16 @@ class PolicyEngine:
     def rules(self) -> List[PolicyRule]:
         """In-force rule set (public read for policy-commit citation)."""
         return list(self._rules)
+
+    @property
+    def citation_rules(self) -> List[PolicyRule]:
+        """Rules the decision actually consulted, as hashable policy content."""
+        return list(self._rules)
+
+    @property
+    def opa_policy_digest(self) -> Optional[str]:
+        """No out-of-process policy for this engine, so nothing to pin."""
+        return None
 
     @property
     def rules_digest(self) -> str:
