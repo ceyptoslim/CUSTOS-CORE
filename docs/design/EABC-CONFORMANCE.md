@@ -33,7 +33,7 @@ Verdicts: **satisfied** (property holds and the evidence to check it is publishe
 ## Evidence to check
 
 * Pre-registered designs: `docs/red-proof-records/sabotage-003/DESIGN.md`, `sabotage-custody/DESIGN.md`, `sabotage-citation/DESIGN.md`, `sabotage-trace-binding/DESIGN.md`
-* Frozen runs and manifests: `docs/red-proof-records/run-38446904362`, `run-38610363998`, `run-38811246068`, `run-40426037722`, `run-40512412014`, `run-40937305618`
+* Frozen runs and manifests: `docs/red-proof-records/run-38446904362`, `run-38495005061`, `run-38610363998`, `run-38811246068`, `run-40426037722`, `run-40512412014`, `run-40937305618`
 * Custody attack observations: `run-40426037722/custody-attacks/001-rewrite-backend`, `002-truncate-tail`, `003-suppress-anchor`
 * Independent reconstruction of run 11 and run 12 by a third party, published with attribution: `github.com/factnotebook/public-reconstructions` (FN-CUSTOS-003 `FN-da06acd59938f5b9`, FN-CUSTOS-004 `FN-b67b3d8fadbb891b`). That reconstruction is factual verification of the preserved records only; its authors state it is not a certification or endorsement, and it does not extend to this document's EABC claims.
 

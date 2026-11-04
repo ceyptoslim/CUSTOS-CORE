@@ -8,6 +8,13 @@ open" format — no claims beyond what the code and tests demonstrate.
 ---
 
 ## [Unreleased]
+- Run 38495005061 frozen in-repo (`docs/red-proof-records/run-38495005061/`) with a
+  SHA-256 manifest, closing the one re-walkability gap in the series: the v3 record that
+  `FN-CUSTOS-REDPROOF-002` reconstructs had been retrieved through a proxy link and was
+  not preserved. Re-fetched from the run's own artifact store while still live; all five
+  digests match those recorded independently in that reconstruction (JUnit `5ffa02dc…`,
+  pytest output `d8b9e12d…`, injection diff `29d73e8f…`, exit code `4355a46b…`).
+
 
 ### Added — MCP proxy (first integration)
 - `custos/mcp_proxy.py`: transport-agnostic core. Decides nothing (injected
