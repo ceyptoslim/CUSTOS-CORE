@@ -150,3 +150,45 @@ def test_strict_bound_mode_refuses_rather_than_fabricating_a_citation(monkeypatc
     with pytest.raises(BindingError, match="could not be recorded"):
         establish(chain, env=ENABLED)
     assert [r for r in chain_records(chain) if r.triggered_rule == BINDING_RULE] == []
+
+
+def test_startup_refuses_when_the_binding_cannot_be_written(monkeypatch):
+    """The refusal is the whole claim, so it needs a test at the app boundary.
+
+    establish() raising is covered above; what was not covered is whether the
+    lifespan lets that failure stop the process. A try/except that logs and
+    continues would keep every unit test green while shipping the exact failure
+    the binding exists to prevent.
+    """
+    import main
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setenv(STARTUP_ENV_FLAG, "1")
+    monkeypatch.setenv("CUSTOS_DEPLOYMENT_ID", "ref-refusal")
+
+    def _write_fails(*_args, **_kwargs):
+        raise BindingError("storage unavailable")
+
+    monkeypatch.setattr(main, "establish_startup_binding", _write_fails)
+    chain = main.tenant_manager.get("default").audit_chain
+    before = len(chain_records(chain))
+    with pytest.raises(BindingError):
+        with TestClient(main.app):
+            pass
+    assert len(chain_records(chain)) == before, "a refused start must not leave a record"
+
+
+def test_startup_writes_no_binding_when_the_flag_is_off(monkeypatch):
+    """Off is the default, and off must mean nothing at all is written."""
+    import main
+    from fastapi.testclient import TestClient
+
+    monkeypatch.delenv(STARTUP_ENV_FLAG, raising=False)
+    chain = main.tenant_manager.get("default").audit_chain
+    before = len(chain_records(chain))
+    with TestClient(main.app) as client:
+        assert client.get("/v1/info").json()["deployment_binding"] == {
+            "enabled": False,
+            "established": False,
+        }
+    assert len(chain_records(chain)) == before

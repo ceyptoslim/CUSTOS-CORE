@@ -27,7 +27,17 @@ open" format — no claims beyond what the code and tests demonstrate.
   open).
 
 ### Changed
-- Suite 751 passed / 14 skipped.
+- Suite 753 passed / 14 skipped.
+- Pre-registered sabotage class 008 (`binding-refusal`): the lifespan stops
+  re-raising after a failed binding write, and exactly one assertion must catch
+  it. Design frozen and hash-pinned before first execution.
+- App-boundary tests for the binding: startup refuses when the record cannot be
+  written, and writes nothing at all when the flag is off.
+- Class 008 executed: RED-CONFIRMED on the pre-registered failure set (run
+  41768306845). One failing assertion, the named one; the module-level refusal test
+  stayed green, confirming the weakening removed the process boundary and not the
+  module guarantee. Observation set frozen in
+  `docs/red-proof-records/run-41768306845/`.
 - Execution path inventory (`docs/design/path-inventory.yaml`) with a defined
   protected effect, per-row assertion / falsification condition / detection
   signal, and guards that fail when those collapse into one another.
