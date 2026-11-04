@@ -64,6 +64,7 @@ from custos.tracing import tracer
 from custos.execution import HTTPExecutionAdapter
 from custos.validation import InputValidator
 from custos.custody import AnchorManager, build_custody_from_env
+from custos.deployment_binding import BindingError, establish as establish_startup_binding
 
 VERSION = "1.4.0"
 
@@ -172,8 +173,12 @@ admin_router = APIRouter(dependencies=[Depends(require_auth)])
 # ---------------------------------------------------------------------------
 # Lifespan
 # ---------------------------------------------------------------------------
+_startup_binding: Optional[dict] = None
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _startup_binding
     # Fail-closed security validation: refuse to start in production with
     # missing/dev-default secrets (strict env-presence rule) or, in RS256
     # mode, a missing explicit private key.
@@ -182,6 +187,28 @@ async def lifespan(app: FastAPI):
     if custody_manager is not None:
         custody_manager.start()
         logger.info("custos.custody.enabled")
+    # Deployment binding: opt-in via CUSTOS_DEPLOYMENT_BINDING, and fail-closed
+    # when opted into. A deployment that asks to be bound and cannot write its
+    # record is refused rather than started unbound, because an unbound process
+    # would still be described by an inventory that says the mechanism is wired.
+    try:
+        _startup_binding = establish_startup_binding(
+            tenant_manager.get("default").audit_chain
+        )
+    except BindingError as exc:
+        # Refuse to start. A process that was asked to be bound and could not
+        # record it must not run while the inventory describes the mechanism
+        # as wired: that is the exact confusion the binding exists to prevent.
+        logger.error("custos.deployment_binding.refused", extra={"reason": str(exc)})
+        raise
+    if _startup_binding is not None:
+        logger.info(
+            "custos.deployment_binding.established",
+            extra={
+                "deployment_id": _startup_binding["deployment_id"],
+                "binding_digest": _startup_binding["binding_digest"],
+            },
+        )
     logger.info("custos.startup", extra={"version": VERSION})
     yield
     if custody_manager is not None:
@@ -327,6 +354,14 @@ async def metrics():
     return "\n".join(lines) + "\n"
 
 
+def _startup_binding_or_disabled() -> dict:
+    """Report the binding state of THIS process, not of the mechanism."""
+    if _startup_binding is None:
+        return {"enabled": False, "established": False}
+    summary = {k: v for k, v in _startup_binding.items() if k != "payload"}
+    return {**summary, "established": True}
+
+
 @app.get("/v1/info")
 async def info():
     """Version and backend information."""
@@ -339,6 +374,7 @@ async def info():
         "uptime_seconds": round(
             time.time() - _metrics["custos_uptime_start"], 1
         ),
+        "deployment_binding": _startup_binding_or_disabled(),
     }
 
 

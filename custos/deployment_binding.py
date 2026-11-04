@@ -31,6 +31,7 @@ completeness. See docs/design/EXECUTION-PATH-INVENTORY.md.
 from __future__ import annotations
 
 import hashlib
+import os
 import json
 import re
 from typing import Any, Iterable, Optional
@@ -307,3 +308,105 @@ def record_binding(chain, tenant_id: str, payload: dict, *, trace_id: Optional[s
         trace_id=trace_id,
         tenant_id=tenant_id,
     ), digest
+
+
+# ---------------------------------------------------------------------------
+# Startup binding — opt-in, and fail-closed when opted into.
+#
+# Rule 4 above says an implemented mechanism is not an established binding.
+# This is the wiring that closes that gap for deployments that ask for it,
+# and it deliberately stays off by default: a reference deployment that does
+# not set CUSTOS_DEPLOYMENT_BINDING still leaves no record, and the inventory
+# continues to say so.
+# ---------------------------------------------------------------------------
+
+STARTUP_ENV_FLAG = "CUSTOS_DEPLOYMENT_BINDING"
+
+
+class BindingError(RuntimeError):
+    """Raised when a deployment asked for a binding and could not be given one."""
+
+
+def _truthy(value: Optional[str]) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def payload_from_env(env: Optional[dict] = None) -> Optional[dict]:
+    """Assemble the startup payload from the environment.
+
+    Returns ``None`` when binding is not enabled. Raises :class:`BindingError`
+    when it is enabled but the deployment cannot identify itself: an unbound
+    start that logs a warning is worse than a refused start, because the
+    deployment then runs while the inventory claims a mechanism is in place.
+    """
+    env = dict(os.environ if env is None else env)
+    if not _truthy(env.get(STARTUP_ENV_FLAG)):
+        return None
+
+    deployment_id = (env.get("CUSTOS_DEPLOYMENT_ID") or "").strip()
+    if not deployment_id:
+        raise BindingError(
+            f"{STARTUP_ENV_FLAG} is set but CUSTOS_DEPLOYMENT_ID is empty; "
+            "a binding record without a deployment identity binds nothing"
+        )
+
+    descriptors: Optional[list] = None
+    raw_descriptors = env.get("CUSTOS_TOOL_DESCRIPTORS")
+    if raw_descriptors:
+        try:
+            descriptors = json.loads(raw_descriptors)
+        except ValueError as exc:
+            raise BindingError(f"CUSTOS_TOOL_DESCRIPTORS is not valid JSON: {exc}") from exc
+        if not isinstance(descriptors, list):
+            raise BindingError("CUSTOS_TOOL_DESCRIPTORS must be a JSON list of tool descriptors")
+
+    config: Optional[dict] = None
+    raw_config = env.get("CUSTOS_BINDING_CONFIG")
+    if raw_config:
+        try:
+            config = json.loads(raw_config)
+        except ValueError as exc:
+            raise BindingError(f"CUSTOS_BINDING_CONFIG is not valid JSON: {exc}") from exc
+        if not isinstance(config, dict):
+            raise BindingError("CUSTOS_BINDING_CONFIG must be a JSON object")
+
+    entries = env.get("CUSTOS_BINDING_ENTRIES") or ""
+    entry_ids = [e.strip() for e in entries.split(",") if e.strip()] or None
+
+    return build_payload(
+        deployment_id=deployment_id,
+        build_commit=(env.get("CUSTOS_BUILD_COMMIT") or env.get("GIT_SHA") or "").strip() or None,
+        transport=(env.get("CUSTOS_TRANSPORT") or "").strip() or None,
+        upstream_command=(env.get("CUSTOS_UPSTREAM_COMMAND") or "").strip() or None,
+        upstream_endpoint=(env.get("CUSTOS_UPSTREAM_ENDPOINT") or "").strip() or None,
+        tool_descriptors=descriptors,
+        runtime_credential=(env.get("CUSTOS_BINDING_CREDENTIAL") or "").strip() or None,
+        config=config,
+        entry_ids=entry_ids,
+    )
+
+
+def establish(chain, tenant_id: str = "default", env: Optional[dict] = None) -> Optional[dict]:
+    """Write the startup binding when enabled by ``CUSTOS_DEPLOYMENT_BINDING``.
+
+    Returns a small summary suitable for an info endpoint, or ``None`` when the
+    deployment did not ask to be bound. Any failure raises :class:`BindingError`:
+    the caller is expected to refuse to start, so that "bound" is never claimed
+    for a process that could not write its record.
+    """
+    payload = payload_from_env(env)
+    if payload is None:
+        return None
+    try:
+        record, digest = record_binding(chain, tenant_id, payload)
+    except Exception as exc:  # noqa: BLE001 - any write failure is a refused start
+        raise BindingError(f"deployment binding could not be recorded: {exc}") from exc
+    return {
+        "enabled": True,
+        "payload": payload,
+        "deployment_id": payload.get("deployment_id"),
+        "binding_digest": digest,
+        "record_hash": record.record_hash,
+        "established_at": record.timestamp,
+        "entry_ids": payload.get("entry_ids") or [],
+    }
