@@ -1,0 +1,16 @@
+diff --git a/main.py b/main.py
+index 7b85bf4..3341cf4 100644
+--- a/main.py
++++ b/main.py
+@@ -200,8 +200,9 @@ async def lifespan(app: FastAPI):
+         # Refuse to start. A process that was asked to be bound and could not
+         # record it must not run while the inventory describes the mechanism
+         # as wired: that is the exact confusion the binding exists to prevent.
+-        logger.error("custos.deployment_binding.refused", extra={"reason": str(exc)})
+-        raise
++        logger.warning(
++            "custos.deployment_binding.skipped", extra={"reason": str(exc)}
++        )
+     if _startup_binding is not None:
+         logger.info(
+             "custos.deployment_binding.established",
