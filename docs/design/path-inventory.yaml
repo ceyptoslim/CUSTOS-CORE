@@ -4,11 +4,16 @@
 # as the exit-class register: mediated | not-effect-producing | unmediated-declared |
 # not-present | out-of-scope-by-construction.
 #
+# Each row states an assertion, the observation that would falsify it, and separately
+# the observation that is merely consistent with the failure. Those are different
+# things: a detection signal tells you a deployment deserves investigation, it does
+# not falsify a claim about which paths exist.
+#
 # The inventory declares; it does not establish. Completeness of this file is a
 # deployment attestation, not a property derived from the code. See
 # docs/design/EXECUTION-PATH-INVENTORY.md.
 inventory:
-  schema: 1
+  schema: 2
   deployment: "reference (public repository, custos-enterprise NOT installed)"
   eabc_version: 1
   declared_by: "Tavares Heath"
@@ -17,46 +22,123 @@ inventory:
     cannot be enumerated from inside this repository. This file bounds what we claim
     the deployment contains; it does not bound what the deployment might contain.
 
+# What the rows below are about. Without this, "out of scope" is unfalsifiable: a
+# reviewer has to know what is protected before they can judge an exclusion.
+protected_effect:
+  statement: >-
+    An external state change produced by an agent action that this deployment forwards:
+    (a) an invocation of a tool on an upstream MCP server reachable from this process,
+    and (b) an outbound HTTP request to a decided target. Both act on systems this
+    deployment does not own. Both are what a decision point exists to mediate.
+  in_scope:
+    - "tool invocations forwarded to an upstream MCP server (stdio transport)"
+    - "outbound HTTP requests to a decided target (the enterprise execution path)"
+  out_of_scope:
+    - class: "custody anchoring (git push of the chain head, RFC 3161 timestamp)"
+      why: "the effect is durability of evidence, not an agent action on a third-party system"
+    - class: "inbound decision requests, health and metrics"
+      why: "no state change outside the process"
+    - class: "local filesystem writes by the process itself"
+      why: "nothing outside the deployment observes them; they are evidence, not effect"
+
+scope:
+  covers: >-
+    processes started from this repository's entry points, in the deployment named
+    above, that produce the protected effect
+  excludes:
+    - "processes that never connect to a mediated surface (no record, no observation)"
+    - "hosts, schedulers, network policy and credentials outside this deployment's control"
+    - "the enterprise execution assembly, which redeclares in its own inventory"
+  completeness: "attestation, not derivation"
+
+# The mechanism exists in this tree. That is not the same as a binding being
+# established in a running process, and a reviewer must not be able to infer the
+# second from the first.
+binding:
+  mechanism: "custos/deployment_binding.py"
+  mechanism_status: implemented
+  established_at_runtime: false
+  why: >-
+    The module is not called from main.py startup and no deployment wires it yet.
+    Implementing a recorder establishes nothing about any running process.
+  how_a_reviewer_tells: >-
+    A binding exists for a process only if that process's chain contains a record with
+    triggered_rule deployment_binding_startup whose content hash matches a payload the
+    deployment publishes beside it. The module's presence in the tree establishes no
+    record for any process.
+  payload_coverage:
+    tool_identity: >-
+      tool_descriptor_digest covers name, description, input schema and annotations,
+      because those decide what the upstream can be asked to do. tool_list_digest
+      (names only) is retained for comparability and is insufficient on its own.
+    credential: >-
+      credential_binding fingerprints the value used on the connection to the upstream
+      at runtime, tagged source=runtime-connection and bound_to the upstream, and
+      records whether a static configuration value matched it.
+    config: >-
+      config_digest replaces secret-looking values with their fingerprints and lists
+      them in secret_config_fields, so a changed secret is detectable without the value
+      appearing in the record.
+
 paths:
   - id: P1
     name: "MCP tools/call through the stdio proxy"
     effect: "Invokes a tool on an upstream MCP server, which may act on the world."
     status: mediated
+    assertion: >-
+      A tools/call issued through the stdio proxy reaches the upstream only after the
+      gate returns an allow; no proxy code path forwards before or without a decision.
     enforcement_point: "custos/mcp_proxy.py McpProxy.call_tool asks the gate before forwarding"
     evidence:
       - "tests/test_mcp_proxy.py"
       - "tests/test_mcp_gate_isolation.py"
       - "tests/test_mcp_stdio_smoke.py (marker file absent after a denied call, real SDK)"
-    binding_fields: ["transport=stdio", "upstream_command", "tool_list_digest", "entry_ids contains P1"]
-    falsification: >-
-      An effect on the upstream with no record carrying that trace_id, or a tools/call
-      that reaches the upstream after a DENY, a timeout, or an open breaker.
+    binding_fields: ["transport=stdio", "upstream_command", "tool_descriptor_digest", "entry_ids contains P1"]
+    falsification_condition: >-
+      A code path in the proxy that forwards a tools/call before obtaining a decision,
+      or forwards after a DENY, a timeout, or an open breaker. Reading the proxy, or the
+      isolation tests, would show it.
+    detection_signal: >-
+      An upstream effect with no decision record carrying that request's trace_id. This
+      is consistent with a bypass, with a lost record, and with a proxy that dropped the
+      id, so it identifies a deployment to investigate rather than falsifying this row.
 
   - id: P2
     name: "HTTP decision API (/v1/evaluate_action, /v1/evaluate)"
     effect: "None by itself. Returns a decision; the caller may ignore it."
     status: not-effect-producing
+    assertion: >-
+      The two decision handlers return a decision and never forward, so this row is not
+      an enforcement path and must not be counted as one.
     enforcement_point: "custos/action_gate.py evaluate_action records the decision"
     evidence:
       - "tests/test_action_gate.py"
       - "main.py endpoint definitions at /v1/evaluate_action and /v1/evaluate"
     binding_fields: ["build_commit", "config"]
-    falsification: >-
-      Any code path in these handlers that forwards to a target, which would make this
-      row a mediated execution path instead of a decision surface.
+    falsification_condition: >-
+      Any code path inside those handlers that performs an outbound request to the
+      decided target. The row would then be a mediated execution path and its status
+      would be wrong.
+    detection_signal: >-
+      A response body containing data only the target could have supplied.
 
   - id: P3
     name: "HTTPExecutionAdapter.forward (library, downstream HTTP target)"
     effect: "Performs an outbound HTTP request to the decided target."
     status: not-present
+    assertion: >-
+      In a deployment without custos-enterprise installed, no exposed endpoint invokes
+      HTTPExecutionAdapter.forward, so the adapter is code without a service.
     enforcement_point: "custos/execution.py forwards only after an ALLOW; fail-closed on error"
     evidence:
       - "tests/test_execution.py"
       - "main.py constructs the adapter and passes it only to the enterprise router"
     binding_fields: ["deployment_id", "config"]
-    falsification: >-
-      An endpoint in a public-only deployment that calls forward(), which would make this
-      row reachable without the enterprise package.
+    falsification_condition: >-
+      An endpoint registered in the public application that calls forward(). The adapter
+      would then be reachable, the status would be mediated, and this row would be wrong.
+    detection_signal: >-
+      An outbound request observed at the target from a public-only deployment.
     notes: >-
       Present as code, unreachable as a service: no public endpoint invokes it. An
       enterprise deployment must replace this row with its own, status mediated.
@@ -65,27 +147,47 @@ paths:
     name: "Direct connection to the upstream (agent bypasses the proxy)"
     effect: "Produces the same protected effect without passing the decision point."
     status: unmediated-declared
+    assertion: >-
+      An unmediated path exists: a process holding credentials the upstream accepts can
+      reach that upstream without traversing the decision point.
     enforcement_point: "none — this is exit class EX-4"
     evidence:
       - "docs/design/EABC-EXIT-CLASS-REGISTER.md (EX-4)"
       - "custos/mcp_proxy.py module caveat"
     binding_fields: ["none — a bypassing process writes no binding record"]
-    falsification: >-
-      An effect observed on the upstream that no mediated path explains. That is a
-      finding, not a documentation error.
+    falsification_condition: >-
+      Every path capable of producing the protected effect is enumerated and each is
+      shown to traverse a decision point — for example the upstream rejects connections
+      that do not present the proxy's credential, or egress is closed except through the
+      proxy — or the claimed bypass is shown not to exist because the upstream is
+      unreachable without the proxy. Either observation falsifies the assertion that an
+      unmediated path exists.
+    detection_signal: >-
+      An effect on the upstream that no mediated path explains. This is a finding about
+      a deployment, not an error in this file: it is consistent with the row being
+      correct, and it does not by itself falsify any claim in the inventory.
 
   - id: P5
     name: "Custody anchoring (git push of the chain head, RFC 3161 timestamp)"
     effect: "Writes to an external repository and a timestamp authority."
     status: out-of-scope-by-construction
+    assertion: >-
+      Anchoring produces an outbound effect that is not an instance of the protected
+      effect as defined above, so it is excluded by the definition rather than by
+      difficulty.
     enforcement_point: "custos/custody.py; the effect is evidence durability, not the protected action"
     evidence:
       - "tests/test_custody.py"
       - "docs/design/chain-head-custody.md"
     binding_fields: ["config.custody_mode"]
-    falsification: >-
+    falsification_condition: >-
       An anchoring implementation that establishes the same durability with no outbound
-      effect. If one exists, this row is a convenience rather than a construction.
+      effect, which would make this exclusion a convenience; or a working argument that
+      a timestamp write is itself a state change of the kind the protected effect
+      covers, which would move this row into scope.
+    detection_signal: >-
+      Not applicable. The row makes a definitional claim, so the test is argument and
+      implementation review rather than observation.
     notes: >-
       Architectural argument: removing anchoring removes the property the record depends
       on, so the outbound effect runs opposite to the test that would check it.
@@ -94,10 +196,16 @@ paths:
     name: "Enterprise /v1/execute surface"
     effect: "Would forward decided actions to downstream targets."
     status: not-present
+    assertion: >-
+      In the reference deployment the enterprise surface is absent, because the router
+      is imported conditionally and the package is not installed.
     enforcement_point: "mounted from custos_enterprise.enterprise_router when installed"
     evidence:
       - "main.py conditional mount (ImportError falls through to public-only)"
     binding_fields: ["build_commit", "config"]
-    falsification: >-
-      /v1/execute responding in a deployment where the enterprise package is not
-      installed, which would contradict the conditional mount.
+    falsification_condition: >-
+      A response from /v1/execute in a deployment that does not have custos-enterprise
+      installed, which contradicts the conditional mount.
+    detection_signal: >-
+      An enterprise-only route appearing in the OpenAPI document served by the public
+      application.
