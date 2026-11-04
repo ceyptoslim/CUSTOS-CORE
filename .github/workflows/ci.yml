@@ -243,3 +243,26 @@ jobs:
             sleep 3
           done
           curl -f http://localhost:8000/health
+
+  docs:
+    name: Documentation Citations
+    # The design documents cite code by file and line. A citation that has drifted off
+    # its line is worse than no citation: it reads as evidence while pointing at code
+    # that no longer says what the sentence says it says. This job keeps the citations
+    # honest on every push, and the selftest proves the checker still fails when it
+    # should, so a guard that quietly stopped guarding is itself caught.
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Validate citations (stdlib only, no dependencies)
+        run: python scripts/check_doc_citations.py
+
+      - name: Prove the checker still catches drift
+        run: python scripts/check_doc_citations.py --selftest
