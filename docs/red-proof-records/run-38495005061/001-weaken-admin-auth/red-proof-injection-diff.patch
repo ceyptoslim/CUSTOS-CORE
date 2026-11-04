@@ -1,0 +1,22 @@
+diff --git a/main.py b/main.py
+index b05684e..6849c3f 100644
+--- a/main.py
++++ b/main.py
+@@ -119,7 +119,7 @@ async def optional_auth(
+ ) -> Optional[str]:
+     if not auth_enabled():
+         return None
+-    return verify_token(credentials)
++    return None
+ 
+ 
+ async def require_auth(
+@@ -134,7 +134,7 @@ async def require_auth(
+     """
+     if not auth_enabled():
+         return None
+-    return verify_token(credentials)
++    return None
+ 
+ 
+ # ---------------------------------------------------------------------------
