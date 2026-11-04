@@ -66,6 +66,7 @@ binding:
     enable it, so no binding record exists for any process in this deployment. Wiring
     is a capability of the code; a record is a fact about a running process. Those
     are different claims and this file will not merge them.
+  sabotage_class: "008-weaken-binding-refusal (docs/red-proof-records/sabotage-binding/DESIGN.md)"
   how_a_reviewer_tells: >-
     A binding exists for a process only if that process set CUSTOS_DEPLOYMENT_BINDING
     with a CUSTOS_DEPLOYMENT_ID and completed startup, in which case /v1/info reports
