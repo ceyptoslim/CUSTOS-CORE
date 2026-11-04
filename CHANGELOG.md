@@ -27,7 +27,7 @@ open" format — no claims beyond what the code and tests demonstrate.
   open).
 
 ### Changed
-- Suite 749 passed / 14 skipped.
+- Suite 751 passed / 14 skipped.
 - Execution path inventory (`docs/design/path-inventory.yaml`) with a defined
   protected effect, per-row assertion / falsification condition / detection
   signal, and guards that fail when those collapse into one another.

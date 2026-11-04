@@ -193,7 +193,8 @@ async def lifespan(app: FastAPI):
     # would still be described by an inventory that says the mechanism is wired.
     try:
         _startup_binding = establish_startup_binding(
-            tenant_manager.get("default").audit_chain
+            tenant_manager.get("default").audit_chain,
+            policy_digest=action_gate.cited_policy_digest("default"),
         )
     except BindingError as exc:
         # Refuse to start. A process that was asked to be bound and could not

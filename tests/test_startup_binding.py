@@ -125,3 +125,28 @@ def test_changing_the_deployment_changes_the_digest():
     base = establish(chain, "default", env=ENABLED)
     moved = establish(chain, "default", env={**ENABLED, "CUSTOS_BUILD_COMMIT": "def5678"})
     assert base["binding_digest"] != moved["binding_digest"]
+
+
+def test_strict_bound_mode_lets_the_binding_cite_the_policy_in_force(monkeypatch):
+    """CUSTOS_AUDIT_REQUIRE_BOUND must not make a bound deployment unbootable.
+
+    The binding record cites the policy enforcement would cite, not a digest of
+    itself: a fabricated citation would satisfy the guard while defeating it.
+    """
+    monkeypatch.setenv("CUSTOS_AUDIT_REQUIRE_BOUND", "1")
+    chain = AuditChain()
+    summary = establish(chain, env=ENABLED, policy_digest="sha256:in-force")
+    rows = [r for r in chain_records(chain) if r.triggered_rule == BINDING_RULE]
+    assert len(rows) == 1
+    assert rows[0].policy_digest == "sha256:in-force"
+    assert rows[0].trace_id == summary["trace_id"]
+    assert summary["policy_digest"] == "sha256:in-force"
+
+
+def test_strict_bound_mode_refuses_rather_than_fabricating_a_citation(monkeypatch):
+    """No policy digest available = no binding record = no start. Not a guess."""
+    monkeypatch.setenv("CUSTOS_AUDIT_REQUIRE_BOUND", "1")
+    chain = AuditChain()
+    with pytest.raises(BindingError, match="could not be recorded"):
+        establish(chain, env=ENABLED)
+    assert [r for r in chain_records(chain) if r.triggered_rule == BINDING_RULE] == []

@@ -35,6 +35,7 @@ import os
 import json
 import re
 from typing import Any, Iterable, Optional
+from uuid import uuid4
 
 BINDING_RULE = "deployment_binding_startup"
 BINDING_CLIENT_ID = "custos-binding"
@@ -296,8 +297,23 @@ def build_payload(
     return canonical_payload(**payload)
 
 
-def record_binding(chain, tenant_id: str, payload: dict, *, trace_id: Optional[str] = None):
-    """Append the binding to an audit chain. Returns the AuditRecord."""
+def record_binding(
+    chain,
+    tenant_id: str,
+    payload: dict,
+    *,
+    trace_id: Optional[str] = None,
+    policy_digest: Optional[str] = None,
+):
+    """Append the binding to an audit chain. Returns the AuditRecord.
+
+    ``policy_digest`` is the digest enforcement would cite for this tenant at
+    this moment, not a digest of the binding. Under CUSTOS_AUDIT_REQUIRE_BOUND
+    every record must carry a citation and a correlation id, and the binding
+    record is no exception: it cites the policy in force when the process
+    started, so a later reader can tell which policy the deployment was bound
+    under. Inventing a citation to satisfy the rule would have defeated it.
+    """
     digest = payload_digest(payload)
     return chain.record(
         client_id=BINDING_CLIENT_ID,
@@ -306,6 +322,7 @@ def record_binding(chain, tenant_id: str, payload: dict, *, trace_id: Optional[s
         content=json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False),
         triggered_rule=BINDING_RULE,
         trace_id=trace_id,
+        policy_digest=policy_digest,
         tenant_id=tenant_id,
     ), digest
 
@@ -386,7 +403,14 @@ def payload_from_env(env: Optional[dict] = None) -> Optional[dict]:
     )
 
 
-def establish(chain, tenant_id: str = "default", env: Optional[dict] = None) -> Optional[dict]:
+def establish(
+    chain,
+    tenant_id: str = "default",
+    env: Optional[dict] = None,
+    *,
+    policy_digest: Optional[str] = None,
+    trace_id: Optional[str] = None,
+) -> Optional[dict]:
     """Write the startup binding when enabled by ``CUSTOS_DEPLOYMENT_BINDING``.
 
     Returns a small summary suitable for an info endpoint, or ``None`` when the
@@ -397,8 +421,13 @@ def establish(chain, tenant_id: str = "default", env: Optional[dict] = None) -> 
     payload = payload_from_env(env)
     if payload is None:
         return None
+    # A correlation id of its own, so the binding record can be followed like
+    # any other record rather than being the one entry with no handle.
+    trace_id = trace_id or uuid4().hex
     try:
-        record, digest = record_binding(chain, tenant_id, payload)
+        record, digest = record_binding(
+            chain, tenant_id, payload, trace_id=trace_id, policy_digest=policy_digest
+        )
     except Exception as exc:  # noqa: BLE001 - any write failure is a refused start
         raise BindingError(f"deployment binding could not be recorded: {exc}") from exc
     return {
@@ -406,6 +435,8 @@ def establish(chain, tenant_id: str = "default", env: Optional[dict] = None) -> 
         "payload": payload,
         "deployment_id": payload.get("deployment_id"),
         "binding_digest": digest,
+        "trace_id": trace_id,
+        "policy_digest": policy_digest,
         "record_hash": record.record_hash,
         "established_at": record.timestamp,
         "entry_ids": payload.get("entry_ids") or [],
