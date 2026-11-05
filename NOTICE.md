@@ -2,10 +2,10 @@
 
 ## Rights holder
 
-The copyright holder and licensor of this work is **Tavares Heath**, an
+The copyright holder and licensor of this work is **Tavares Heath Sr.**, an
 individual. "FroLife Productions" is an unregistered trade name used by that
 individual; it is not a separate legal entity. Where this document or the
-source files refer to "FroLife Productions", they refer to Tavares Heath
+source files refer to "FroLife Productions", they refer to Tavares Heath Sr.
 trading under that name.
 
 If a company is formed later to hold this work, the rights transfer by written
@@ -35,7 +35,7 @@ must share their changes with the community.
 For organizations that want to use CUSTOS-CORE without AGPL obligations
 (no open-sourcing required), a commercial license is available.
 
-Contact: Tavares Heath (doing business as FroLife Productions)
+Contact: Tavares Heath Sr. (doing business as FroLife Productions)
 frolifeproductions@gmail.com
 
 ---
