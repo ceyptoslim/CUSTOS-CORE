@@ -122,7 +122,7 @@ patch and the exact assertions that must fail:
 
 ### Second vector: citation honesty (class 011)
 
-Class 005 tests whether the citation is *current*. A citation can be current and still be
+Class 005 asks whether the citation is *current*. A citation can be current and still be
 dishonest: if the engine consults a policy source this process cannot hash (Rego rules on an
 OPA server), a digest over the rules the process *can* see is a well-formed value that covers
 less than the decision did. The guard that refuses it is two lines in `engine_policy_digest()`,
