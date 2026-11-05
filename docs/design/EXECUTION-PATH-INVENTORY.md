@@ -113,9 +113,13 @@ fingerprints, and the payload is returned to the caller to be written beside the
 deployment, since the chain stores digests rather than payloads.
 
 
-The binding module is in this tree and, at the time of writing, nothing calls it from
-startup. That gap has to be visible to a reviewer rather than inferable from the presence
-of a file.
+The binding module is in this tree and the startup lifespan now calls it, gated on
+`CUSTOS_DEPLOYMENT_BINDING` and off by default. The earlier version of this paragraph said
+nothing called it, which was true when it was written and stopped being true when the
+wiring landed; a document that describes the tree from memory is the defect this artifact
+exists to prevent. What does not follow from the wiring: the reference deployment does not
+enable the flag, so `established_at_runtime` stays `false`, because a wired mechanism is a
+capability of the code and a record is a fact about a process.
 
 | What exists | What it establishes | How a reviewer tells |
 |---|---|---|
@@ -168,14 +172,22 @@ Four properties make it evidence rather than a log line:
 Two details decide whether the binding describes the running system or the paperwork
 next to it.
 
-**The credential is the one that authenticated the connection.** A fingerprint taken from
-a configuration file proves what was written down, not what was used: environment
-overrides, mounted secrets and runtime refresh all change the value after the file is
-read. `credential_binding` therefore records the fingerprint of the value the connection
-presents at runtime, tagged `source: "runtime-connection"`, bound to the upstream it
-reached, with `configured_matches` saying whether a static value agreed. That field is
-explicitly `null` when there was nothing to compare, because "no configured value" and
-"no comparison" are different states.
+**The credential is the one the caller reports presenting, not one this process observed.**
+A fingerprint taken from a configuration file shows what was written down, not what was
+used: environment overrides, mounted secrets and runtime refresh all change the value after
+the file is read. `credential_binding` narrows that gap by recording the fingerprint of the
+value the calling process declares it presents at runtime, tagged
+`source: "runtime-connection"`, bound to the upstream it reached, with `configured_matches`
+saying whether a static value agreed. That field is explicitly `null` when there was
+nothing to compare, because "no configured value" and "no comparison" are different states.
+
+The limit belongs in the same paragraph as the capability, because the two are one claim.
+Nothing here reads the credential off the socket. The recorder cannot distinguish a caller
+that presents token A from a caller that presents token B and says A, so what a reviewer
+can check is consistency between the declared value, the configuration and the upstream
+that was reached, not the bytes on the wire. Closing that would mean terminating the
+connection at the recorder, which changes what the deployment is rather than what this
+field records.
 
 **A rotated secret has to be detectable without being readable.** `config_digest`
 replaces secret-looking values with their fingerprints before hashing and lists the field

@@ -90,3 +90,25 @@ class TestAssessmentStaysBoundToDeclaredPaths:
         assert referenced, "the assessment should name the paths it judged"
         unknown = {token.upper() for token in referenced} - set(rows)
         assert not unknown, f"assessment names undeclared paths: {sorted(unknown)}"
+
+
+class TestAvailabilityIsADistinctEvidenceState:
+    """A hypothetical bypass is not a bypass, so the document must say which it has."""
+
+    def test_both_states_are_defined(self, assessment):
+        assert "`declared`" in assessment
+        assert "`demonstrated`" in assessment
+
+    def test_a_declared_bypass_row_names_what_it_was_demonstrated_against(self, rows):
+        """A bypass claim must carry its shape, or a specimen becomes a universal claim."""
+        for rid, row in rows.items():
+            if row["status"] == "unmediated-declared":
+                assert row.get("availability_scope"), (
+                    f"{rid} asserts a bypass without saying what environment it was "
+                    "demonstrated in, which lets the claim travel further than the evidence"
+                )
+
+    def test_the_demonstration_is_executable_and_named(self, assessment):
+        """If the verdict rests on an observation, the observation has to be runnable."""
+        assert "tests/test_unmediated_path_demonstrated.py" in assessment
+        assert (ROOT / "tests" / "test_unmediated_path_demonstrated.py").exists()

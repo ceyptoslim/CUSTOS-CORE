@@ -81,9 +81,12 @@ binding:
       because those decide what the upstream can be asked to do. tool_list_digest
       (names only) is retained for comparability and is insufficient on its own.
     credential: >-
-      credential_binding fingerprints the value used on the connection to the upstream
-      at runtime, tagged source=runtime-connection and bound_to the upstream, and
-      records whether a static configuration value matched it.
+      credential_binding fingerprints the value the calling process DECLARES it presents
+      on the connection to the upstream at runtime, tagged source=runtime-connection and
+      bound_to the upstream, and records whether a static configuration value matched it.
+      Observation is declared, not made: nothing in the recorder reads the credential off
+      the socket, so this binds consistency between the declared value, the configuration
+      and the upstream reached, not the bytes on the wire.
     config: >-
       config_digest replaces secret-looking values with their fingerprints and lists
       them in secret_config_fields, so a changed secret is detectable without the value
@@ -161,8 +164,15 @@ paths:
       reach that upstream without traversing the decision point.
     enforcement_point: "none — this is exit class EX-4"
     evidence:
+      - "tests/test_unmediated_path_demonstrated.py (the bypass runs the tool with no gate in the loop)"
       - "docs/design/EABC-EXIT-CLASS-REGISTER.md (EX-4)"
       - "custos/mcp_proxy.py module caveat"
+    evidence_state: demonstrated-for-this-deployment-shape
+    availability_scope: >-
+      Demonstrated for the upstream this repository ships: a stdio server that accepts any
+      caller and requires no credential. Availability against an operator-chosen upstream is
+      a deployment fact and is not claimed here; an upstream that rejects callers without
+      the proxy's credential, or closed egress, is the observation that falsifies this row."
     binding_fields: ["none — a bypassing process writes no binding record"]
     falsification_condition: >-
       Every path capable of producing the protected effect is enumerated and each is

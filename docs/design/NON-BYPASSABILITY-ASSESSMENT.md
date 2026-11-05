@@ -23,11 +23,31 @@ Merging any two of these is how a declaration starts asserting more than it carr
 |---|---|---|---|
 | Declared scope | The effect, the boundary, and the portion of the system under assessment | Where the claim applies | That the scope is the right one |
 | Path enumeration | Which paths are known to be capable of producing `E` | That these paths exist and where they go | That the list is complete |
+| Path availability | Whether a named path is shown to produce `E` in this deployment, or merely argued to be possible | That the path is real, not hypothetical | That other paths exist |
 | Path-set completeness | Whether the enumeration covers every such path within scope | That none is missing | That each is mediated |
 | Mediation | Whether a given path actually traverses `B` | What happens on that path | Anything about unlisted paths |
 
-The first two are declarations. The third is the claim that can only be argued
-exhaustively or left open. The fourth is the one with testable evidence per row.
+The first two are declarations. The third is the one a verdict can turn on, because a
+hypothetical bypass is not a bypass. The fourth can only be argued exhaustively or left
+open. The fifth is the one with testable evidence per row.
+
+## 1a. Two evidence states for a bypass, kept distinguishable
+
+`DOES_NOT_CONFORM` needs a path that produces `E` while avoiding `B`. Two very different
+observations can support that sentence, and merging them is how a declaration becomes a
+finding it has not earned.
+
+- **`DECLARED`** — the architecture permits the path, argued from the code, with no
+  observation of it executing. This is sufficient to open a row and insufficient for a
+  verdict.
+- **`DEMONSTRATED`** — an executed observation shows the path producing `E` with `B` absent
+  from the loop. This is what `DOES_NOT_CONFORM` rests on.
+
+The distinction has a second use, which is where most assessments go wrong: a
+demonstration has a *shape*. It is demonstrated against something specific, and the
+demonstration transfers only as far as that something does. An assessment that says
+`DEMONSTRATED` without naming what it was demonstrated against has quietly upgraded a
+specimen into a universal claim.
 
 ---
 
@@ -44,7 +64,7 @@ is the enterprise execution path. See section 5 for why it gets no verdict here.
 **`B`**: the pre-flight `ActionGate`, as reached by a client of this deployment through
 the MCP stdio proxy. The decision API is deliberately *not* part of `B`: a caller that may
 ignore the answer is a consumer, not an enforcement point, which is the inventory's
-`not-effect-producing` status (`docs/design/path-inventory.yaml:117`, "None by itself. Returns a decision" and
+`not-effect-producing` status (`docs/design/path-inventory.yaml:120`, "None by itself. Returns a decision" and
 `docs/design/EXECUTION-PATH-INVENTORY.md:57`, "no service in this deployment exposes it").
 
 **Declared path set:** the six rows of `docs/design/path-inventory.yaml`, enumerated by
@@ -64,12 +84,12 @@ one.
 | P1 stdio proxy | `mediated` | yes | yes | subject to `B` |
 | P2 decision API | `not-effect-producing` | n/a | no | not a path to `E1` |
 | P3 HTTP adapter | `not-present` | n/a | not in this deployment | not a path to `E1` here |
-| P4 direct upstream | `unmediated-declared` | **no** | **yes** | **bypass** |
+| P4 direct upstream | `unmediated-declared` | **no** | **yes, `DEMONSTRATED`** | **bypass** |
 | P5 custody anchoring | `out-of-scope-by-construction` | n/a | no | excluded by the definition of `E` |
 | P6 enterprise execute | `not-present` | n/a | not in this deployment | not a path to `E1` here |
 
 P4 is the row that decides this document, and its own text says so
-(`docs/design/path-inventory.yaml:157`, "Produces the same protected effect without passing the decision point."). The condition Stanislav attached to the verdict, that the
+(`docs/design/path-inventory.yaml:160`, "Produces the same protected effect without passing the decision point."). The condition Stanislav attached to the verdict, that the
 bypass must be able to produce *the same* effect, is what that sentence asserts and what
 the row's assertion argues: a process holding credentials the upstream accepts connects
 directly and the upstream runs the tool.
@@ -81,6 +101,21 @@ directly and the upstream runs the tool.
 A known path capable of `E1` bypasses `B`. Under the reading this document follows, that
 settles the verdict and makes path-set completeness irrelevant to it: a demonstrated
 bypass does not become less demonstrated because the list is short.
+
+**What the demonstration is.** The bypass is `DEMONSTRATED`, not merely declared, and the
+observation is executable in this repository: the same in-repo upstream is spawned twice,
+once behind the proxy and once with no gate object in the process at all
+(`tests/test_unmediated_path_demonstrated.py:89`, "the upstream ran the tool"). The denied control is the other half, and it
+is what makes the marker an effect signal rather than noise
+(`tests/test_unmediated_path_demonstrated.py:112`, "which would be the gate failing open").
+
+**What it is demonstrated against, which is the part that keeps the verdict honest.** The
+upstream in that test is a stdio server that accepts any caller and requires no credential.
+So the verdict is `DEMONSTRATED` for the deployment shape this repository ships, and only
+`DECLARED` for an operator deployment whose upstream demands a credential the agent does
+not hold or whose egress is closed. An operator deployment reaches `DOES_NOT_CONFORM` only
+by repeating the demonstration against its own upstream; until it does, the honest label
+there is a declared bypass, and the verdict belongs at `INSUFFICIENT_EVIDENCE`, not here.
 
 The verdict is negative and stays negative until one of three things happens, each of
 which is a deployment observation rather than a code change:
@@ -102,7 +137,7 @@ observation as a refutation is the mistake the inventory warns about in the same
 ## 5. Verdict for `E2`: NOT ASSESSED
 
 No service in this deployment exposes the forward path
-(`docs/design/path-inventory.yaml:137`, "status: not-present"). With no path producing `E2` inside the declared
+(`docs/design/path-inventory.yaml:140`, "status: not-present"). With no path producing `E2` inside the declared
 scope, `NON_BYPASSABILITY(B,E2)` is a claim this deployment can neither make nor refute.
 
 This is deliberately outside the two-value scale. It is not `CONFORMS`, because nothing
@@ -138,6 +173,9 @@ absence of a known bypass is not a completeness argument.
   deployment as a whole, and section 4 establishes that it currently fails for `E1`.
 - **Not an exhaustive path claim.** The enumeration is the repository's declaration, and
   the completeness status is open by design.
+- **Not availability against an operator's upstream.** The bypass is demonstrated against
+  the upstream this repository ships. A deployment with a credential-gated upstream or
+  closed egress has a different answer, and it has to be observed rather than inherited.
 - **Nothing about identity.** `B` decides on the principal a caller presents. Whether that
   principal is the one actually on the connection is a separate claim, and it is not
   established here.
