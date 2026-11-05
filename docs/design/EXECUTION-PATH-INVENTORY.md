@@ -220,3 +220,15 @@ names the observation that would refute it, and any path that changes the deploy
 without changing the declaration is either caught by binding or outside what binding can
 see. Nobody has established the second half, and this document does not pretend
 otherwise.
+
+## The assessment this inventory feeds
+
+The inventory is the declaration. The verdict it supports lives in
+[`NON-BYPASSABILITY-ASSESSMENT.md`](NON-BYPASSABILITY-ASSESSMENT.md), which asks
+`NON_BYPASSABILITY(B,E)` one effect at a time against this file, records `DOES_NOT_CONFORM`
+for the tool-invocation effect because P4 is declared, and carries
+`INSUFFICIENT_EVIDENCE` for the proxy's internal boundary where no bypass is known but
+completeness is not established. Read the two together: the inventory says what paths
+exist, the assessment says what that amounts to, and neither is allowed to answer the
+other's question silently.
+
