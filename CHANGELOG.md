@@ -49,6 +49,16 @@ open" format — no claims beyond what the code and tests demonstrate.
 - `scripts/check_doc_citations.py` now validates document-to-document citations (`.md`,
   `.yaml`, `.json`), not only code targets.
 
+### Added — citation honesty under pluggable engines
+- Pre-registered sabotage class `011-fabricate-citation`: the honesty guard in
+  `engine_policy_digest()` is deleted, so an unpinned OPA or hybrid engine cites a
+  digest over the rules the process can see instead of citing nothing. Six named
+  failures, a non-failure list and a disclosed weaker-blindness position; design
+  frozen and hash-pinned before first execution.
+- `docs/design/pre-execution-boundary-accurate.md` section 4a now names the engine
+  scope of the boundary and the citation semantics per engine, and section 6 records
+  the seam defect that made two of the three configured engines unusable.
+
 ### Changed
 - Suite 783 passed / 14 skipped.
 - Pre-registered sabotage class 008 (`binding-refusal`): the lifespan stops
