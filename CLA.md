@@ -1,9 +1,16 @@
 # Contributor License Agreement (CLA) — CUSTOS Project
 
-**Version 1.0 — September 2, 2026**
-**Project Owner: FroLife Productions (frolifeproductions@gmail.com)**
+**Version 1.1 — November 5, 2026**
+**Project Owner: Tavares Heath Sr., an individual doing business as FroLife
+Productions (frolifeproductions@gmail.com)**
 
 ---
+
+The Project Owner is a natural person. "FroLife Productions" is an
+unregistered trade name used by that individual, not a separate legal entity,
+so every grant below runs from Tavares Heath Sr. personally. If a company is later
+formed to hold the project, the rights transfer by written assignment and this
+agreement is reissued in the company's name.
 
 ## Why This CLA Exists
 
@@ -30,7 +37,7 @@ This CLA protects:
   to the CUSTOS project repositories
 - **"Project"** — the CUSTOS open-source project, including CUSTOS-CORE,
   LORL-9.1, and related repositories maintained by FroLife Productions
-- **"Maintainer"** — FroLife Productions, the owner of the CUSTOS project
+- **"Maintainer"** — Tavares Heath Sr., the Project Owner named at the top of this agreement
 
 ### 2. Grant of Copyright License
 

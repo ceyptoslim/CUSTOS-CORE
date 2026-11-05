@@ -1,5 +1,18 @@
 # CUSTOS-CORE Licensing
 
+## Rights holder
+
+The copyright holder and licensor of this work is **Tavares Heath Sr.**, an
+individual. "FroLife Productions" is an unregistered trade name used by that
+individual; it is not a separate legal entity. Where this document or the
+source files refer to "FroLife Productions", they refer to Tavares Heath Sr.
+trading under that name.
+
+If a company is formed later to hold this work, the rights transfer by written
+assignment, and this notice and the licence files are updated to name the
+company in the same change. Until that happens, every grant runs from the
+individual.
+
 ## Open Source Core — AGPL-3.0
 
 CUSTOS-CORE is licensed under the **GNU Affero General Public License v3.0** (AGPL-3.0).
@@ -22,7 +35,8 @@ must share their changes with the community.
 For organizations that want to use CUSTOS-CORE without AGPL obligations
 (no open-sourcing required), a commercial license is available.
 
-Contact: FroLife Productions
+Contact: Tavares Heath Sr. (doing business as FroLife Productions)
+frolifeproductions@gmail.com
 
 ---
 
