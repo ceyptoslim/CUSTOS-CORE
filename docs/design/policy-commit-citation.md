@@ -120,6 +120,24 @@ patch and the exact assertions that must fail:
   weakened citation, that is a faulty-green event — the discipline failed
   and is reported as such.
 
+### Second vector: citation honesty (class 011)
+
+Class 005 tests whether the citation is *current*. A citation can be current and still be
+dishonest: if the engine consults a policy source this process cannot hash (Rego rules on an
+OPA server), a digest over the rules the process *can* see is a well-formed value that covers
+less than the decision did. The guard that refuses it is two lines in `engine_policy_digest()`,
+and class 011 deletes them. Pre-registration, expected failures and the non-failure list are in
+`docs/red-proof-records/sabotage-fabricated-citation/DESIGN.md`, hash-pinned in the workflow.
+
+The two classes are kept separate deliberately. A deployment can pass 005 and fail 011: current,
+tidy, and citing provenance it does not have. That combination is the one that reads as compliant
+in a record review, which is why it gets its own class rather than an addendum.
+
+Limit, stated where the class is registered and not repeated here as if it were closed: a pin is
+an operator's claim about a bundle this process does not hold. Class 011 proves the process
+refuses to cite when it cannot cover the decision. It says nothing about whether the pin names the
+Rego actually loaded.
+
 ## Sequence
 
 1. Implementation PR: canonical digest + emission citation (R1, R2), policy

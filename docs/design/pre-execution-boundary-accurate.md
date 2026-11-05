@@ -48,6 +48,8 @@ A citation exists only when it covers everything the decision consulted. `custos
 
 For the regex engine the digest payload is byte-identical to previous releases, so citations emitted before this existed still recompute. `custos/policy_engine.py:136` `engine_kind = "regex"` and `custos/hybrid_engine.py:37` `engine_kind = "hybrid"` tell a reader which engine produced a decision without inspecting the deployment.
 
+The honesty property is guarded by a pre-registered class: `011-fabricate-citation` deletes the guard that refuses an uncitable digest and names the six assertions that must catch it (`docs/red-proof-records/sabotage-fabricated-citation/DESIGN.md`).
+
 An unrecordable decision is not an allow. `custos/action_gate.py:241` "def _unrecordable" turns an allowed decision whose record was refused into a deny with rule `action_gate_record_unwritable`, and leaves an existing deny standing with its original rule. `custos/action_gate.py:304` "def _record" is the wrapper that makes a store failure a stated outcome instead of an exception.
 
 ## 5. Explicitly out of scope
