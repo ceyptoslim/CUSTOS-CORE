@@ -67,8 +67,28 @@ open" format — no claims beyond what the code and tests demonstrate.
   Records: `docs/red-proof-records/run-41946858235/`,
   `docs/red-proof-records/run-41946319256/`, `sabotage-fabricated-citation/RESULT.md`.
 
+### Fixed — two stale statements and one unearned verdict
+- `docs/design/EXECUTION-PATH-INVENTORY.md` said nothing called the binding module from
+  startup. That stopped being true when the wiring landed, and a document describing the
+  tree from memory is the defect the artifact exists to prevent. The paragraph now states
+  wired-and-off-by-default, and keeps the distinction it was protecting: a wired mechanism
+  is a capability of the code, `established_at_runtime` stays false.
+- The credential paragraph claimed the recorded fingerprint was "the one that authenticated
+  the connection". Nothing reads the credential off the socket; the recorder records what
+  the calling process declares. Capability and limit now sit in one paragraph in the doc,
+  the inventory and the module, because they are one claim.
+- `NON-BYPASSABILITY-ASSESSMENT.md` gains the evidence-state distinction Stanislav Levarsky
+  asked for: a `DECLARED` bypass (architecturally possible, unobserved) is not sufficient
+  for `DOES_NOT_CONFORM`, which needs a `DEMONSTRATED` one. The E1 verdict now names its
+  demonstration and, more importantly, names what it was demonstrated against: the upstream
+  this repository ships. For an operator upstream the honest label is a declared bypass and
+  the verdict belongs at `INSUFFICIENT_EVIDENCE` until it is repeated there.
+- `tests/test_unmediated_path_demonstrated.py`: the bypass became an executable observation.
+  The same upstream is spawned twice, once behind the proxy and once with no gate in the
+  process, and the denied case is the control that makes the marker an effect signal.
+
 ### Changed
-- Suite 783 passed / 14 skipped.
+- Suite 789 passed / 14 skipped.
 - Pre-registered sabotage class 008 (`binding-refusal`): the lifespan stops
   re-raising after a failed binding write, and exactly one assertion must catch
   it. Design frozen and hash-pinned before first execution.

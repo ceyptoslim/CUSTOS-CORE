@@ -15,10 +15,11 @@ Three rules, each with a reason:
 3. **The digest goes in the chain, the payload goes in a file.** The chain stores
    content hashes by design. A reviewer needs the payload to check the digest, so the
    payload is written next to the deployment and its digest is what the chain anchors.
-4. **Implemented is not established.** This module records a binding when a deployment
-   calls it. It is not called from startup, so no binding exists for any process until
-   one wires it. A reviewer must not be able to infer a record from the module's
-   presence, and the inventory says so in the same words.
+4. **Implemented is not established.** The startup lifespan calls this module, gated on
+   ``CUSTOS_DEPLOYMENT_BINDING`` and off by default. Wiring is a capability of the code; a
+   record is a fact about a process, so no binding exists for a deployment that leaves the
+   flag off. A reviewer must not be able to infer a record from the module's presence or
+   from the call site, and the inventory says so in the same words.
 
 What this cannot do is stated in the doc, not here in a footnote: a process that never
 connects to the mediated surface leaves no startup record, so binding is not path-set
@@ -211,13 +212,18 @@ def credential_binding(
     source: str = "runtime-connection",
     scope: Optional[Iterable[str]] = None,
 ) -> Optional[dict]:
-    """Which credential actually authenticated this connection to the upstream.
+    """Which credential the caller reports presenting to the upstream.
 
-    A fingerprint taken from a static configuration file proves what was written down,
+    A fingerprint taken from a static configuration file shows what was written down,
     not what was used: environment overrides, mounted secrets and runtime refresh all
-    change the value after the file is read. This records the fingerprint of the value
-    the connection presents, tagged with its source, bound to the upstream it reached,
-    and notes whether a configured value matched it.
+    change the value after the file is read. This narrows that gap by recording the
+    fingerprint of the value the calling process declares it presents, tagged with its
+    source, bound to the upstream it reached, with whether a configured value matched.
+
+    What it cannot do, stated here because the two are one claim: nothing reads the
+    credential off the socket. A caller that presents token B and declares token A is
+    recorded as A. What a reviewer can check is consistency between the declared value,
+    the configuration, and the upstream reached.
     """
     fingerprint = credential_fingerprint(runtime_secret)
     if fingerprint is None:
