@@ -58,6 +58,14 @@ open" format — no claims beyond what the code and tests demonstrate.
 - `docs/design/pre-execution-boundary-accurate.md` section 4a now names the engine
   scope of the boundary and the citation semantics per engine, and section 6 records
   the seam defect that made two of the three configured engines unusable.
+- Class 011 executed: RED-CONFIRMED on the pre-registered failure set (run 41946858235),
+  six of six named assertions and every predicted non-failure green. The finding worth
+  reading is the sixth: under `CUSTOS_AUDIT_REQUIRE_BOUND=1` a fabricated digest let an
+  uncitable action stand and be recorded as fully cited. The first dispatch (run
+  41946319256) is frozen too, with its seventh failure attributed to a docs guard that
+  read "Class 005 tests" as a count; the prose was fixed, the design and pin were not.
+  Records: `docs/red-proof-records/run-41946858235/`,
+  `docs/red-proof-records/run-41946319256/`, `sabotage-fabricated-citation/RESULT.md`.
 
 ### Changed
 - Suite 783 passed / 14 skipped.
