@@ -95,9 +95,22 @@ class TestAssessmentStaysBoundToDeclaredPaths:
 class TestAvailabilityIsADistinctEvidenceState:
     """A hypothetical bypass is not a bypass, so the document must say which it has."""
 
-    def test_both_states_are_defined(self, assessment):
-        assert "`declared`" in assessment
-        assert "`demonstrated`" in assessment
+    def test_all_three_states_are_defined(self, assessment):
+        for state in ("`declared`", "`reported`", "`demonstrated`"):
+            assert state in assessment, f"the {state} state must be defined"
+
+    def test_an_evidence_state_is_never_a_verdict(self, assessment):
+        """A state describes provenance and verification strength, not conformance."""
+        assert "is not a conformance verdict" in assessment
+        assert "only `demonstrated` carries `does_not_conform`" in assessment
+
+    def test_promotion_out_of_reported_requires_verification(self, assessment):
+        """Otherwise a fluent account of somebody else's run becomes evidence."""
+        assert "repeating the reporter's conclusion is not verification" in assessment
+
+    def test_the_assessment_applies_the_state_rule_to_its_own_observation(self, assessment):
+        """Our own row earns DEMONSTRATED only because a reader can re-run it."""
+        assert "would sit at `reported`" in assessment
 
     def test_a_declared_bypass_row_names_what_it_was_demonstrated_against(self, rows):
         """A bypass claim must carry its shape, or a specimen becomes a universal claim."""

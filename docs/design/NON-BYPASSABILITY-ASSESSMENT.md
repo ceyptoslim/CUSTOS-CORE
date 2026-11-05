@@ -31,17 +31,36 @@ The first two are declarations. The third is the one a verdict can turn on, beca
 hypothetical bypass is not a bypass. The fourth can only be argued exhaustively or left
 open. The fifth is the one with testable evidence per row.
 
-## 1a. Two evidence states for a bypass, kept distinguishable
+## 1a. Three evidence states for a bypass, kept distinguishable
 
-`DOES_NOT_CONFORM` needs a path that produces `E` while avoiding `B`. Two very different
-observations can support that sentence, and merging them is how a declaration becomes a
-finding it has not earned.
+`DOES_NOT_CONFORM` needs a path that produces `E` while avoiding `B`. Observations of
+very different strength can support that sentence, and merging them is how a declaration,
+or somebody else's report, becomes a finding it has not earned.
 
 - **`DECLARED`** — the architecture permits the path, argued from the code, with no
   observation of it executing. This is sufficient to open a row and insufficient for a
   verdict.
+- **`REPORTED`** — an interested party reports an executed observation, and the artifacts
+  needed for anyone else to check it are not available. Another team's run, quoted in a
+  document with no preserved output, is `REPORTED` no matter how detailed the account is:
+  a reviewer can read the report but cannot re-run it.
 - **`DEMONSTRATED`** — an executed observation shows the path producing `E` with `B` absent
-  from the loop. This is what `DOES_NOT_CONFORM` rests on.
+  from the loop, and the means to reproduce it are in hand. This is what `DOES_NOT_CONFORM`
+  rests on.
+
+An evidence state describes where an observation came from and how strongly it is
+verified. It is not a conformance verdict, and the two must not be collapsed in either
+direction: a strong state does not create a verdict, and a weak one does not make one
+unavailable. Only `DEMONSTRATED` carries `DOES_NOT_CONFORM`. Promotion from `REPORTED` to
+`DEMONSTRATED` needs the artifacts and an independent reproduction or equivalent
+independent verification; repeating the reporter's conclusion is not verification, and
+neither is a summary that quotes the artifacts instead of exercising them.
+
+This document applies the same rule to itself. The `E1` observation is a runnable test in
+`tests/test_unmediated_path_demonstrated.py`, so a reader reproduces it without us, which
+is what lets the row say `DEMONSTRATED`. Had the observation arrived as somebody's written
+account with no preserved output, the row would sit at `REPORTED` and the verdict would
+have to fall back to `INSUFFICIENT_EVIDENCE`.
 
 The distinction has a second use, which is where most assessments go wrong: a
 demonstration has a *shape*. It is demonstrated against something specific, and the
