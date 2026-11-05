@@ -43,7 +43,11 @@ MARKER = "<!-- citation-check: on -->"
 DOC_GLOB = "docs/design/*.md"
 
 # A full citation names a path; the shorthand form relies on the last path on the line.
-CITATION = re.compile(r"(?P<path>[A-Za-z0-9_./-]+\.py):(?P<start>\d+)(?:-(?P<end>\d+))?")
+# Code and document targets both count: a design document that cites a register row is
+# making the same kind of claim as one that cites a function, and the same drift applies.
+CITATION = re.compile(
+    r"(?P<path>[A-Za-z0-9_./-]+\.(?:py|md|ya?ml|json)):(?P<start>\d+)(?:-(?P<end>\d+))?"
+)
 SHORTHAND = re.compile(r"(?<![\w./:-]):(?P<start>\d+)(?:-(?P<end>\d+))?")
 TICKED = re.compile(r"`([^`]+)`")
 QUOTED = re.compile(r'"([^"]{8,})"')

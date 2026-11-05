@@ -33,6 +33,22 @@ open" format — no claims beyond what the code and tests demonstrate.
   as the sole path (EX-4, open at deployment) and records no outcomes (EX-2 stays
   open).
 
+### Added — deployment-level non-bypassability assessment
+- `docs/design/NON-BYPASSABILITY-ASSESSMENT.md`: the inventory asks for per-path evidence;
+  this asks the question the inventory cannot answer, `NON_BYPASSABILITY(B,E)`, one effect
+  at a time. The tool-invocation effect gets `DOES_NOT_CONFORM`, because the direct
+  upstream path is declared and can produce the same effect. The outbound-HTTP effect is
+  `NOT ASSESSED` (no path produces it in this deployment), and the proxy's internal
+  boundary is `INSUFFICIENT_EVIDENCE`: no bypass known, completeness unproven. Path-set
+  completeness is declared `NOT ESTABLISHED` rather than claimed. The four-way separation
+  of scope, enumeration, completeness and mediation, and the verdict vocabulary, follow
+  Stanislav Levarsky's Nov 5 2026 reply.
+- `tests/test_non_bypassability_assessment.py`: the verdict is bound to the inventory it
+  was derived from, so a row flipping to `mediated` forces the finding to be re-derived
+  instead of inherited.
+- `scripts/check_doc_citations.py` now validates document-to-document citations (`.md`,
+  `.yaml`, `.json`), not only code targets.
+
 ### Changed
 - Suite 775 passed / 14 skipped.
 - Pre-registered sabotage class 008 (`binding-refusal`): the lifespan stops
