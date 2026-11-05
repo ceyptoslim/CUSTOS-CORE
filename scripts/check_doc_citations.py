@@ -207,31 +207,72 @@ def run(paths: list[Path], root: Path = ROOT) -> int:
     return total
 
 
+def _first_citation_span(markdown: str) -> tuple[int, int, str, int, int] | None:
+    for line in markdown.splitlines():
+        spans = _spans(line)
+        if spans:
+            return spans[0]
+    return None
+
+
+def _mutations(markdown: str) -> dict[str, str]:
+    """Derive one rot case per failure mode from the document itself.
+
+    Nothing here names a line number: a self-test that pins the numbers it exists to keep
+    honest fails every time the document is re-mapped, and the natural fix becomes
+    editing the test. Mutations are found by shape instead.
+    """
+    out: dict[str, str] = {}
+    first = _first_citation_span(markdown)
+    if first is not None:
+        _, end_at, path, start, _ = first
+        head = markdown[: markdown.index(f"{path}:{start}", 0)]
+        tail = markdown[markdown.index(f"{path}:{start}", 0) + len(f"{path}:{start}") :]
+        out["line number past the end of the file"] = f"{head}{path}:99999{tail}"
+        out["file that does not exist"] = f"{head}custos/nonexistent.py:{start}{tail}"
+        out["line number on a line that does not hold the fragment"] = f"{head}{path}:1{tail}"
+
+    # A citation whose fragment is deleted is not checkable, so it must fail.
+    anchored = re.search(r"(`[A-Za-z0-9_./-]+\.py:\d+(?:-\d+)?`)\s+(`[^`]{8,}`|\"[^\"]{8,}\")", markdown)
+    if anchored:
+        out["citation with no quoted fragment"] = (
+            markdown[: anchored.start()] + anchored.group(1) + markdown[anchored.end() :]
+        )
+
+    # Positional binding: a duplicate fragment elsewhere in the file must not validate a
+    # citation that points at the wrong line. The mutation keeps the fragment and moves
+    # only the line number to a neighbouring line, which is a stale citation: the text is
+    # findable somewhere in the file, so a search-based checker would pass it, while the
+    # cited line does not hold it.
+    for cite in citations_in(markdown):
+        if not cite.anchors or cite.start != cite.end:
+            continue
+        wrong = cite.start + 1
+        if wrong > 4000:
+            continue
+        needle = f"{cite.path}:{cite.start}"
+        if needle not in markdown:
+            continue
+        out["wrong line whose fragment exists elsewhere"] = markdown.replace(
+            needle, f"{cite.path}:{wrong}", 1
+        )
+        break
+    return out
+
+
 def selftest(root: Path = ROOT) -> int:
     """Prove the checker fails on each way a citation can rot, and passes when it should."""
     doc = root / "docs/design/pre-execution-boundary-accurate.md"
     original = doc.read_text(encoding="utf-8")
-    mutations = {
-        "line number past the end of the file": original.replace(
-            "`custos/action_gate.py:2`", "`custos/action_gate.py:99999`", 1
-        ),
-        "fragment that is not at the cited line": original.replace(
-            "`custos/policy_engine.py:18-21`", "`custos/policy_engine.py:150-152`", 1
-        ),
-        "citation with no quoted fragment": original.replace(
-            '`custos/action_gate.py:316` "Dangerous command classes"', "`custos/action_gate.py:316`", 1
-        ),
-        "file that does not exist": original.replace("`custos/action_gate.py:2`", "`custos/nonexistent.py:2`", 1),
-        "fragment moved to the wrong line of the same file": original.replace(
-            '`custos/action_gate.py:310` "policy_digest=cited_digest"',
-            '`custos/action_gate.py:254` "policy_digest=cited_digest"',
-            1,
-        ),
-    }
     failures = 0
     if check_document(doc, root):
         print("SELFTEST FAIL: the unmodified document should pass")
         failures += 1
+
+    mutations = _mutations(original)
+    if len(mutations) < 4:
+        print(f"SELFTEST FAIL: only {len(mutations)} rot cases derivable from the document")
+        return failures + 1
 
     tmp = root / "docs/design/.selftest-citation.md"
     for name, mutated in mutations.items():
@@ -240,9 +281,14 @@ def selftest(root: Path = ROOT) -> int:
             failures += 1
             continue
         tmp.write_text(mutated, encoding="utf-8")
-        caught = bool(check_document(tmp, root))
-        print(f"SELFTEST {'OK  ' if caught else 'FAIL'} caught: {name}")
-        failures += 0 if caught else 1
+        problems = check_document(tmp, root)
+        print(f"SELFTEST {'OK  ' if problems else 'FAIL'} caught: {name}")
+        failures += 0 if problems else 1
+        if name == "citation with no quoted fragment":
+            # Caught for the stated reason, not by collateral damage elsewhere in the doc.
+            right = any("no quoted fragment" in p.message for p in problems)
+            print(f"SELFTEST {'OK  ' if right else 'FAIL'} no-fragment case reports its own reason")
+            failures += 0 if right else 1
     tmp.unlink(missing_ok=True)
 
     print("SELFTEST PASS" if not failures else f"SELFTEST FAIL ({failures})")
