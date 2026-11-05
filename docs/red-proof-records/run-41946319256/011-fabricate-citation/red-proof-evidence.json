@@ -1,0 +1,42 @@
+{
+  "record_version": 3,
+  "identity": {
+    "run_id": "41946319256",
+    "run_number": "24",
+    "run_attempt": "1",
+    "commit_sha": "c9af210775098bcdb14452691048870020bc6fe2",
+    "injected_regression_id": "011-fabricate-citation",
+    "sabotage_script_sha256": "a447e1c1e93049abaf2c24a774cb31ca044a80856b1cb4716a2e6ebd92aaedcd",
+    "injection_diff_sha256": "2eafacf7de66d5c6b9c32da6d953404361580150e2e77b24c4980bd6962b74de"
+  },
+  "time": {
+    "tests_started_utc": "2026-11-05T01:07:45Z",
+    "tests_completed_utc": "2026-11-05T01:07:56Z",
+    "record_generated_at_utc": "2026-11-05T01:07:56Z"
+  },
+  "observations": {
+    "pytest_exit_code": 1,
+    "exit_code_artifact": {"file": "red-proof-exit-code.txt", "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"},
+    "injection_diff": {"file": "red-proof-injection-diff.patch", "sha256": "2eafacf7de66d5c6b9c32da6d953404361580150e2e77b24c4980bd6962b74de"},
+    "junit_xml": {"file": "red-proof-junit.xml", "sha256": "2424601e6e6a7865f10842c378dde828d5f6db990542d9632e88ec59d030ed66"},
+    "junit_failures": 7,
+    "pytest_output": {"file": "red-proof-pytest-output.txt", "sha256": "a0a940f72e7c117bb274b031702b1b5512b521f7375aa2ee05c63d522463e3da"},
+    "ci_job_outcome": "success"
+  },
+  "verdict": {
+    "expected": "RED",
+    "actual": "RED",
+    "verdict": "RED-CONFIRMED",
+    "rule": {
+      "id": "red-proof-verdict-rule",
+      "version": 3,
+      "mapping": "observations.pytest_exit_code != 0 -> RED-CONFIRMED; else FAULTY-GREEN"
+    }
+  },
+  "provenance": {
+    "workflow": "ci-red-proof",
+    "repo": "ceyptoslim/CUSTOS-CORE",
+    "runner": "github-actions",
+    "artifact": "red-proof-records-011-fabricate-citation"
+  }
+}
