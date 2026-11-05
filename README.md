@@ -21,7 +21,7 @@ CUSTOS-CORE and LORL-9.1 provide the open-core governance and agent infrastructu
 
 [github.com/ceyptoslim/CUSTOS-CORE](https://github.com/ceyptoslim/CUSTOS-CORE)
 
-**Verified:** 2026-11-05 live run on `docs/non-bypassability-assessment` (`9fef038`) | **Tests:** 789 passed, 14 skipped | **Coverage:** 89%
+**Verified:** 2026-11-05 live run on `refine/011-evidence-states` (`4f455bc`) | **Tests:** 789 passed, 14 skipped | **Coverage:** 89%
 
 Verified implementation:
 
