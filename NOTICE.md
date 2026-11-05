@@ -94,7 +94,7 @@ without any external dependency.
 | Rego policy definitions | Open Source |
 | Policy factory (regex/opa/hybrid) | Open Source |
 | CI pipeline (ruff, bandit, pip-audit, OPA integration) | Open Source |
-| Test suite (775 tests, Nov 2026) | Open Source |
+| Test suite (783 tests, Nov 2026) | Open Source |
 
 ---
 
