@@ -4,7 +4,7 @@ Design: docs/design/policy-commit-citation.md (R1-R5). The pre-registered
 sabotage class 005 (weaken-citation) depends on these assertions: a
 deliberate weakening of the citation binding must turn the suite red.
 """
-# Copyright (C) 2024-2026 FroLife Productions
+# Copyright (C) 2024-2026 Tavares Heath Sr. (doing business as FroLife Productions)
 # Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0)
 # See LICENSE file for details. Commercial license available upon request.
 

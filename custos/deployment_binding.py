@@ -25,7 +25,7 @@ What this cannot do is stated in the doc, not here in a footnote: a process that
 connects to the mediated surface leaves no startup record, so binding is not path-set
 completeness. See docs/design/EXECUTION-PATH-INVENTORY.md.
 """
-# Copyright (C) 2024-2026 FroLife Productions
+# Copyright (C) 2024-2026 Tavares Heath Sr. (doing business as FroLife Productions)
 # Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0)
 # See LICENSE file for details.
 

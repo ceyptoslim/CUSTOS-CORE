@@ -13,7 +13,7 @@ Semantics under test:
 - rule_count reflects locally enforced rules
 - evaluate_with_metadata() is deny-terminal, identical to evaluate()
 """
-# Copyright (C) 2024-2026 FroLife Productions
+# Copyright (C) 2024-2026 Tavares Heath Sr. (doing business as FroLife Productions)
 # Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0)
 
 from unittest.mock import MagicMock, patch
