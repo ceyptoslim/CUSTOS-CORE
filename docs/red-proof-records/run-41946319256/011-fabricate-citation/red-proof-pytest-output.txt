@@ -1,0 +1,162 @@
+......................................FF....FF.F..F..................... [  9%]
+........................................................................ [ 18%]
+.......s............................Fs.................................. [ 27%]
+........................................................................ [ 36%]
+......................................................................ss [ 45%]
+sssssssssssssssssssss................................ssssssssssss....... [ 54%]
+........................................................................ [ 63%]
+........................................................................ [ 73%]
+........................................................................ [ 82%]
+........................................................................ [ 91%]
+.....................................................................    [100%]
+=================================== FAILURES ===================================
+_______ TestCitationCoversWhatItCites.test_opa_without_pin_cites_nothing _______
+tests/test_action_gate_engine_matrix.py:109: in test_opa_without_pin_cites_nothing
+    assert gate.cited_policy_digest("default") is None
+E   AssertionError: assert '90d4f69c1b987aaed1d886a47726004056c1f39595240b56ca4da4085627a644' is None
+E    +  where '90d4f69c1b987aaed1d886a47726004056c1f39595240b56ca4da4085627a644' = cited_policy_digest('default')
+E    +    where cited_policy_digest = <custos.action_gate.ActionGate object at 0x7b7059323830>.cited_policy_digest
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-11-05T01:07:48Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-11-05T01:07:48Z", "level": "info", "logger": "custos.policy_factory", "message": "Using OPA policy engine (CUSTOS_POLICY_ENGINE=opa)"}
+_____ TestCitationCoversWhatItCites.test_hybrid_without_pin_cites_nothing ______
+tests/test_action_gate_engine_matrix.py:113: in test_hybrid_without_pin_cites_nothing
+    assert gate.cited_policy_digest("default") is None
+E   AssertionError: assert '28cd135c1b2ba5c11e74a5cbbb2df7c45d8330fcef11226b06989fb3dd05c355' is None
+E    +  where '28cd135c1b2ba5c11e74a5cbbb2df7c45d8330fcef11226b06989fb3dd05c355' = cited_policy_digest('default')
+E    +    where cited_policy_digest = <custos.action_gate.ActionGate object at 0x7b7059320650>.cited_policy_digest
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-11-05T01:07:48Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-11-05T01:07:48Z", "level": "info", "logger": "custos.policy_factory", "message": "Using hybrid policy engine (CUSTOS_POLICY_ENGINE=hybrid)"}
+____ TestCitationCoversWhatItCites.test_malformed_pin_is_refused_not_hashed ____
+tests/test_action_gate_engine_matrix.py:138: in test_malformed_pin_is_refused_not_hashed
+    assert gate.cited_policy_digest("default") is None
+E   AssertionError: assert '90d4f69c1b987aaed1d886a47726004056c1f39595240b56ca4da4085627a644' is None
+E    +  where '90d4f69c1b987aaed1d886a47726004056c1f39595240b56ca4da4085627a644' = cited_policy_digest('default')
+E    +    where cited_policy_digest = <custos.action_gate.ActionGate object at 0x7b7058f04530>.cited_policy_digest
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-11-05T01:07:48Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-11-05T01:07:48Z", "level": "info", "logger": "custos.policy_factory", "message": "Using OPA policy engine (CUSTOS_POLICY_ENGINE=opa)"}
+{"timestamp": "2026-11-05T01:07:48Z", "level": "warning", "logger": "custos.opa_engine", "message": "CUSTOS_OPA_POLICY_DIGEST is set but is not a sha256 hex digest; ignoring it and emitting no policy citation for this engine"}
+_ TestCitationCoversWhatItCites.test_engine_digest_helper_refuses_unpinned_non_regex _
+tests/test_action_gate_engine_matrix.py:144: in test_engine_digest_helper_refuses_unpinned_non_regex
+    assert engine_policy_digest({"t"}, [rule], "opa", None) is None
+E   AssertionError: assert '289cddc23f4af2742be019fc44185ed6966a0f6c50cd8c6028b1be98fe7d5e62' is None
+E    +  where '289cddc23f4af2742be019fc44185ed6966a0f6c50cd8c6028b1be98fe7d5e62' = engine_policy_digest({'t'}, [PolicyRule(name='r', pattern='x', action=<PolicyAction.DENY: 'deny'>, reason='r')], 'opa', None)
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-11-05T01:07:48Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+_ TestRecordCarriesTheCitationItClaims.test_opa_record_emits_no_citation_when_unpinned _
+tests/test_action_gate_engine_matrix.py:166: in test_opa_record_emits_no_citation_when_unpinned
+    assert records[-1]["policy_digest"] is None
+E   AssertionError: assert '90d4f69c1b987aaed1d886a47726004056c1f39595240b56ca4da4085627a644' is None
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-11-05T01:07:48Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-11-05T01:07:48Z", "level": "info", "logger": "custos.policy_factory", "message": "Using OPA policy engine (CUSTOS_POLICY_ENGINE=opa)"}
+{"timestamp": "2026-11-05T01:07:48Z", "level": "error", "logger": "custos.opa_engine", "message": "OPA policy server unavailable at http://127.0.0.1:9/v1/data/custos/governance/allow (failing CLOSED): [Errno 111] Connection refused"}
+_ TestRequireBoundStillGovernsUncitableEngines.test_uncitable_allow_does_not_stand_under_require_bound _
+tests/test_action_gate_engine_matrix.py:196: in test_uncitable_allow_does_not_stand_under_require_bound
+    assert "No policy citation" in result.decision.reason
+E   AssertionError: assert 'No policy citation' in 'The decision could not be recorded, so the allow does not stand. '
+E    +  where 'The decision could not be recorded, so the allow does not stand. ' = PolicyResult(allowed=False, action=<PolicyAction.DENY: 'deny'>, triggered_rule='action_gate_record_unwritable', reason='The decision could not be recorded, so the allow does not stand. ').reason
+E    +    where PolicyResult(allowed=False, action=<PolicyAction.DENY: 'deny'>, triggered_rule='action_gate_record_unwritable', reason='The decision could not be recorded, so the allow does not stand. ') = ActionGateResult(decision=PolicyResult(allowed=False, action=<PolicyAction.DENY: 'deny'>, triggered_rule='action_gate_record_unwritable', reason='The decision could not be recorded, so the allow does not stand. '), audit_record_hash=None).decision
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-11-05T01:07:48Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+----------------------------- Captured stdout call -----------------------------
+{"timestamp": "2026-11-05T01:07:48Z", "level": "info", "logger": "custos.policy_factory", "message": "Using hybrid policy engine (CUSTOS_POLICY_ENGINE=hybrid)"}
+{"timestamp": "2026-11-05T01:07:48Z", "level": "warning", "logger": "custos.hybrid_engine", "message": "OPA unavailable in hybrid mode, falling back to regex result: [Errno 111] Connection refused"}
+{"timestamp": "2026-11-05T01:07:48Z", "level": "error", "logger": "custos.action_gate", "message": "audit record refused for tenant default (decision allow): CUSTOS_AUDIT_REQUIRE_BOUND is set but the record is missing trace_id -- the preimage would carry an unbound record"}
+__________________ test_no_competing_current_counts_elsewhere __________________
+tests/test_docs_truth.py:133: in test_no_competing_current_counts_elsewhere
+    assert not offenders, (
+E   AssertionError: Documents state a test count that disagrees with README:
+E       docs/design/policy-commit-citation.md: claims 005 (canonical 775)
+E     If the number is historical, move the claim under a dated heading (CHANGELOG, docs/essays, docs/history) so it is exempt by design.
+E   assert not ['docs/design/policy-commit-citation.md: claims 005 (canonical 775)']
+---------------------------- Captured stdout setup -----------------------------
+{"timestamp": "2026-11-05T01:07:49Z", "level": "info", "logger": "custos.policy_factory", "message": "Using regex policy engine (CUSTOS_POLICY_ENGINE=regex)"}
+=============================== warnings summary ===============================
+../../../../../opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/fastapi/testclient.py:1
+  /opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/fastapi/testclient.py:1: StarletteDeprecationWarning: Using `httpx` with `starlette.testclient` is deprecated; install `httpx2` instead.
+    from starlette.testclient import TestClient as TestClient  # noqa
+
+tests/test_admin_auth.py: 1 warning
+tests/test_api.py: 1 warning
+tests/test_auth.py: 8 warnings
+tests/test_jwks.py: 2 warnings
+  /opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/jwt/api_jwt.py:149: InsecureKeyLengthWarning: The HMAC key is 31 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+    return self._jws.encode(
+
+tests/test_admin_auth.py::TestAdminEndpointsRequireAuth::test_valid_token_allows_audit_read
+tests/test_auth.py::TestTokenCreation::test_token_contains_correct_subject
+tests/test_auth.py::TestTokenCreation::test_token_has_expiry
+tests/test_auth.py::TestAuthEnforcement::test_expired_token_returns_401
+tests/test_auth.py::TestAuthEnforcement::test_valid_token_allows_request
+tests/test_auth.py::TestAuthEnforcement::test_valid_token_on_clean_content_returns_allow
+tests/test_auth.py::TestAuthEnforcement::test_cross_client_access_denied
+tests/test_auth.py::TestAuthEnforcement::test_same_client_access_allowed
+  /opt/hostedtoolcache/Python/3.12.15/x64/lib/python3.12/site-packages/jwt/api_jwt.py:370: InsecureKeyLengthWarning: The HMAC key is 31 bytes long, which is below the minimum recommended length of 32 bytes for SHA256. See RFC 7518 Section 3.2.
+    decoded = self.decode_complete(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+SKIPPED [1] tests/test_custody.py:328: CUSTOS_CUSTODY_TSA_URL not set — TSA integration tests require a running RFC 3161 timestamping service
+SKIPPED [1] tests/test_docs_truth.py:141: live count check is environment dependent; set CUSTOS_TEST_COUNT_STRICT=1 to enable
+SKIPPED [1] tests/test_mineos_integration.py:73: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:77: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:81: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:85: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:90: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:106: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:113: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:120: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:125: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:152: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:161: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:167: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:173: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:211: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:217: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:222: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:235: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:241: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:260: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:273: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:280: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:285: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_mineos_integration.py:293: MineOS repo not available (not on CI runners)
+SKIPPED [1] tests/test_opa_integration.py:37: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:42: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:53: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:61: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:69: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:77: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:86: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:99: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:112: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:123: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:136: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+SKIPPED [1] tests/test_opa_integration.py:150: CUSTOS_OPA_URL not set — OPA integration tests require a running OPA server
+FAILED tests/test_action_gate_engine_matrix.py::TestCitationCoversWhatItCites::test_opa_without_pin_cites_nothing - AssertionError: assert '90d4f69c1b987aaed1d886a47726004056c1f39595240b56ca4da4085627a644' is None
+ +  where '90d4f69c1b987aaed1d886a47726004056c1f39595240b56ca4da4085627a644' = cited_policy_digest('default')
+ +    where cited_policy_digest = <custos.action_gate.ActionGate object at 0x7b7059323830>.cited_policy_digest
+FAILED tests/test_action_gate_engine_matrix.py::TestCitationCoversWhatItCites::test_hybrid_without_pin_cites_nothing - AssertionError: assert '28cd135c1b2ba5c11e74a5cbbb2df7c45d8330fcef11226b06989fb3dd05c355' is None
+ +  where '28cd135c1b2ba5c11e74a5cbbb2df7c45d8330fcef11226b06989fb3dd05c355' = cited_policy_digest('default')
+ +    where cited_policy_digest = <custos.action_gate.ActionGate object at 0x7b7059320650>.cited_policy_digest
+FAILED tests/test_action_gate_engine_matrix.py::TestCitationCoversWhatItCites::test_malformed_pin_is_refused_not_hashed - AssertionError: assert '90d4f69c1b987aaed1d886a47726004056c1f39595240b56ca4da4085627a644' is None
+ +  where '90d4f69c1b987aaed1d886a47726004056c1f39595240b56ca4da4085627a644' = cited_policy_digest('default')
+ +    where cited_policy_digest = <custos.action_gate.ActionGate object at 0x7b7058f04530>.cited_policy_digest
+FAILED tests/test_action_gate_engine_matrix.py::TestCitationCoversWhatItCites::test_engine_digest_helper_refuses_unpinned_non_regex - AssertionError: assert '289cddc23f4af2742be019fc44185ed6966a0f6c50cd8c6028b1be98fe7d5e62' is None
+ +  where '289cddc23f4af2742be019fc44185ed6966a0f6c50cd8c6028b1be98fe7d5e62' = engine_policy_digest({'t'}, [PolicyRule(name='r', pattern='x', action=<PolicyAction.DENY: 'deny'>, reason='r')], 'opa', None)
+FAILED tests/test_action_gate_engine_matrix.py::TestRecordCarriesTheCitationItClaims::test_opa_record_emits_no_citation_when_unpinned - AssertionError: assert '90d4f69c1b987aaed1d886a47726004056c1f39595240b56ca4da4085627a644' is None
+FAILED tests/test_action_gate_engine_matrix.py::TestRequireBoundStillGovernsUncitableEngines::test_uncitable_allow_does_not_stand_under_require_bound - AssertionError: assert 'No policy citation' in 'The decision could not be recorded, so the allow does not stand. '
+ +  where 'The decision could not be recorded, so the allow does not stand. ' = PolicyResult(allowed=False, action=<PolicyAction.DENY: 'deny'>, triggered_rule='action_gate_record_unwritable', reason='The decision could not be recorded, so the allow does not stand. ').reason
+ +    where PolicyResult(allowed=False, action=<PolicyAction.DENY: 'deny'>, triggered_rule='action_gate_record_unwritable', reason='The decision could not be recorded, so the allow does not stand. ') = ActionGateResult(decision=PolicyResult(allowed=False, action=<PolicyAction.DENY: 'deny'>, triggered_rule='action_gate_record_unwritable', reason='The decision could not be recorded, so the allow does not stand. '), audit_record_hash=None).decision
+FAILED tests/test_docs_truth.py::test_no_competing_current_counts_elsewhere - AssertionError: Documents state a test count that disagrees with README:
+    docs/design/policy-commit-citation.md: claims 005 (canonical 775)
+  If the number is historical, move the claim under a dated heading (CHANGELOG, docs/essays, docs/history) so it is exempt by design.
+assert not ['docs/design/policy-commit-citation.md: claims 005 (canonical 775)']
+7 failed, 745 passed, 37 skipped, 21 warnings in 8.77s

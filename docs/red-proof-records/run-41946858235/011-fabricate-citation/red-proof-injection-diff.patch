@@ -1,0 +1,13 @@
+diff --git a/custos/policy_citation.py b/custos/policy_citation.py
+index 3ddb229..aa07cb9 100644
+--- a/custos/policy_citation.py
++++ b/custos/policy_citation.py
+@@ -112,8 +112,6 @@ def engine_policy_digest(
+     smaller set would let a record claim a citation it did not have, which is
+     the failure this module exists to prevent.
+     """
+-    if engine_kind != REGEX_ENGINE and not opa_policy_digest:
+-        return None
+     return hashlib.sha256(
+         engine_citation_bytes(tools, rules, engine_kind, opa_policy_digest)
+     ).hexdigest()
