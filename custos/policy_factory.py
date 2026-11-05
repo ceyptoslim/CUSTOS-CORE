@@ -9,7 +9,7 @@ Selects the policy engine based on CUSTOS_POLICY_ENGINE environment variable:
 This mirrors the audit backend factory pattern (SQLite vs PostgreSQL).
 Existing tests are unaffected — default is "regex" which uses the original engine.
 """
-# Copyright (C) 2024-2026 FroLife Productions
+# Copyright (C) 2024-2026 Tavares Heath Sr. (doing business as FroLife Productions)
 # Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0)
 # See LICENSE file for details. Commercial license available upon request.
 

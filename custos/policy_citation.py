@@ -15,7 +15,7 @@ reflect an in-flight policy change, and a cache invalidation bug would
 violate exactly that property. The measured cost is guarded by the
 committed benchmark receipt (docs/benchmarks/bench-oct24.json).
 """
-# Copyright (C) 2024-2026 FroLife Productions
+# Copyright (C) 2024-2026 Tavares Heath Sr. (doing business as FroLife Productions)
 # Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0)
 # See LICENSE file for details. Commercial license available upon request.
 

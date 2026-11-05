@@ -17,7 +17,7 @@ to activate the RS256 path. Both algorithms are accepted during the
 transition; each token is verified strictly against the key material its
 own header selects — algorithm-confusion tokens are rejected.
 """
-# Copyright (C) 2024-2026 FroLife Productions
+# Copyright (C) 2024-2026 Tavares Heath Sr. (doing business as FroLife Productions)
 # Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0)
 # See LICENSE file for details. Commercial license available upon request.
 

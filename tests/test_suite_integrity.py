@@ -13,7 +13,7 @@ Rules enforced:
 2. No vacuous assertions on bare literals (assert True, assert 1).
 3. No unconditional @pytest.mark.skip — a skip needs a reason string.
 """
-# Copyright (C) 2024-2026 FroLife Productions
+# Copyright (C) 2024-2026 Tavares Heath Sr. (doing business as FroLife Productions)
 # Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0)
 
 import ast
