@@ -34,7 +34,7 @@ open" format — no claims beyond what the code and tests demonstrate.
   open).
 
 ### Changed
-- Suite 753 passed / 14 skipped.
+- Suite 775 passed / 14 skipped.
 - Pre-registered sabotage class 008 (`binding-refusal`): the lifespan stops
   re-raising after a failed binding write, and exactly one assertion must catch
   it. Design frozen and hash-pinned before first execution.

@@ -37,15 +37,15 @@ Semantics — fail-closed everywhere:
 from __future__ import annotations
 
 import json
+import logging
 import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional
 
-from custos.policy_citation import (
-    canonical_policy_bytes,
-    policy_digest as compute_policy_digest,
-)
+from custos.policy_citation import engine_citation_bytes, engine_policy_digest
 from custos.policy_engine import PolicyAction, PolicyResult
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:  # pragma: no cover
     from custos.tenant import TenantManager
@@ -162,19 +162,38 @@ class ActionGate:
         """Attach the custody manager for policy-commit anchoring (optional)."""
         self._custody = custody
 
-    def _cited_policy_digest(self, tenant_id: str, ctx) -> str:
+    def _engine_citation_parts(self, ctx) -> tuple:
+        """(kind, consulted rules, Rego pin) for whatever engine this tenant holds.
+
+        Read through getattr because the gate predates pluggable engines: the OPA
+        and hybrid engines expose no ``rules`` attribute, and the previous version
+        of this method assumed one, so every action evaluation under
+        CUSTOS_POLICY_ENGINE=opa or =hybrid raised AttributeError before it could
+        decide anything.
+        """
+        engine = ctx.policy_engine
+        kind = getattr(engine, "engine_kind", "regex")
+        rules = getattr(engine, "citation_rules", None)
+        if rules is None:
+            rules = getattr(engine, "rules", [])
+        return kind, rules, getattr(engine, "opa_policy_digest", None)
+
+    def _cited_policy_digest(self, tenant_id: str, ctx) -> Optional[str]:
         """Digest of the exact in-force policy set enforcement consults.
 
         One measured operation on the enforcement path (R2): the digest is
         computed from the same structures the decision read — the tool
-        allowlist and the tenant content rules — at decision time.
+        allowlist, the tenant content rules, and the engine's Rego pin — at
+        decision time. Returns None when a consulted policy source cannot be
+        hashed, rather than citing a set narrower than the one enforced.
         """
         tools = frozenset(self._tool_allowlists.get(tenant_id, set()))
-        key = (tools, ctx.policy_engine.rules_digest)
+        kind, rules, pin = self._engine_citation_parts(ctx)
+        key = (tools, kind, getattr(ctx.policy_engine, "rules_digest", None), pin)
         cached = self._digest_cache.get(tenant_id)
         if cached is not None and cached[0] == key:
             return cached[1]
-        dg = compute_policy_digest(tools, ctx.policy_engine.rules)
+        dg = engine_policy_digest(tools, rules, kind, pin)
         self._digest_cache[tenant_id] = (key, dg)
         return dg
 
@@ -191,7 +210,7 @@ class ActionGate:
         return self._cited_policy_digest(tenant_id, ctx)
 
     def _maybe_anchor_policy_commit(
-        self, tenant_id: str, ctx, digest: str
+        self, tenant_id: str, ctx, digest: Optional[str]
     ) -> None:
         """First citation of a new digest anchors its policy commit (R3).
 
@@ -199,13 +218,15 @@ class ActionGate:
         unanchored and the external re-walk reports the citations as
         unanchored (CONTRADICTION). Retried on the next evaluation.
         """
-        if self._custody is None:
+        if self._custody is None or digest is None:
+            # Nothing citable means nothing to anchor. Anchoring a digest the
+            # record did not carry would create a policy commit no record cites.
             return
         if self._last_anchored_digest.get(tenant_id) == digest:
             return
-        canonical = canonical_policy_bytes(
-            self._tool_allowlists.get(tenant_id, set()),
-            ctx.policy_engine.rules,
+        kind, rules, pin = self._engine_citation_parts(ctx)
+        canonical = engine_citation_bytes(
+            self._tool_allowlists.get(tenant_id, set()), rules, kind, pin
         ).decode("utf-8")
         try:
             self._custody.anchor_policy_commit(tenant_id, digest, canonical)
@@ -216,6 +237,18 @@ class ActionGate:
                 self._last_anchored_digest[tenant_id] = digest
         except Exception:  # noqa: BLE001 — fail-visible, never fail-blocking
             pass
+
+    def _unrecordable(self, cited_digest: Optional[str]) -> PolicyResult:
+        """Fail closed when an allow could not be recorded.
+
+        The decision was computed, but a decision nobody can re-walk is not
+        evidence, so it does not become an effect.
+        """
+        suffix = "" if cited_digest else " No policy citation was available for this engine."
+        return self._deny(
+            "action_gate_record_unwritable",
+            "The decision could not be recorded, so the allow does not stand. " + suffix.strip(),
+        )
 
     def _deny(self, rule: str, reason: str) -> PolicyResult:
         return PolicyResult(
@@ -268,6 +301,44 @@ class ActionGate:
             return False
         return True
 
+    def _record(
+        self,
+        ctx,
+        *,
+        tenant_id: str,
+        client_id: str,
+        trace_id: Optional[str],
+        decision: PolicyResult,
+        blob: str,
+        cited_digest: Optional[str],
+    ):
+        """Append the decision, or return None when the store refuses it.
+
+        A record that cannot be written must never become an exception on the
+        enforcement path: an exception is not a decision, and a caller that gets
+        one has no stated rule to act on. It also must never leave an allow
+        standing, which is what the callers do with a None return.
+        """
+        try:
+            return ctx.audit_chain.record(
+                client_id=client_id,
+                action=decision.action.value,
+                reason=decision.reason,
+                content=blob,
+                triggered_rule=decision.triggered_rule,
+                policy_digest=cited_digest,
+                tenant_id=tenant_id,
+                trace_id=trace_id,
+            )
+        except Exception as exc:  # noqa: BLE001 - a store failure is the case handled here
+            logger.error(
+                "audit record refused for tenant %s (decision %s): %s",
+                tenant_id,
+                decision.action.value,
+                exc,
+            )
+            return None
+
     def evaluate_action(
         self,
         tenant_id: str,
@@ -301,46 +372,58 @@ class ActionGate:
                 f"Tool '{action.tool}' is not in tenant '{tenant_id}'s allowlist. "
                 "Deny-by-default: register tools explicitly via ActionGate.register_tools().",
             )
-            record = ctx.audit_chain.record(
-                client_id=client_id,
-                action=decision.action.value,
-                reason=decision.reason,
-                content=blob,
-                triggered_rule=decision.triggered_rule,
-                policy_digest=cited_digest,
+            record = self._record(
+                ctx,
                 tenant_id=tenant_id,
+                client_id=client_id,
                 trace_id=trace_id,
+                decision=decision,
+                blob=blob,
+                cited_digest=cited_digest,
             )
-            return ActionGateResult(decision=decision, audit_record_hash=record.record_hash)
+            if record is None and decision.allowed:
+                return ActionGateResult(decision=self._unrecordable(cited_digest))
+            return ActionGateResult(
+                decision=decision,
+                audit_record_hash=record.record_hash if record else None,
+            )
 
         # 3. Dangerous command classes — checked BEFORE content rules.
         for rule_name, pattern, reason in _DANGEROUS_COMMAND_RULES:
             if pattern.search(blob):
                 decision = self._deny(rule_name, reason)
-                record = ctx.audit_chain.record(
-                    client_id=client_id,
-                    action=decision.action.value,
-                    reason=decision.reason,
-                    content=blob,
-                    triggered_rule=decision.triggered_rule,
-                    policy_digest=cited_digest,
+                record = self._record(
+                    ctx,
                     tenant_id=tenant_id,
+                    client_id=client_id,
                     trace_id=trace_id,
+                    decision=decision,
+                    blob=blob,
+                    cited_digest=cited_digest,
                 )
-                return ActionGateResult(decision=decision, audit_record_hash=record.record_hash)
+                if record is None and decision.allowed:
+                    return ActionGateResult(decision=self._unrecordable(cited_digest))
+                return ActionGateResult(
+                    decision=decision,
+                    audit_record_hash=record.record_hash if record else None,
+                )
 
         # 4. Existing content rules compose (injection, PII, tenant packs).
         decision = ctx.policy_engine.evaluate(blob)
 
         # 5. Audit every decision — allow or deny.
-        record = ctx.audit_chain.record(
-            client_id=client_id,
-            action=decision.action.value,
-            reason=decision.reason,
-            content=blob,
-            triggered_rule=decision.triggered_rule,
-            policy_digest=cited_digest,
+        record = self._record(
+            ctx,
             tenant_id=tenant_id,
+            client_id=client_id,
             trace_id=trace_id,
+            decision=decision,
+            blob=blob,
+            cited_digest=cited_digest,
         )
-        return ActionGateResult(decision=decision, audit_record_hash=record.record_hash)
+        if record is None and decision.allowed:
+            return ActionGateResult(decision=self._unrecordable(cited_digest))
+        return ActionGateResult(
+            decision=decision,
+            audit_record_hash=record.record_hash if record else None,
+        )
