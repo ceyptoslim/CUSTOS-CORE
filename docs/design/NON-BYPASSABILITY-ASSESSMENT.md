@@ -211,3 +211,41 @@ changes: a network policy, an upstream credential requirement, or a narrowed eff
 one thing that would change the *method* is an argument that `E1` as defined is not the
 protected effect a reviewer would choose. That would be a new assessment, and the register
 expects it to be argued rather than amended in place.
+
+---
+
+## 9. Crosswalk to an external evidence checklist
+
+Added after the verdicts in sections 4 to 6 were fixed, and it changes none of them. The
+checklist is external: a conceptual invitation circulated on 2026-11-05, not a
+certification scheme and not an assessment method
+(`github.com/MK1AOE3/global-cybersecurity-evidence-challenge`). Naming it here is
+attribution and nothing else. It is not an endorsement of that checklist, no response was
+submitted to it, and two versions of its five questions circulate (the invitation text and
+a register in the repository it points at), so the rows below follow the invitation text as
+read on that date.
+
+The checklist asks for five separate demonstrations. This assessment has an answer for
+three of them, one of those answers is negative, and it has no answer at all for the fifth.
+
+| External test | What this deployment shows | Evidence state | What it does not establish |
+|---|---|---|---|
+| Authority at the moment of execution | Every call that traverses `B` obtains a decision before the forward, and a refusal returns without forwarding (`custos/mcp_proxy.py:205`, "Ask the gate, then forward only on an explicit allow.") | `DEMONSTRATED` for mediated paths | Anything about a call that never reaches the proxy |
+| Whether a protected action can reach its destination without the control | A declared path produces `E1` with `B` absent from the loop, which is why section 4 reads `DOES_NOT_CONFORM` | `DEMONSTRATED` against the upstream this repository ships | That the answer would be the same against an operator upstream, which section 4 also states |
+| What stays protected when something already trusted becomes untrustworthy | A gate that cannot answer is refused rather than forwarded, and the refusal is written down (`custos/mcp_proxy.py:215`, "The gate is not answering"), which is asserted rather than described (`tests/test_mcp_gate_isolation.py:46`, "without_asking_the_gate") | `DEMONSTRATED` for the unanswerable-gate case only | Compromise of the gate's own code: a gate that answers `allow` is indistinguishable here from a correct one |
+| Establishing what happened, rather than what logs reported | The assertions sit on the upstream, not on the record: an unallowlisted tool is shown never to reach it (`tests/test_mcp_gate_integration.py:51`, "test_unallowlisted_tool_never_reaches_the_upstream_server") and an allowed call is shown forwarded and recorded (`tests/test_mcp_gate_integration.py:40`, "test_allowlisted_tool_is_forwarded_and_recorded") | `DEMONSTRATED` inside the harness, for those two shapes | The upstream's own state after a tool runs, and any effect produced on a path that never traverses `B` |
+| Whether trustworthy operation resumed, as opposed to a service running again | Nothing. No restoration drill exists in this deployment | not assessed | Everything about it |
+
+**Why the two scales are not the same axis.** That checklist grades a claim on a four-level
+scale (demonstrated, partial, unknown, not demonstrated), and the grading is of the answer
+taken whole. Section 1a grades an observation on a different axis, which is where it came
+from and how strongly it is verified, and the verdict is separate again. The difference is
+visible in the table: two rows sit at `DEMONSTRATED` and one of them returns
+`DOES_NOT_CONFORM`. A single scale applied to the claim has no way to say that, because a
+demonstrated bypass is not a partly demonstrated conformance. Collapsing the two axes is
+the error section 1a exists to prevent, and a checklist that offers only one axis invites
+exactly that collapse.
+
+**Scope of this section.** It adds no verdict and removes none. It is here so that a reader
+who meets both documents can see which of the five questions this deployment answers, and
+which one it has earned the right to leave blank.

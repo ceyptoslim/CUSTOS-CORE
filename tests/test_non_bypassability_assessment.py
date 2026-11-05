@@ -125,3 +125,40 @@ class TestAvailabilityIsADistinctEvidenceState:
         """If the verdict rests on an observation, the observation has to be runnable."""
         assert "tests/test_unmediated_path_demonstrated.py" in assessment
         assert (ROOT / "tests" / "test_unmediated_path_demonstrated.py").exists()
+
+
+class TestCrosswalkKeepsItsAnswersApart:
+    """Section 9 maps external questions onto these states, so it can overstate too.
+
+    The crosswalk is the one place where an outside scale meets ours, which makes it the
+    easiest place to imply that a demonstrated bypass is a partial conformance. These
+    checks hold it to the same rule as the rest of the document.
+    """
+
+    @pytest.fixture(scope="class")
+    def section(self):
+        text = flat(ASSESSMENT).lower()
+        marker = "## 9. crosswalk to an external evidence checklist"
+        assert marker in text, (
+            "the crosswalk section is gone; if it was removed deliberately, remove these "
+            "guards with it rather than leaving them asserting nothing"
+        )
+        return text.split(marker, 1)[1]
+
+    def test_all_five_external_questions_are_answered_or_left_blank(self, section):
+        for question in (
+            "authority at the moment of execution",
+            "without the control",
+            "trusted becomes untrustworthy",
+            "rather than what logs reported",
+            "service running again",
+        ):
+            assert question in section, f"the crosswalk dropped: {question}"
+
+    def test_at_least_one_question_is_left_unassessed(self, section):
+        """Silence is the honest answer where no observation exists, and it must show."""
+        assert "not assessed" in section
+
+    def test_the_crosswalk_does_not_borrow_a_verdict_from_a_state(self, section):
+        assert "does_not_conform" in section, "the negative verdict belongs in the mapping"
+        assert "verdict for `e1`: conforms" not in section
