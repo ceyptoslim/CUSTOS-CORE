@@ -480,7 +480,12 @@ async def evaluate(
         )
         span.set_status("RATE_LIMITED")
         tracer.finish_span(span)
-        raise HTTPException(status_code=429, detail=msg)
+        wait = ctx.rate_limiter.retry_after_seconds(rate_key, req.token_count)
+        raise HTTPException(
+            status_code=429,
+            detail=msg,
+            headers={"Retry-After": str(wait)} if wait is not None else None,
+        )
 
     result: PolicyResult = ctx.policy_engine.evaluate(req.content)
 
