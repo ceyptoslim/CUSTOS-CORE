@@ -259,3 +259,72 @@ class TestTheServedPathInProduction:
         assert reloaded.verify() == (True, "OK")
         assert reloaded._records[0].previous_hash == AuditChain.GENESIS_HASH
         assert reloaded._records[1].previous_hash == reloaded._records[0].record_hash
+
+
+class TestTheCitationSurvivesAnyEngine:
+    """The served path cites a decision without knowing which engine made it.
+
+    The first version of this fix read ``ctx.policy_engine.rules_digest``
+    directly. The regex engine has that property; the OPA and hybrid engines do
+    not, so `/v1/evaluate` raised AttributeError under
+    CUSTOS_POLICY_ENGINE=hybrid and the CI smoke test caught it. The action gate
+    hit this same trap once before, which is why the shared helper reads through
+    getattr instead of assuming the shape.
+    """
+
+    def test_the_regex_engine_cites(self):
+        from custos.policy_citation import content_engine_digest
+        from custos.policy_engine import PolicyEngine
+
+        digest = content_engine_digest(PolicyEngine())
+        assert isinstance(digest, str) and len(digest) == 64
+
+    def test_a_hybrid_engine_without_a_rego_pin_refuses_to_cite(self):
+        """None is the honest answer, not a failure to compute one.
+
+        A hybrid engine consults Rego that lives in a server this process does
+        not hold, so no digest covers what it read. Returning a digest over the
+        local rules alone would cite a set narrower than the one consulted,
+        which is what the citation module exists to prevent. The consequence is
+        stated in the design doc: in production, a hybrid tenant needs
+        CUSTOS_OPA_POLICY_DIGEST set or this endpoint cannot bind a record.
+        """
+        from custos.policy_citation import content_engine_digest
+
+        class Hybridish:
+            engine_kind = "hybrid"
+            citation_rules = []
+
+        assert content_engine_digest(Hybridish()) is None
+
+    def test_a_hybrid_engine_with_a_rego_pin_cites(self):
+        from custos.policy_citation import content_engine_digest
+
+        class HybridPinned:
+            engine_kind = "hybrid"
+            citation_rules = []
+            opa_policy_digest = "b" * 64
+
+        assert isinstance(content_engine_digest(HybridPinned()), str)
+
+    def test_an_engine_with_no_citation_attributes_does_not_raise(self):
+        from custos.policy_citation import content_engine_digest
+
+        assert isinstance(content_engine_digest(object()), str), (
+            "an engine shaped like nothing in particular must still cite or "
+            "return None, never raise while a decision is being recorded"
+        )
+
+    def test_a_rego_pin_changes_the_digest(self):
+        from custos.policy_citation import content_engine_digest
+
+        class Pinned:
+            engine_kind = "opa"
+            citation_rules = []
+            opa_policy_digest = "a" * 64
+
+        class Unpinned:
+            engine_kind = "opa"
+            citation_rules = []
+
+        assert content_engine_digest(Pinned()) != content_engine_digest(Unpinned())

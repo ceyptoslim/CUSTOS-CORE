@@ -36,6 +36,7 @@ from custos.audit_persistence import (
 from custos.auth import validate_production_secrets, auth_enabled, verify_token
 from custos.jwks import get_jwks_document, validate_production_key
 from custos.logging import configure_logging, get_logger
+from custos.policy_citation import content_engine_digest
 from custos.models import (
     AuditRecordResponse,
     EvaluateActionRequest,
@@ -538,7 +539,7 @@ async def evaluate(
         content=req.content,
         triggered_rule=result.triggered_rule,
         trace_id=span.trace_id,
-        policy_digest=ctx.policy_engine.rules_digest,
+        policy_digest=content_engine_digest(ctx.policy_engine),
     )
 
     span.set_attribute("action", result.action.value)

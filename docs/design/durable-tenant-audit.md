@@ -129,3 +129,13 @@ Worth stating plainly because it is the pattern in code again: the check worked,
 the endpoint was wrong, and nothing served the endpoint in production long
 enough for anyone to notice. A restart drill on the served path found it in the
 first two requests.
+
+The first version of that fix read `ctx.policy_engine.rules_digest`, which only
+the regex engine has: under `CUSTOS_POLICY_ENGINE=hybrid` the endpoint raised
+AttributeError, caught by CI rather than by a reader. The fix now reads through
+`content_engine_digest`, which takes the engine's shape from `getattr` because
+the action gate hit this same trap once already. A hybrid engine with no
+`CUSTOS_OPA_POLICY_DIGEST` pin returns `None` rather than a digest over the
+local rules alone, which means in production such a tenant cannot bind a record
+on this endpoint. That is the honest outcome of consulting a policy the process
+does not hold, and it is stated here rather than discovered during a drill.
