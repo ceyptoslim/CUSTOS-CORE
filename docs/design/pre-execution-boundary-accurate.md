@@ -44,7 +44,7 @@ What this is not: ground truth. The record is produced by the system being gover
 
 The gate does not assume an engine shape. It reads `custos/action_gate.py:165` "def _engine_citation_parts" through getattr, because the OPA and hybrid engines expose no ``rules`` attribute, and an earlier version of this path assumed one. That assumption broke the boundary rather than the citation: under `CUSTOS_POLICY_ENGINE=opa` or `=hybrid` every action evaluation raised before it could decide.
 
-A citation exists only when it covers everything the decision consulted. `custos/policy_citation.py:101` "def engine_policy_digest" returns None for a non-regex engine with no Rego pin, because the Rego rules live in a server the process does not hold. `custos/opa_engine.py:139` "def opa_policy_digest" reads the operator's pin from `CUSTOS_OPA_POLICY_DIGEST` and refuses a malformed value rather than hashing it.
+A citation exists only when it covers everything the decision consulted. `custos/policy_citation.py:125` "def engine_policy_digest" returns None for a non-regex engine with no Rego pin, because the Rego rules live in a server the process does not hold. `custos/opa_engine.py:139` "def opa_policy_digest" reads the operator's pin from `CUSTOS_OPA_POLICY_DIGEST` and refuses a malformed value rather than hashing it.
 
 For the regex engine the digest payload is byte-identical to previous releases, so citations emitted before this existed still recompute. `custos/policy_engine.py:136` `engine_kind = "regex"` and `custos/hybrid_engine.py:37` `engine_kind = "hybrid"` tell a reader which engine produced a decision without inspecting the deployment.
 
