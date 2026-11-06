@@ -376,3 +376,89 @@ class TestTheDrillRecordStaysTrue:
             assert quoted in str(exc)
         else:
             raise AssertionError("the refusal did not fire, so the drill quotes nothing")
+
+
+class TestInfoNamesTheStoreSource:
+    """/v1/info is the surface a reader has, so it carries the source too.
+
+    The startup log names which variable is in force. A reader who reaches the
+    API and not the log was being told half of what the process knows, and
+    "audit_backend: SQLiteBackend" does not say whether that came from
+    AUDIT_DB_PATH or from a process that resolved it some other way.
+    """
+
+    def test_the_endpoint_reports_the_source_the_process_resolved(self, monkeypatch):
+        import asyncio
+
+        import main
+
+        monkeypatch.setenv("AUDIT_DB_PATH", "/tmp/info-source-test.sqlite")
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        body = asyncio.run(main.info())
+        assert body["audit_store_source"] == "AUDIT_DB_PATH"
+        assert body["audit_backend"] == main.tenant_manager.get("default").audit_chain.backend_type
+
+    def test_it_reports_none_rather_than_omitting_the_field(self, monkeypatch):
+        import asyncio
+
+        import main
+
+        monkeypatch.delenv("AUDIT_DB_PATH", raising=False)
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        body = asyncio.run(main.info())
+        assert "audit_store_source" in body
+        assert body["audit_store_source"] == "none"
+
+
+class TestTheRefusalPathIsBoundLikeTheDecisionPath:
+    """A rate-limited refusal is a decision and must be recorded as one.
+
+    Production requires bound evidence, and the refusal used to be written
+    without a policy citation, so every request past a client's quota raised
+    inside the refusal and returned 500 instead of 429. The caller was never
+    told to wait, and the Retry-After header added for exactly that caller
+    could not reach them. Found by the restore drill's write loop, which
+    stopped at precisely the quota.
+    """
+
+    def test_the_refusal_returns_429_and_records_a_bound_record(self, monkeypatch):
+        import time
+
+        import jwt
+        from fastapi.testclient import TestClient
+
+        import main
+        from custos.audit import bound_evidence_required
+
+        # The same requirement production imposes, set directly: a production
+        # app cannot boot on an in-memory chain (that refusal is tested
+        # elsewhere), so binding the flag keeps this test on the refusal path
+        # rather than on the startup path.
+        monkeypatch.setenv("CUSTOS_AUDIT_REQUIRE_BOUND", "1")
+        monkeypatch.delenv("CUSTOS_ENV", raising=False)
+        assert bound_evidence_required() is True
+
+        secret = "drill-secret-32-bytes-long-enough-here"
+        monkeypatch.setenv("CUSTOS_JWT_SECRET", secret)
+        token = jwt.encode({"sub": "quota-client", "exp": int(time.time()) + 600}, secret, algorithm="HS256")
+        headers = {"Authorization": f"Bearer {token}"}
+
+        chain = main.tenant_manager.get("default").audit_chain
+        before = len(chain._records)
+
+        with TestClient(main.app) as client:
+            statuses = [
+                client.post(
+                    "/v1/evaluate",
+                    json={"client_id": "quota-client", "content": f"probe {i}"},
+                    headers=headers,
+                ).status_code
+                for i in range(80)
+            ]
+
+        assert 429 in statuses, "the quota never engaged, so nothing was tested"
+        assert 500 not in statuses, "a refusal returned 500 instead of 429"
+        refusals = [r for r in chain._records[before:] if r.action == "rate_limited"]
+        assert refusals, "no refusal record was written"
+        assert all(r.policy_digest for r in refusals), "a refusal was recorded unbound"
+        assert chain.verify()[0] is True
