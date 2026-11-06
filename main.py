@@ -58,6 +58,7 @@ from custos.policy_store import PolicyStore
 from custos.rate_limiter import QuotaConfig
 from custos.replay import ReplayEngine
 from custos.snapshot import SnapshotEngine
+from custos.scaling import validate_replica_configuration
 from custos.tenant import TenantConfig, TenantManager
 from custos.action_gate import ActionGate, ActionRequest
 from custos.tracing import tracer
@@ -184,6 +185,17 @@ async def lifespan(app: FastAPI):
     # mode, a missing explicit private key.
     validate_production_secrets()
     validate_production_key()
+    # Refuse a topology the process cannot back: rate-limit counters and the
+    # audit chain are process-local by default, so more than one replica means
+    # quotas multiply by the replica count and each process carries its own
+    # chain. The check validates the operator's declaration against the storage
+    # actually configured, and cannot detect how many processes are really up.
+    _default_ctx = tenant_manager.get("default")
+    _audit_backend = (
+        _default_ctx.audit_chain.backend_type if _default_ctx is not None else "memory"
+    )
+    _replica_summary = validate_replica_configuration(_audit_backend)
+    logger.info("custos.topology", extra=_replica_summary)
     if custody_manager is not None:
         custody_manager.start()
         logger.info("custos.custody.enabled")
