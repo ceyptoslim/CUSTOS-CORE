@@ -58,6 +58,17 @@ class AuditRecord:
         return asdict(self)
 
 
+class ChainForkError(RuntimeError):
+    """Two writers tried to extend the chain from the same predecessor.
+
+    The store rejects the second append. That is the constraint doing its job:
+    before it existed, a writer that started against the store before another
+    had appended produced a record naming the same parent, both processes
+    verified green against their own in-memory lists, and only a later reader
+    saw a broken chain with no way to tell the accident from an edit.
+    """
+
+
 class InMemoryBackend:
     """Default backend. Fast, no dependencies. Resets on restart."""
 
@@ -98,6 +109,24 @@ class SQLiteBackend:
                 )
             """)
             self._migrate(conn)
+            # Construction, not convention: any given predecessor may appear
+            # exactly once. A second writer cannot fork the chain even if it
+            # never re-reads the store, and a store that already holds a fork
+            # fails here instead of accepting more records onto a chain that
+            # no longer verifies.
+            try:
+                conn.execute(
+                    'CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_previous_hash '
+                    'ON audit_records(previous_hash)'
+                )
+            except sqlite3.IntegrityError as exc:
+                raise ChainForkError(
+                    'this store already contains a fork: more than one record '
+                    'claims the same predecessor, which is the state two '
+                    'writers produce. Refusing to open it, because appending '
+                    'to a store that no longer verifies would extend a chain '
+                    'nobody can check. Preserve the store and investigate.'
+                ) from exc
             conn.commit()
 
     @staticmethod
@@ -118,8 +147,9 @@ class SQLiteBackend:
 
     def save(self, record: AuditRecord) -> None:
         with sqlite3.connect(self._path) as conn:
-            conn.execute("""
-                INSERT INTO audit_records
+            try:
+                conn.execute("""
+                    INSERT INTO audit_records
                 (timestamp, client_id, action, triggered_rule, reason,
                  content_hash, record_hash, previous_hash, trace_id,
                  policy_digest, tenant_id, binding_version)
@@ -129,8 +159,12 @@ class SQLiteBackend:
                 record.triggered_rule, record.reason, record.content_hash,
                 record.record_hash, record.previous_hash, record.trace_id,
                 record.policy_digest, record.tenant_id,
-                record.binding_version,
-            ))
+                    record.binding_version,
+                ))
+            except sqlite3.IntegrityError as exc:
+                raise ChainForkError(
+                    'another writer extended this chain after this process loaded it. The predecessor this record would append after is already claimed in the store, so appending would fork the chain. Two writers must not share one store: reload the chain before appending.'
+                ) from exc
             conn.commit()
 
     def load_all(self) -> List[AuditRecord]:
@@ -199,6 +233,10 @@ class PostgreSQLBackend:
                         binding_version INTEGER DEFAULT 0
                     )
                 """)
+                cur.execute(
+                    'CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_previous_hash '
+                    'ON audit_records(previous_hash)'
+                )
                 for column, decl in (
                     ("policy_digest", "TEXT"),
                     ("tenant_id", "TEXT"),
@@ -210,6 +248,20 @@ class PostgreSQLBackend:
             conn.commit()
 
     def save(self, record: AuditRecord) -> None:
+        try:
+            self._save(record)
+        except Exception as exc:
+            duplicate = "duplicate key" in str(exc).lower() or type(exc).__name__ in {
+                "UniqueViolation",
+                "IntegrityError",
+            }
+            if duplicate:
+                raise ChainForkError(
+                    'another writer extended this chain after this process loaded it. The predecessor this record would append after is already claimed in the store, so appending would fork the chain. Two writers must not share one store: reload the chain before appending.'
+                ) from exc
+            raise
+
+    def _save(self, record: AuditRecord) -> None:
         with self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute("""
