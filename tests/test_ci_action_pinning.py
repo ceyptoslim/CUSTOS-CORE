@@ -5,8 +5,7 @@ The failure this prevents: a major-version tag such as `v4` is a branch
 pointer the upstream repository moves whenever it ships. A workflow that
 says `@v4` therefore executes whatever code that tag points at on the day
 it runs, which is a supply-chain change no commit in this repository
-records. The committee reviewing this project asked for the pins; this
-test is what keeps them from drifting back.
+records. The pins close that gap; this test keeps them from drifting back.
 """
 
 from pathlib import Path

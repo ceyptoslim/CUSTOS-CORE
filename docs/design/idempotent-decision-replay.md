@@ -113,7 +113,8 @@ authentication, and no document should describe it as such.
 
 ## Schema decision for the caller-supplied identifier
 
-The committee asked for a schema decision rather than a header parse, so this is
+A caller-supplied identifier is a schema decision before it is a header parse,
+because what enters the hash preimage decides what the record can attest. This is
 the decision, and it is the thing code has to conform to.
 
 - **Field.** `caller_request_id`, nullable, at most 255 printable ASCII
