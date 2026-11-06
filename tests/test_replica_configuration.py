@@ -14,6 +14,7 @@ replica count, and the tests below say so rather than implying otherwise.
 import pytest
 from fastapi.testclient import TestClient
 
+from custos.audit import AuditChain
 from custos.scaling import (
     REPLICA_ENV,
     STORE_ENV,
@@ -67,6 +68,43 @@ class TestTopologyRefusal:
         monkeypatch.delenv(STORE_ENV, raising=False)
         with pytest.raises(ScalingConfigError, match="audit chain|chains"):
             validate_replica_configuration("memory")
+
+    def test_the_memory_conflict_fires_for_the_name_the_backend_reports(self, monkeypatch):
+        """The conflict must match what AuditChain actually calls the backend.
+
+        This guard compared against "memory", "inmemory" and "in-memory" while
+        the backend reports "InMemoryBackend", so the conflict could never fire
+        in a real deployment. The test above passed because it typed one of the
+        spellings the check expected, which is a test agreeing with a bug. These
+        cases take the name from the backend itself.
+        """
+        monkeypatch.setenv(REPLICA_ENV, "2")
+        monkeypatch.delenv(STORE_ENV, raising=False)
+        reported = AuditChain().backend_type
+        with pytest.raises(ScalingConfigError, match="own chain"):
+            validate_replica_configuration(reported)
+
+    def test_a_durable_backend_does_not_raise_the_chain_conflict(self, monkeypatch, tmp_path):
+        # More than one replica is still refused for the rate-limit reason, which
+        # is correct: a durable chain fixes the chain and nothing else. The
+        # assertion is that the audit-chain conflict is absent.
+        monkeypatch.setenv(REPLICA_ENV, "2")
+        durable = AuditChain(db_path=str(tmp_path / "a.sqlite")).backend_type
+        with pytest.raises(ScalingConfigError) as excinfo:
+            validate_replica_configuration(durable)
+        assert "own chain" not in str(excinfo.value)
+
+    def test_durability_is_named_rather_than_inferred(self, tmp_path):
+        summary = validate_replica_configuration(
+            AuditChain(db_path=str(tmp_path / "b.sqlite")).backend_type
+        )
+        assert summary["audit_durability"] == "durable"
+        assert "audit_durability_note" not in summary
+        ephemeral = validate_replica_configuration(AuditChain().backend_type)
+        assert ephemeral["audit_durability"] == "ephemeral"
+        note = ephemeral["audit_durability_note"]
+        assert "do not survive a restart" in note
+        assert "does not apply" in note
 
     def test_external_store_declaration_is_refused_when_unimplemented(self, monkeypatch):
         # The escape hatch must not be a silent downgrade: declaring a shared
