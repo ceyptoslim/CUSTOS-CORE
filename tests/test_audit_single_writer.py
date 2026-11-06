@@ -106,14 +106,30 @@ class TestForkIsRefusedAtTheStore:
 
 
 class TestTheConstraintIsStructural:
-    def test_unique_index_exists_on_previous_hash(self, tmp_path):
+    def test_the_unique_index_is_per_tenant(self, tmp_path):
+        """The index covers (tenant, previous_hash), because a chain is per tenant.
+
+        Uniqueness on previous_hash alone cannot coexist with per-tenant chains:
+        every chain starts from the same all-zero GENESIS_HASH, so the second
+        tenant's first record would be refused as a fork. See
+        tests/test_audit_tenant_scope.py for the cross-tenant cases.
+        """
         db = str(tmp_path / "audit.sqlite")
         AuditChain(db_path=db)
         with sqlite3.connect(db) as conn:
             indexes = {
                 row[1]: row[2] for row in conn.execute("PRAGMA index_list(audit_records)")
             }
-        assert indexes.get("idx_audit_previous_hash") == 1, "expected a unique index"
+            sql = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE name = ?",
+                ("idx_audit_tenant_previous_hash",),
+            ).fetchone()[0]
+        assert indexes.get("idx_audit_tenant_previous_hash") == 1, "expected a unique index"
+        assert "COALESCE(tenant_id" in sql, (
+            "the index must key on a non-null tenant expression, or legacy rows "
+            "with tenant_id NULL fall outside the constraint"
+        )
+        assert "previous_hash" in sql
 
     def test_the_database_itself_rejects_a_duplicate_predecessor(self, tmp_path):
         # Bypass the Python guard entirely and write through raw SQL. The store
@@ -135,7 +151,7 @@ class TestTheConstraintIsStructural:
         db = str(tmp_path / "audit.sqlite")
         AuditChain(db_path=db)                      # schema and index, no rows
         with sqlite3.connect(db) as conn:
-            conn.execute("DROP INDEX idx_audit_previous_hash")
+            conn.execute("DROP INDEX idx_audit_tenant_previous_hash")
             for tag in ("w1", "w2"):
                 conn.execute(
                     "INSERT INTO audit_records (timestamp, client_id, action, reason, "
