@@ -43,10 +43,23 @@ class TestStartupWiring:
             with TestClient(app_module.app):
                 pass
 
-    def test_app_starts_in_production_with_real_secret(self, monkeypatch):
+    def test_app_starts_in_production_with_real_secret(self, monkeypatch, tmp_path):
         import main as app_module
         monkeypatch.setenv("CUSTOS_ENV", "production")
         monkeypatch.setenv("CUSTOS_JWT_SECRET", "a-real-unique-production-secret-32bytes")
+        # Production also requires an audit store that outlives the process
+        # (see tests/test_audit_persistence.py). Provisioning it here is the
+        # configuration a real deployment needs, not a concession to the test.
+        monkeypatch.setenv("AUDIT_DB_PATH", str(tmp_path / "audit.sqlite"))
+        # Rebuild the default tenant's chain now that the store is configured,
+        # which is what a process starting with the variable set does at import.
+        from custos.tenant import TenantConfig
+        from custos.tenant import DEFAULT_QUOTA
+
+        app_module.tenant_manager.register(
+            "default", TenantConfig(tenant_id="default", quota=DEFAULT_QUOTA)
+        )
         with TestClient(app_module.app) as client:
             resp = client.get("/v1/info")
             assert resp.status_code == 200
+            assert resp.json()["audit_durable"] is True

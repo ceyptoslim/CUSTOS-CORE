@@ -104,11 +104,14 @@ class TenantManager:
             for rule in persisted_rules:
                 engine.add_rule(rule)
 
+            # Scoped to this tenant and resolved from the environment, so the
+            # served path reaches the durable backends instead of building an
+            # in-memory chain per tenant and losing every record on restart.
             ctx = TenantContext(
                 tenant_id=tenant_id,
                 policy_engine=engine,
                 rate_limiter=rate_limiter,
-                audit_chain=AuditChain(),
+                audit_chain=AuditChain(tenant_id=tenant_id),
             )
             self._tenants[tenant_id] = ctx
             return ctx

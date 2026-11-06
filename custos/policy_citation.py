@@ -98,6 +98,30 @@ def engine_citation_bytes(
     return payload.encode("utf-8")
 
 
+def content_engine_digest(engine) -> Optional[str]:
+    """The digest a content decision may cite, for any engine the factory returns.
+
+    Read through ``getattr`` for the same reason the action gate does: the OPA
+    and hybrid engines expose no ``rules`` attribute, so assuming one raises
+    AttributeError at the moment a decision is being recorded. That happened on
+    the action path once already, and the fix here is to share the shape rather
+    than rediscover it: a caller that cites a decision should not have to know
+    which engine made it.
+
+    Returns None when no honest citation exists (a Rego policy living in a
+    server this process does not hold), rather than a digest over a narrower set
+    than the decision consulted. A caller that requires a citation must treat
+    None as "cannot bind", which is what the audit chain already does.
+    """
+    kind = getattr(engine, "engine_kind", "regex")
+    rules = getattr(engine, "citation_rules", None)
+    if rules is None:
+        rules = getattr(engine, "rules", [])
+    return engine_policy_digest(
+        frozenset(), rules, kind, getattr(engine, "opa_policy_digest", None)
+    )
+
+
 def engine_policy_digest(
     tools: Iterable[str],
     rules: Sequence[PolicyRule],
