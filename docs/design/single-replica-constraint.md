@@ -82,3 +82,30 @@ whether shared state is being enforced.
 Verified locally against this change: the refusal fires for a two-replica
 declaration on memory or SQLite, the single-replica path serves `/health`, and
 removing the refusal fails five tests including the startup one.
+
+## Two corrections after the constraint shipped
+
+Both were found by exercising this check rather than reading it.
+
+**The memory audit-chain conflict could not fire.** The conflict matched against
+`"memory"`, `"inmemory"` and `"in-memory"`. The backend reports
+`InMemoryBackend`, so the comparison was always false and the conflict was
+unreachable in any real deployment. It was reached only by a test that typed one
+of the spellings the check expected, which is a test agreeing with a bug. The
+match is now on a normalised name, and the tests take the string from
+`AuditChain().backend_type` so they cannot drift from what the backend reports
+again.
+
+**Durability is named, not inferred.** The startup line now carries
+`audit_durability` and, when the records are ephemeral, a note stating the two
+consequences in words: they do not survive a restart, and the `previous_hash`
+constraint that prevents a forked chain does not apply, because a constraint on
+a store cannot apply where no store is shared. Naming the backend is not the
+same as naming the property it lacks, and an operator reading
+`InMemoryBackend` should not have to know this codebase to learn that.
+
+What this does not do: it does not refuse an ephemeral backend in production.
+The served path builds every tenant's chain with `AuditChain()`, so no
+configuration makes the API's records durable today; refusing production until a
+durable backend is wired would refuse every production boot of this build. That
+refusal belongs in the change that makes durability reachable, not ahead of it.

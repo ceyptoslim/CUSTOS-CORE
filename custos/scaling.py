@@ -35,6 +35,21 @@ STORE_PROCESS = "process"
 STORE_EXTERNAL = "external"
 SUPPORTED_STORES = (STORE_PROCESS, STORE_EXTERNAL)
 
+def is_memory_backend(audit_backend: str) -> bool:
+    """True for any backend whose records live only in this process.
+
+    Matched on a normalised name rather than a fixed list of spellings,
+    because this check used to compare against "memory", "inmemory" and
+    "in-memory" while the backend actually reports "InMemoryBackend". The
+    audit-chain conflict could therefore never fire, and its test passed
+    because the test typed one of the spellings the check expected. A guard
+    that reads a string no caller produces is a guard that cannot fail.
+    """
+    normalized = "".join(
+        ch for ch in (audit_backend or "").lower() if ch.isalnum()
+    )
+    return "memory" in normalized
+
 
 class ScalingConfigError(RuntimeError):
     """Refusal to start: the declared topology exceeds what the process provides."""
@@ -87,7 +102,7 @@ def validate_replica_configuration(audit_backend: str) -> dict:
     """
     count = replica_count()
     store = rate_limit_store()
-    backend = (audit_backend or "").strip().lower()
+    memory_audit = is_memory_backend(audit_backend)
 
     conflicts = []
 
@@ -109,7 +124,7 @@ def validate_replica_configuration(audit_backend: str) -> dict:
             f"the configured quota multiplies by {count}"
         )
 
-    if count > 1 and backend in ("memory", "inmemory", "in-memory"):
+    if count > 1 and memory_audit:
         conflicts.append(
             f"{REPLICA_ENV}={count} with audit backend {audit_backend!r}: each "
             f"process would hold its own chain, so {count} replicas produce "
@@ -123,9 +138,21 @@ def validate_replica_configuration(audit_backend: str) -> dict:
             + ". See docs/design/single-replica-constraint.md for the scaling path."
         )
 
-    return {
+    summary = {
         "replica_count": count,
         "rate_limit_store": store,
         "audit_backend": audit_backend,
         "shared_state_enforced": count == 1,
+        "audit_durability": "ephemeral" if memory_audit else "durable",
     }
+    if memory_audit:
+        # Naming the backend is not the same as naming the property it lacks:
+        # an operator reading "InMemoryBackend" has to know the codebase to
+        # know that nothing survives a restart and that the fork constraint,
+        # which is a database constraint, cannot apply.
+        summary["audit_durability_note"] = (
+            "records do not survive a restart, and the previous_hash "
+            "constraint that prevents a forked chain does not apply because "
+            "no store is shared"
+        )
+    return summary
