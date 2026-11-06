@@ -21,16 +21,16 @@ CUSTOS-CORE and LORL-9.1 provide the open-core governance and agent infrastructu
 
 [github.com/ceyptoslim/CUSTOS-CORE](https://github.com/ceyptoslim/CUSTOS-CORE)
 
-**Verified:** 2026-11-05 live run on `docs/evidence-checklist-crosswalk` (`3c35e14`) | **Tests:** 795 passed, 14 skipped | **Coverage:** 89%
+**Verified:** 2026-11-05 live run on `fix/retry-after` (`51a3441`) | **Tests:** 801 passed, 14 skipped | **Coverage:** 89%
 
 Verified implementation:
 
 | Feature | Status | Evidence |
 |---------|--------|----------|
-| `/v1/evaluate` policy decision API | ✅ Implemented | `main.py:239` — FastAPI endpoint, three-mode policy engine (regex default / OPA / hybrid) |
+| `/v1/evaluate` policy decision API | ✅ Implemented | `main.py:432` — FastAPI endpoint, three-mode policy engine (regex default / OPA / hybrid) |
 | `/v1/execute` enforcement firewall | 🔒 Enterprise | Assembled by `custos-enterprise` router — components (`execution.py`, `firewall.py`) are public |
 | JWT authentication (HS256) | ✅ Implemented | `custos/auth.py` — `CUSTOS_JWT_SECRET`, `verify_token()`, `auth_enabled()` |
-| Tenant authorization binding | ✅ Implemented | `main.py:244,589` — JWT `sub` compared to `req.client_id`, cross-tenant = 403 |
+| Tenant authorization binding | ✅ Implemented | `main.py:397,437` — authenticated client compared to `req.client_id`, cross-tenant = 403 |
 | Rate limiting | ✅ Implemented | `custos/rate_limiter.py` — `QuotaConfig`, `RateLimiter`, per-tenant quotas |
 | Hash-chained audit trail | ✅ Implemented | `custos/audit.py` — SHA-256 `content_hash`, `record_hash`, `previous_hash` |
 | Input validation | ✅ Implemented | `custos/validation.py` — SSN, credit card, prompt injection, PII patterns |
@@ -41,7 +41,7 @@ Verified implementation:
 | OTLP/OpenTelemetry tracing | ✅ Implemented | `custos/tracing.py` — `opentelemetry-sdk`, `opentelemetry-exporter-otlp-proto-grpc` |
 | Docker deployment | ✅ Implemented | `Dockerfile`, `docker-compose.yml` |
 | Kubernetes/Helm deployment | 🔒 Enterprise | Moved to `custos-enterprise` (private). Public repo ships Docker/Docker Compose. |
-| Prometheus metrics | ✅ Implemented | `main.py:192` — `/metrics` endpoint |
+| Prometheus metrics | ✅ Implemented | `main.py:306` — `/metrics` endpoint |
 
 **Policy engine (v1.3.0+):** Three modes selectable via `CUSTOS_POLICY_ENGINE`: `regex` (default — pattern matching + Luhn validation, zero dependencies), `opa` (Rego enforcement via `policies/custos_governance.rego` and an OPA server — fails CLOSED if OPA is unavailable), and `hybrid` (regex first, then OPA, graceful fallback to regex). OPA and hybrid modes are CI-gated against a real OPA 1.0.0 server (`opa-integration` job). LORL-9.1 additionally runs its OWN separate OPA client for agent/treaty governance, which fails OPEN (best-effort).
 
@@ -213,7 +213,7 @@ Architecture targets that are NOT yet implemented. These should not be presented
 | "Google OAuth in Base44 apps" | ✅ | |
 | "Google OAuth in CUSTOS-CORE" | | ❌ — not in the codebase |
 | "Solana/Ethereum/ZK implemented" | | ❌ — architecture target |
-| "795 tests, 89% coverage" (CUSTOS-CORE) | ✅ | |
+| "801 tests, 89% coverage" (CUSTOS-CORE) | ✅ | |
 | "129 tests, 93% coverage" (LORL-9.1) | ✅ | |
 
 For formal audit: authoritative evidence should be commit SHA + CI run + test output + coverage artifact, not a document stating test counts.

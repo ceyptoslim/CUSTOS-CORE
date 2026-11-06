@@ -9,6 +9,7 @@ dict mutation during iteration in get_all_quotas().
 
 
 
+import math
 import threading
 import time
 from dataclasses import dataclass, field
@@ -75,6 +76,44 @@ class RateLimiter:
             state.hour_count += 1
             state.token_count += tokens
             return True, "OK"
+
+    def retry_after_seconds(self, client_id: str, tokens: int = 1) -> int | None:
+        """Seconds until the first exceeded quota window resets, or None.
+
+        Read-only mirror of check_and_consume(): it consumes nothing and does
+        not advance a window, so a caller can ask "how long" after a refusal
+        without changing the refusal. Window resets are applied the same way
+        check_and_consume() applies them, so an elapsed window reports None
+        rather than a stale wait.
+
+        None means no quota is currently exceeded, which includes an unknown
+        key (a configuration fault, not a rate-limit refusal). Callers should
+        omit Retry-After in that case rather than invent a wait that has no
+        window behind it.
+        """
+        with self._lock:
+            config = self._quotas.get(client_id)
+            state = self._state.get(client_id)
+            if config is None or state is None:
+                return None
+
+            now = time.time()
+            minute_left = 60.0 - (now - state.minute_window_start)
+            hour_left = 3600.0 - (now - state.hour_window_start)
+            minute_elapsed = minute_left <= 0
+            hour_elapsed = hour_left <= 0
+
+            minute_count = 0 if minute_elapsed else state.minute_count
+            token_count = 0 if minute_elapsed else state.token_count
+            hour_count = 0 if hour_elapsed else state.hour_count
+
+            if minute_count >= config.requests_per_minute:
+                return max(1, math.ceil(minute_left))
+            if hour_count >= config.requests_per_hour:
+                return max(1, math.ceil(hour_left))
+            if token_count + tokens > config.tokens_per_minute:
+                return max(1, math.ceil(minute_left))
+            return None
 
     def get_quota(self, client_id: str) -> QuotaConfig | None:
         """Return the registered QuotaConfig for a key, or None.
