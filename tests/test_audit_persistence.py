@@ -502,11 +502,15 @@ class TestTheInjectionPhasesStayTiedToTheCode:
         # raised by both durable backends, so the quote is not bound to one
         assert source.count(sentence) >= 2, "one backend no longer raises this message"
 
-    def test_the_full_store_error_it_quotes_is_the_one_sqlite_raises(self):
-        import sqlite3
-
+    def test_the_full_store_phase_names_the_engine_it_was_measured_on(self):
+        # The quoted sentence is SQLite's own message for SQLITE_FULL, and the
+        # engine exposes no portable constant to assert it against (the module
+        # level constants differ across Python versions, which is how the first
+        # version of this guard failed on 3.10 while passing on 3.11 and 3.12).
+        # What can be bound is that the phase says which engine produced it, so
+        # a reader does not carry a PostgreSQL message home from a SQLite run.
         doc = self._doc()
         assert "database or disk is full" in doc
-        # SQLITE_FULL is what the engine returns for ENOSPC; assert the engine
-        # still reports it under that name rather than trusting the string alone
-        assert sqlite3.SQLITE_FULL is not None
+        phase9 = doc.split("## Phase 9")[1].split("## Phase 10")[0]
+        assert "SQLite" in phase9
+        assert "SQLite here rather than PostgreSQL" in phase9
