@@ -111,6 +111,55 @@ reports a false assertion, which is still useful, because the discrepancy betwee
 what the caller claimed and what the record holds is checkable. It is not
 authentication, and no document should describe it as such.
 
+## Schema decision for the caller-supplied identifier
+
+The committee asked for a schema decision rather than a header parse, so this is
+the decision, and it is the thing code has to conform to.
+
+- **Field.** `caller_request_id`, nullable, at most 255 printable ASCII
+  characters, opaque to the gate. The gate validates length and character class
+  because the value enters a hash preimage, and imposes no other meaning.
+- **Position.** The version 2 preimage is the version 1 preimage, byte for byte
+  and in the same field order, with `caller_request_id` appended at the end. An
+  extension rather than a reordering, because a reordering would silently
+  invalidate every tool that recomputes version 1 hashes. A verification
+  implementation that has to special-case field order is a bug in the
+  implementation, not in the format.
+- **Absent is not empty.** No header means the field is null. An empty or
+  whitespace-only header is refused at the API boundary with a client error and
+  is never recorded, so absent cannot be forged by sending nothing. An
+  over-length value is refused rather than truncated: a sliced identifier would
+  be a different string from the one the caller asserted, and the record would
+  then be a faithful account of something nobody said.
+- **Two identifiers, never merged.** `trace_id` stays server-generated and
+  `caller_request_id` stays caller-asserted, and both are inside the hash. The
+  temptation is one correlation field that either party can populate. That field
+  would make the record ambiguous about who asserted what, which is the one
+  property worth protecting here.
+
+## Migration note for readers of binding version 1
+
+Six statements, each of which a report can get wrong:
+
+1. Version 1 records keep verifying at version 1 indefinitely. Verification
+   dispatches on `binding_version`, and the current layout is never assumed.
+2. A version 1 record has no `caller_request_id`. That means not recorded, not
+   absent in the sense of nothing supplied. The distinction is unrecoverable
+   after the fact, which is why the next statement matters.
+3. Any figure computed across both versions says so. Counting version 1 records
+   as "no caller id supplied" would understate what callers did, and counting
+   them as "unidentified" would overstate it.
+4. Tooling refuses to verify a version 2 record with version 1 logic, and the
+   reverse. It fails loudly rather than passing a hash that happens to match,
+   because a coincidence here would be indistinguishable from verification.
+5. For version 1 records, the only correlation available is the server trace id,
+   and it is navigable backwards from the record, not forwards from a caller.
+   A support question of the form "what happened to my request" is not answerable
+   from a version 1 chain without the record.
+6. Existing rows are not migrated, and recomputing old hashes under the new
+   version is forbidden. Rewriting the preimage of a chained record would destroy
+   the property the chain exists to provide, and no schema change is worth that.
+
 ## What this rule does not do
 
 - It does not prevent two different attempts, under two different keys, from
