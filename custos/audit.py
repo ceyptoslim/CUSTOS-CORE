@@ -85,8 +85,13 @@ class InMemoryBackend:
 class SQLiteBackend:
     """SQLite backend. Good for dev and single-node deployments."""
 
-    def __init__(self, db_path: str):
+    def __init__(self, db_path: str, tenant_id: Optional[str] = None):
         self._path = db_path
+        # A chain belongs to one tenant. An unscoped backend serves the whole
+        # store, which is only coherent while the store holds a single tenant's
+        # records; opening a multi-tenant store unscoped is refused below
+        # rather than silently returning a chain that interleaves tenants.
+        self._tenant_id = tenant_id
         self._init()
 
     def _init(self) -> None:
@@ -114,18 +119,27 @@ class SQLiteBackend:
             # never re-reads the store, and a store that already holds a fork
             # fails here instead of accepting more records onto a chain that
             # no longer verifies.
+            # The index is per tenant, because the invariant is per chain and a
+            # chain belongs to one tenant: every chain starts from the same
+            # all-zero GENESIS_HASH, so uniqueness on previous_hash alone would
+            # refuse the second tenant's first record. COALESCE keeps legacy
+            # rows (tenant_id NULL) under one key instead of letting NULLs sit
+            # outside the constraint, which is how an unprotected chain would
+            # reappear through the migration path.
+            conn.execute('DROP INDEX IF EXISTS idx_audit_previous_hash')
             try:
                 conn.execute(
-                    'CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_previous_hash '
-                    'ON audit_records(previous_hash)'
+                    'CREATE UNIQUE INDEX IF NOT EXISTS '
+                    'idx_audit_tenant_previous_hash '
+                    "ON audit_records(COALESCE(tenant_id, ''), previous_hash)"
                 )
             except sqlite3.IntegrityError as exc:
                 raise ChainForkError(
                     'this store already contains a fork: more than one record '
-                    'claims the same predecessor, which is the state two '
-                    'writers produce. Refusing to open it, because appending '
-                    'to a store that no longer verifies would extend a chain '
-                    'nobody can check. Preserve the store and investigate.'
+                    'claims the same predecessor within one tenant, which is the '
+                    'state two writers produce. Refusing to open it, because '
+                    'appending to a store that no longer verifies would extend a '
+                    'chain nobody can check. Preserve the store and investigate.'
                 ) from exc
             conn.commit()
 
@@ -169,12 +183,18 @@ class SQLiteBackend:
 
     def load_all(self) -> List[AuditRecord]:
         with sqlite3.connect(self._path) as conn:
-            rows = conn.execute("""
+            query = """
                 SELECT timestamp, client_id, action, triggered_rule, reason,
                        content_hash, record_hash, previous_hash, trace_id,
                        policy_digest, tenant_id, binding_version
-                FROM audit_records ORDER BY id ASC
-            """).fetchall()
+                FROM audit_records"""
+            if self._tenant_id is not None:
+                rows = conn.execute(
+                    query + " WHERE COALESCE(tenant_id, '') = ? ORDER BY id ASC",
+                    (self._tenant_id,),
+                ).fetchall()
+            else:
+                rows = conn.execute(query + " ORDER BY id ASC").fetchall()
         return [
             AuditRecord(
                 timestamp=r[0], client_id=r[1], action=r[2],
@@ -197,7 +217,7 @@ class PostgreSQLBackend:
     Connection string via DATABASE_URL env var or constructor argument.
     """
 
-    def __init__(self, database_url: str):
+    def __init__(self, database_url: str, tenant_id: Optional[str] = None):
         try:
             import psycopg2
             import psycopg2.extras
@@ -208,6 +228,7 @@ class PostgreSQLBackend:
                 "pip install psycopg2-binary"
             )
         self._url = database_url
+        self._tenant_id = tenant_id
         self._init()
 
     def _connect(self):
@@ -233,10 +254,8 @@ class PostgreSQLBackend:
                         binding_version INTEGER DEFAULT 0
                     )
                 """)
-                cur.execute(
-                    'CREATE UNIQUE INDEX IF NOT EXISTS idx_audit_previous_hash '
-                    'ON audit_records(previous_hash)'
-                )
+                # Columns first, then the index: the tenant column has to exist
+                # before an index can be built over COALESCE(tenant_id, '').
                 for column, decl in (
                     ("policy_digest", "TEXT"),
                     ("tenant_id", "TEXT"),
@@ -245,6 +264,16 @@ class PostgreSQLBackend:
                     cur.execute(
                         f"ALTER TABLE audit_records ADD COLUMN IF NOT EXISTS {column} {decl}"
                     )
+                # Per tenant, because the invariant is per chain and every chain
+                # starts from the same all-zero GENESIS_HASH. The single-column
+                # index is dropped so an existing store does not keep a
+                # constraint that refuses the second tenant outright.
+                cur.execute('DROP INDEX IF EXISTS idx_audit_previous_hash')
+                cur.execute(
+                    'CREATE UNIQUE INDEX IF NOT EXISTS '
+                    'idx_audit_tenant_previous_hash '
+                    "ON audit_records(COALESCE(tenant_id, ''), previous_hash)"
+                )
             conn.commit()
 
     def save(self, record: AuditRecord) -> None:
@@ -282,12 +311,19 @@ class PostgreSQLBackend:
     def load_all(self) -> List[AuditRecord]:
         with self._connect() as conn:
             with conn.cursor() as cur:
-                cur.execute("""
+                query = """
                     SELECT timestamp, client_id, action, triggered_rule, reason,
                            content_hash, record_hash, previous_hash, trace_id,
                            policy_digest, tenant_id, binding_version
-                    FROM audit_records ORDER BY id ASC
-                """)
+                    FROM audit_records"""
+                if self._tenant_id is not None:
+                    cur.execute(
+                        query
+                        + " WHERE COALESCE(tenant_id, '') = %s ORDER BY id ASC",
+                        (self._tenant_id,),
+                    )
+                else:
+                    cur.execute(query + " ORDER BY id ASC")
                 rows = cur.fetchall()
         return [
             AuditRecord(
@@ -307,13 +343,14 @@ class PostgreSQLBackend:
 def _build_backend(
     db_path: Optional[str] = None,
     database_url: Optional[str] = None,
+    tenant_id: Optional[str] = None,
 ):
     url = database_url or os.getenv("DATABASE_URL")
     path = db_path or os.getenv("AUDIT_DB_PATH")
     if url:
-        return PostgreSQLBackend(url)
+        return PostgreSQLBackend(url, tenant_id=tenant_id)
     if path:
-        return SQLiteBackend(path)
+        return SQLiteBackend(path, tenant_id=tenant_id)
     return InMemoryBackend()
 
 
@@ -390,15 +427,33 @@ class AuditChain:
         self,
         db_path: Optional[str] = None,
         database_url: Optional[str] = None,
+        tenant_id: Optional[str] = None,
         _backend=None,
     ):
         self._records: List[AuditRecord] = []
         self._lock = threading.RLock()
-        self._backend = _backend or _build_backend(db_path, database_url)
+        self._tenant_id = tenant_id
+        self._backend = _backend or _build_backend(
+            db_path, database_url, tenant_id=tenant_id
+        )
         self._db_path = db_path or os.getenv("AUDIT_DB_PATH")
 
         for record in self._backend.load_all():
             self._records.append(record)
+
+        # An unscoped chain over a store that holds more than one tenant is not
+        # a chain, it is several interleaved. Returning it would produce a
+        # verification result that appears to be about one tenant and is about
+        # no tenant in particular, which is the class of defect this project
+        # keeps finding in the describing layer. Refuse instead.
+        scopes = {r.tenant_id or "" for r in self._records}
+        if tenant_id is None and len(scopes) > 1:
+            raise ChainForkError(
+                "this store holds records for more than one tenant "
+                f"({', '.join(sorted(scopes))}), so it cannot be opened as a "
+                "single chain. Open it with tenant_id set to the tenant whose "
+                "chain you mean, or use one store per tenant."
+            )
 
     def record(
         self,
