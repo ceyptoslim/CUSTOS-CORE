@@ -1,0 +1,42 @@
+{
+ "actions/checkout@v4": {
+  "sha": "11d5960a326750d5838078e36cf38b85af677262",
+  "version": "v4.4.0",
+  "also_tagged": [
+   "v4.4.0",
+   "v4"
+  ]
+ },
+ "actions/setup-python@v5": {
+  "sha": "a26af69be951a213d495a4c3e4e4022e16d87065",
+  "version": "v5.6.0",
+  "also_tagged": [
+   "v5.6.0",
+   "v5"
+  ]
+ },
+ "actions/cache@v4": {
+  "sha": "0057852bfaa89a56745cba8c7296529d2fc39830",
+  "version": "v4.3.0",
+  "also_tagged": [
+   "v4.3.0",
+   "v4"
+  ]
+ },
+ "actions/upload-artifact@v4": {
+  "sha": "ea165f8d65b6e75b540449e92b4886f43607fa02",
+  "version": "v4.6.2",
+  "also_tagged": [
+   "v4.6.2",
+   "v4"
+  ]
+ },
+ "actions/github-script@v7": {
+  "sha": "f28e40c7f34bde8b3046d885e986cb6290c5673b",
+  "version": "v7.1.0",
+  "also_tagged": [
+   "v7.1.0",
+   "v7"
+  ]
+ }
+}
