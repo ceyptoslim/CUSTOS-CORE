@@ -30,6 +30,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from custos.audit_persistence import (
     AuditPersistenceRefused,
+    audit_store_source,
     is_durable,
     require_durable_audit,
 )
@@ -399,6 +400,10 @@ async def info():
         "version": VERSION,
         "audit_backend": default_ctx.audit_chain.backend_type,
         "audit_durable": is_durable(default_ctx.audit_chain.backend_type),
+        # Named, not inferred, and on the API surface rather than only in the
+        # startup log: a reader who can reach this endpoint should not have to
+        # guess which variable put the store in force.
+        "audit_store_source": audit_store_source(),
         "policy_backend": tenant_manager.policy_backend,
         "tenant_count": tenant_manager.count,
         "uptime_seconds": round(
@@ -503,9 +508,16 @@ async def evaluate(
     allowed, msg = ctx.rate_limiter.check_and_consume(rate_key, req.token_count)
     if not allowed:
         _metrics["custos_rate_limit_hits"] += 1
+        # The refusal is a decision and has to be recorded like one. It was
+        # written without a policy citation, which production refuses: every
+        # request past a client's quota raised ValueError inside the refusal
+        # and returned 500 instead of 429, so the caller was never told to wait
+        # and Retry-After never reached them. Found by the restore drill's
+        # write loop, which stopped at exactly the quota and only then.
         ctx.audit_chain.record(
             req.client_id, "rate_limited", msg, req.content,
             trace_id=span.trace_id,
+            policy_digest=content_engine_digest(ctx.policy_engine),
         )
         span.set_status("RATE_LIMITED")
         tracer.finish_span(span)
