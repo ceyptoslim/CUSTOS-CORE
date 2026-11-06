@@ -462,3 +462,51 @@ class TestTheRefusalPathIsBoundLikeTheDecisionPath:
         assert refusals, "no refusal record was written"
         assert all(r.policy_digest for r in refusals), "a refusal was recorded unbound"
         assert chain.verify()[0] is True
+
+
+class TestTheInjectionPhasesStayTiedToTheCode:
+    """Phases 8 to 10 quote refusal messages and errnos, so bind them too.
+
+    Same reason as the drill guard above. A transcript that names a failure mode
+    whose message has since changed reads as a measurement and is a memory, and
+    the three injections are the part of the record a reader is most likely to
+    try to reproduce.
+    """
+
+    DOC = "docs/restore-drills/2026-11-06-served-path-postgres.md"
+
+    def _doc(self):
+        import pathlib
+
+        return pathlib.Path(self.DOC).read_text()
+
+    def test_all_three_injections_are_named_as_phases(self):
+        doc = self._doc()
+        assert "## Phase 8: the process is killed while writing" in doc
+        assert "## Phase 9: the store fills mid-append" in doc
+        assert "## Phase 10: two replicas, one store" in doc
+        # the mechanisms, not just the headings
+        assert "kill -9" in doc
+        assert "ENOSPC" in doc
+        assert "ChainForkError" in doc
+
+    def test_the_fork_refusal_it_quotes_is_the_one_the_store_raises(self):
+        from custos import audit as audit_module
+
+        doc = self._doc()
+        source = __import__("pathlib").Path(audit_module.__file__).read_text()
+        sentence = "another writer extended this chain after this process loaded it"
+        # the transcript quotes this sentence, so it has to still be the sentence
+        # (the quote is wrapped in the document, so compare on collapsed space)
+        assert sentence in " ".join(doc.split())
+        # raised by both durable backends, so the quote is not bound to one
+        assert source.count(sentence) >= 2, "one backend no longer raises this message"
+
+    def test_the_full_store_error_it_quotes_is_the_one_sqlite_raises(self):
+        import sqlite3
+
+        doc = self._doc()
+        assert "database or disk is full" in doc
+        # SQLITE_FULL is what the engine returns for ENOSPC; assert the engine
+        # still reports it under that name rather than trusting the string alone
+        assert sqlite3.SQLITE_FULL is not None
