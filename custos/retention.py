@@ -1,0 +1,331 @@
+"""
+custos/retention.py — Content separation and the purge path.
+
+The audit record binds ``content_hash``, the sha256 of the request content, and
+never holds the content itself. That separation is what makes a purge possible
+without splicing the chain: deleting a body changes nothing the chain hashes,
+so a purged chain still verifies record for record.
+
+This module adds the piece that separation alone does not give:
+
+- ContentStore: a side store holding the content body for each
+  ``content_hash``. Bodies live here and only here, so "purge the content"
+  is a deletion with a boundary rather than an edit to the record.
+- A per-record CSPRNG salt with a marker inside the commitment digest.
+  ``sha256(body)`` over low-entropy content is reversible by enumeration, so a
+  stored digest that could be opened by guessing is not a deletion control. The
+  salt is generated, never derived, and destroying it is what makes a purged
+  commitment unopenable. The marker is part of the digested bytes, so a salted
+  commitment can never be mistaken for a bare digest of the body, and the
+  distinction is readable from the store rather than inferred from context.
+- purge(): deletes body, salt and commitment together, records the deletion,
+  and appends an attestation to the audit chain. The chain record carries
+  ``content_hash`` so the deletion is attributable to the record it affects,
+  and carries no field that would let the body be reconstructed.
+
+What this does not do, stated here rather than left to be discovered: a purge
+cannot reach a copy of the side store taken before it. A backup retains the
+body and the salt and restoring it resurrects both. That is a property of
+copies, not of this code, and the measured run in
+docs/restore-drills/2026-11-06-purge-path.md shows it rather than arguing it.
+
+Copyright (C) 2024-2026 Tavares Heath Sr. (doing business as FroLife Productions)
+Licensed under the GNU Affero General Public License v3.0 (AGPL-3.0)
+Commercial license available upon request.
+"""
+
+import hashlib
+import secrets
+import sqlite3
+import time
+from typing import Optional
+
+from .audit import AuditChain
+
+# The marker is digested with the body, so the two commitment forms are not
+# interchangeable and a bare digest cannot be presented as a salted one.
+MARKER_SALTED = b"CUSTOS-COMMIT-v1:salted\x00"
+MARKER_UNSALTED = b"CUSTOS-COMMIT-v0:unsalted\x00"
+COMMITMENT_VERSION = 1
+SALT_BYTES = 32
+
+STATUS_PRESENT = "present"
+STATUS_PURGED = "purged"
+STATUS_UNKNOWN = "unknown"
+
+
+class PurgeRefused(RuntimeError):
+    """A purge was asked for that the store will not perform, or a read of
+    content that no longer exists. Refused with a reason rather than returning
+    an empty body, because an empty body is indistinguishable from content that
+    was always empty."""
+
+
+class ContentPurged(PurgeRefused):
+    """The content was purged earlier. Carries the time, so a caller can report
+    when rather than only that."""
+
+
+class ContentStore:
+    """Side store for content bodies, their salts, and their purges."""
+
+    def __init__(self, db_path: str):
+        self._path = db_path
+        self._init()
+
+    def _connect(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self._path)
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def _init(self) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS content_bodies (
+                    content_hash TEXT PRIMARY KEY,
+                    algo_version INTEGER NOT NULL,
+                    marker TEXT NOT NULL,
+                    salt BLOB,
+                    commitment TEXT NOT NULL,
+                    body TEXT NOT NULL,
+                    created_at REAL NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS purges (
+                    content_hash TEXT PRIMARY KEY,
+                    purged_at REAL NOT NULL,
+                    reason TEXT NOT NULL,
+                    attestation_hash TEXT
+                )
+                """
+            )
+
+    # -- writing ---------------------------------------------------------
+
+    def put(self, body: str) -> str:
+        """Store a body and return its ``content_hash``.
+
+        Idempotent by content: a body already present keeps its original salt and
+        commitment, so storing the same content twice does not produce two
+        commitments for one record.
+        """
+        content_hash = hashlib.sha256(body.encode("utf-8")).hexdigest()
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT 1 FROM content_bodies WHERE content_hash = ?", (content_hash,)
+            ).fetchone()
+            if row:
+                return content_hash
+            purged = conn.execute(
+                "SELECT purged_at FROM purges WHERE content_hash = ?", (content_hash,)
+            ).fetchone()
+            if purged:
+                raise ContentPurged(
+                    f"content {content_hash[:16]} was purged at {purged['purged_at']} "
+                    "and will not be stored again; a purge that can be undone by "
+                    "re-offering the same bytes is not a purge"
+                )
+            salt = secrets.token_bytes(SALT_BYTES)
+            conn.execute(
+                "INSERT INTO content_bodies (content_hash, algo_version, marker, salt,"
+                " commitment, body, created_at) VALUES (?,?,?,?,?,?,?)",
+                (
+                    content_hash,
+                    COMMITMENT_VERSION,
+                    "salted-v1",
+                    salt,
+                    _commitment(body, salt),
+                    body,
+                    time.time(),
+                ),
+            )
+        return content_hash
+
+    def put_legacy(self, body: str) -> str:
+        """Store a body with no salt, for content that arrived before this store.
+
+        Kept as a separate call rather than a flag so that an unsalted commitment
+        is always an explicit choice at the call site, and the marker records what
+        was actually done.
+        """
+        content_hash = hashlib.sha256(body.encode("utf-8")).hexdigest()
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT OR IGNORE INTO content_bodies (content_hash, algo_version,"
+                " marker, salt, commitment, body, created_at) VALUES (?,?,?,?,?,?,?)",
+                (
+                    content_hash,
+                    0,
+                    "unsalted-v0",
+                    None,
+                    _commitment(body, None),
+                    body,
+                    time.time(),
+                ),
+            )
+        return content_hash
+
+    def purge(
+        self,
+        content_hash: str,
+        *,
+        chain: AuditChain,
+        client_id: str,
+        reason: str,
+        trace_id: Optional[str] = None,
+        policy_digest: Optional[str] = None,
+    ) -> str:
+        """Delete the body, salt and commitment, then attest the deletion.
+
+        Order matters and is deliberate: the deletion happens first and the
+        attestation second, so the store cannot claim a purge it did not
+        perform. The cost of that ordering is stated in the failure it raises,
+        because the alternative is an attestation for a body that is still
+        readable.
+        """
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT body FROM content_bodies WHERE content_hash = ?", (content_hash,)
+            ).fetchone()
+            if row is None:
+                prior = conn.execute(
+                    "SELECT purged_at FROM purges WHERE content_hash = ?", (content_hash,)
+                ).fetchone()
+                if prior:
+                    raise ContentPurged(
+                        f"content {content_hash[:16]} was already purged at "
+                        f"{prior['purged_at']}"
+                    )
+                raise PurgeRefused(
+                    f"no content at {content_hash[:16]}; a purge of something the "
+                    "store never held would be recorded as a deletion that never "
+                    "happened"
+                )
+            body = row["body"]
+            conn.execute("DELETE FROM content_bodies WHERE content_hash = ?", (content_hash,))
+            conn.execute(
+                "INSERT INTO purges (content_hash, purged_at, reason, attestation_hash)"
+                " VALUES (?,?,?,NULL)",
+                (content_hash, time.time(), reason),
+            )
+
+        record = chain.record(
+            client_id=client_id,
+            action="PURGE",
+            reason=reason,
+            content=body,
+            triggered_rule="retention.purge",
+            trace_id=trace_id,
+            policy_digest=policy_digest,
+        )
+        if record.content_hash != content_hash:
+            raise RuntimeError(
+                "the attestation hashed to a different content than the row that was "
+                "deleted, so the deletion is not attributable to this chain record"
+            )
+        with self._connect() as conn:
+            conn.execute(
+                "UPDATE purges SET attestation_hash = ? WHERE content_hash = ?",
+                (record.record_hash, content_hash),
+            )
+        return record.record_hash
+
+    # -- reading ---------------------------------------------------------
+
+    def status(self, content_hash: str) -> str:
+        with self._connect() as conn:
+            if conn.execute(
+                "SELECT 1 FROM content_bodies WHERE content_hash = ?", (content_hash,)
+            ).fetchone():
+                return STATUS_PRESENT
+            if conn.execute(
+                "SELECT 1 FROM purges WHERE content_hash = ?", (content_hash,)
+            ).fetchone():
+                return STATUS_PURGED
+        return STATUS_UNKNOWN
+
+    def marker(self, content_hash: str) -> str:
+        """``salted-v1``, ``unsalted-v0``, ``purged``, or ``unknown``.
+
+        Read rather than inferred: the whole point of a marker is that a reader
+        can tell which commitment form it is holding without being told.
+        """
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT marker FROM content_bodies WHERE content_hash = ?", (content_hash,)
+            ).fetchone()
+            if row:
+                return row["marker"]
+            purged = conn.execute(
+                "SELECT 1 FROM purges WHERE content_hash = ?", (content_hash,)
+            ).fetchone()
+        return "purged" if purged else "unknown"
+
+    def open_body(self, content_hash: str) -> str:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT body FROM content_bodies WHERE content_hash = ?", (content_hash,)
+            ).fetchone()
+            if row:
+                return row["body"]
+            prior = conn.execute(
+                "SELECT purged_at FROM purges WHERE content_hash = ?", (content_hash,)
+            ).fetchone()
+        if prior:
+            raise ContentPurged(
+                f"content {content_hash[:16]} was purged at {prior['purged_at']}"
+            )
+        raise PurgeRefused(f"no content at {content_hash[:16]}")
+
+    def verify_commitment(self, content_hash: str, body: str) -> bool:
+        """Recompute the commitment from a supplied body.
+
+        Raises rather than returning False when the content is gone: a mismatch
+        and an absence are different findings and collapsing them would let a
+        purge be reported as a failed integrity check.
+        """
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT salt, commitment FROM content_bodies WHERE content_hash = ?",
+                (content_hash,),
+            ).fetchone()
+            if row is None:
+                prior = conn.execute(
+                    "SELECT purged_at FROM purges WHERE content_hash = ?", (content_hash,)
+                ).fetchone()
+                if prior:
+                    raise ContentPurged(
+                        f"content {content_hash[:16]} was purged at "
+                        f"{prior['purged_at']}; the commitment cannot be recomputed"
+                    )
+                raise PurgeRefused(f"no content at {content_hash[:16]}")
+            salt = row["salt"]
+            return _commitment(body, salt) == row["commitment"]
+
+    def purge_record(self, content_hash: str) -> Optional[dict]:
+        with self._connect() as conn:
+            row = conn.execute(
+                "SELECT content_hash, purged_at, reason, attestation_hash FROM purges"
+                " WHERE content_hash = ?",
+                (content_hash,),
+            ).fetchone()
+        return dict(row) if row else None
+
+
+def _commitment(body: str, salt: Optional[bytes]) -> str:
+    """Digest of marker||salt||body.
+
+    The marker is inside the digested bytes, not alongside them, so the two
+    commitment forms cannot produce the same digest and a reader holding only a
+    digest cannot relabel it.
+    """
+    marker = MARKER_SALTED if salt else MARKER_UNSALTED
+    payload = hashlib.sha256(marker)
+    if salt:
+        payload.update(salt[:SALT_BYTES])
+    payload.update(body.encode("utf-8"))
+    return payload.hexdigest()
