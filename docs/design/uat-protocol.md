@@ -1,8 +1,9 @@
 # UAT protocol for the pilot
 
-Status: pilot-entry artifact. The committee moved user acceptance testing from a
-precondition of the pilot to a property of it, because the pilot is the only
-available source of non-maintainer users. This document is the entry condition:
+Status: pilot-entry artifact. User acceptance testing is a property of the pilot
+rather than a precondition of it, because the pilot is the only available source
+of non-maintainer users, and a precondition that requires the pilot's own output
+cannot be met by the party being conditioned. This document is the entry condition:
 the protocol exists before the pilot, and executing it is an exit condition.
 
 The purpose is evidence, and a pilot that reports no defects has failed this

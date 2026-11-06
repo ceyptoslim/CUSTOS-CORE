@@ -1,7 +1,7 @@
 # The single-replica constraint, and what scaling would require
 
-Status: implements item 5 of the committee package. The constraint is now
-asserted at startup instead of being discoverable in the source.
+Status: item 5 of the pilot-entry package. The constraint is now asserted at
+startup instead of being discoverable in the source.
 
 ## The conflict this names
 
