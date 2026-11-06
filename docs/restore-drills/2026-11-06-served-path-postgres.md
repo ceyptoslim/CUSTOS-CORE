@@ -5,6 +5,11 @@ the transcript for item 1: a production process writing through `/v1/evaluate`,
 a restart, a backup, a restore into a fresh database, a fresh process verifying
 the restored chain, and the restored store continuing to accept records.
 
+Phases 8, 9 and 10 were run the same day at `79165cc` and cover the three
+injections a restore drill does not reach: the process killed mid-write, the
+device full mid-write, and two writers against one store. Each is a separate
+process from the one that reported before it.
+
 PostgreSQL 15.19, local cluster, one database per phase, `psycopg2` 2.9.9.
 
 Prior to the wiring this drill could not be run at all: `TenantManager` built
@@ -150,10 +155,158 @@ The process does not reach serving. Worth pairing with phase 1: the topology
 line reports `ephemeral` before the refusal, so an operator who only watches
 logs has already been told what is wrong before the process exits.
 
+
+## Phase 8: the process is killed while writing (PostgreSQL, served path)
+
+The writer is the served path itself: one client identity per request so the
+per-client quota never engages, a unique content string per record, and a
+`SIGKILL` sent from the parent after three seconds.
+
+```
+DATABASE_URL=postgresql://custos:***@127.0.0.1:5432/drill_kill \
+CUSTOS_ENV=production python3 writer_loop.py &   # /v1/evaluate in a loop
+sleep 3; kill -9 $!
+```
+
+Output:
+
+```
+reported writes: 216
+wrote 216 200
+rows in store: 217
+torn rows: 0
+fresh process: PostgreSQLBackend | records: 217 | verify: [True, 'OK']
+                last two hashes: ['0a3c9e1910d9', '5489f8692fa6']
+```
+
+The store holds one more record than the writer reported, and that gap is the
+result rather than an anomaly: the process was killed after the store committed
+a record and before its acknowledgement could be printed. Every row is a
+complete record with both hashes present, and a fresh process verifies the chain
+from genesis without repair. What an operator inherits from a crash is
+at-least-once from the caller's view with no torn state, not a chain to fix.
+
+## Phase 9: the store fills mid-append (SQLite, served path)
+
+SQLite here rather than PostgreSQL, and the fullness is injected rather than
+produced: this sandbox refuses `mount(2)` and has no loop devices, so a device
+cannot literally be filled. An `LD_PRELOAD` shim returns `ENOSPC` from `write`,
+`pwrite`, `pwrite64` and `writev` once the audit file has taken a set number of
+bytes, and for that file only, so logging and the rest of the process keep
+working. The storage engine sees the errno the kernel returns on a full
+filesystem; it reports `database or disk is full`.
+
+```
+AUDIT_DB_PATH=/tmp/full3/audit.sqlite \
+ENOSPC_AFTER=72000 ENOSPC_TARGET=audit.sqlite \
+LD_PRELOAD=./enospc.so python3 phase9.py
+```
+
+Output:
+
+```
+RESULT accepted before the store filled: 1
+RESULT failure: (2, 'OperationalError', 'database or disk is full')
+RESULT in-process chain length at failure: 1
+RESULT next request: still refused, OperationalError: database or disk is full
+```
+
+Read without the shim:
+
+```
+rows: 1
+integrity_check: ok
+client ids: ['full-1']
+```
+
+Space restored, a new process appends and a third verifies:
+
+```
+RESULT append with the store usable again: 200
+{"backend": "SQLiteBackend", "records": 2, "verify": [true, "OK"],
+ "clients": ["full-1", "recovered"]}
+```
+
+The property under test is the one that matters for a full disk: the in-memory
+chain never advanced past what the store accepted, so there is no record the
+service believed in and the store does not hold, and the next request was
+refused rather than served unrecorded. When space returns, the gate resumes from
+the last durable head with no gap.
+
+Limit, stated because it is visible in the transcript: the failure reached the
+caller as an unhandled 500, not as a named refusal. A full store is a refusal
+reason this API does not yet name, which is the same shape of defect as the
+rate-limit 500 fixed in the prerequisite commit of this branch.
+
+## Phase 10: two replicas, one store (PostgreSQL, served path)
+
+Two processes boot against one database, each loading the chain at startup, and
+then each appends. Boot is staggered so that both have loaded the same head
+before either writes: that is the condition, and staggering it does not weaken
+it.
+
+```
+RESULT A booted holding 0 records
+RESULT B booted holding 0 records
+RESULT A append: 200
+RESULT A in-process chain length after: 1
+RESULT B append refused: ChainForkError: another writer extended this chain
+        after this process loaded it. ...
+RESULT B in-process chain length after: 0
+```
+
+Fresh process, same store:
+
+```
+{"backend": "PostgreSQLBackend", "records": 1, "verify": [true, "OK"],
+ "clients": ["A"]}
+```
+
+So the second writer is refused at the store, keeps no phantom record in memory,
+and the store still verifies. This is the guard from the single-writer work
+observed on the served path rather than argued from the library.
+
+One observation from the first attempt at this phase, recorded because it is a
+real limit rather than a setup error. Started simultaneously against a database
+with no schema, both processes raced in `policy_store._init()` and one died
+before the chain guard was reached:
+
+```
+psycopg2.errors.UniqueViolation: duplicate key value violates unique constraint
+"pg_type_typname_nsp_index"
+DETAIL:  Key (typname, typnamespace)=(policy_rules, 2200) already exists.
+```
+
+Concurrent cold start against an empty database is therefore not safe today for
+a reason upstream of the audit chain. It does not change the phase 10 result,
+which is about the append, but it does mean "one replica" is protecting more
+than the chain.
+
+## Defects this drill found
+
+Three, in the order they appeared. The first is fixed on this branch and its
+prerequisite; the second and third are open and named here rather than carried
+as assumptions.
+
+1. Every request past a client's quota returned 500 instead of 429, because the
+   refusal record carried no policy citation while production requires one. The
+   write loop in phase 8 is what exposed it, at exactly 60 records, and it could
+   not have been found by a single-request test. Fixed, with a regression test.
+2. A full store reaches the caller as an unhandled 500 rather than a named
+   refusal (phase 9).
+3. Two processes cold-starting against one empty database race in schema
+   creation and one exits (phase 10, first attempt).
+
 ## What an operator should take from this
 
-Restart survival and restore are both demonstrated on the served path with
-PostgreSQL. Completeness is not, and cannot be claimed from the store alone. A
-pilot that needs to distinguish a truncated history from a complete one needs
-the head published somewhere the writer cannot reach, which is the piece this
-build does not have.
+Restart survival, restore, a killed writer, a full device and a second writer
+are all observations on the served path now, not arguments. In four of those
+five the store was left consistent with no repair, and in the fifth (the full
+device) the service refused rather than served unrecorded, which is the right
+failure.
+
+Completeness is still the thing this drill cannot show. The chain cannot tell a
+complete history from a shortened one, so a pilot that needs to distinguish them
+needs the head published somewhere the writer cannot reach. That piece does not
+exist in this build, and each phase above is consistent with the gap rather than
+evidence against it.
