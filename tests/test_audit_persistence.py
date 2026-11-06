@@ -328,3 +328,51 @@ class TestTheCitationSurvivesAnyEngine:
             citation_rules = []
 
         assert content_engine_digest(Pinned()) != content_engine_digest(Unpinned())
+
+
+class TestTheDrillRecordStaysTrue:
+    """The transcript is evidence, so its quotations must be the code's.
+
+    A drill record that quotes a startup field the code no longer emits, or a
+    refusal message that has since been reworded, is worse than no record: it
+    reads as a measurement and is a memory. These cases bind the transcript to
+    the strings it quotes, so a rename fails a test instead of ageing quietly.
+    """
+
+    DOC = "docs/restore-drills/2026-11-06-served-path-postgres.md"
+
+    def _doc(self):
+        import pathlib
+
+        return pathlib.Path(self.DOC).read_text()
+
+    def test_it_exists_and_names_both_commands_it_used(self):
+        doc = self._doc()
+        assert "pg_dump" in doc and "DATABASE_URL" in doc
+        assert "verify:  (True, \"OK\")" in doc
+
+    def test_every_startup_field_it_quotes_is_still_emitted(self):
+        from custos.audit_persistence import require_durable_audit
+
+        doc = self._doc()
+        emitted = require_durable_audit("PostgreSQLBackend", env="production")
+        for field in ("audit_backend", "audit_durable", "audit_store_source"):
+            assert field in doc, f"the drill no longer quotes {field}"
+            assert field in emitted, f"the code no longer emits {field}"
+
+    def test_the_refusal_it_quotes_is_the_refusal_that_fires(self, monkeypatch):
+        from custos.audit_persistence import AuditPersistenceRefused, require_durable_audit
+
+        # No store configured, which is the branch the transcript records. With
+        # either variable set the refusal takes the other branch, whose message
+        # is deliberately different.
+        monkeypatch.delenv("DATABASE_URL", raising=False)
+        monkeypatch.delenv("AUDIT_DB_PATH", raising=False)
+        quoted = "A production process must not serve an audit trail it cannot keep."
+        assert quoted in self._doc()
+        try:
+            require_durable_audit("InMemoryBackend", env="production")
+        except AuditPersistenceRefused as exc:
+            assert quoted in str(exc)
+        else:
+            raise AssertionError("the refusal did not fire, so the drill quotes nothing")

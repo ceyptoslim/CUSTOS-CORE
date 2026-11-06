@@ -88,10 +88,11 @@ be assumed.
 - **It does not make truncation visible.** Measured: a six-record chain
   truncated to four returns `(True, 'OK')`. Both residuals need external head
   anchoring, which is not planned here.
-- **It does not survive a lost store.** Durable means the records outlive the
-  process, not that they survive a destroyed volume. Export, backup and a
-  restore drill against the served path are item 1's remainder and item 3's
-  territory.
+- **It does not survive a lost store by itself.** Durable means the records
+  outlive the process, not that they survive a destroyed volume. The backup and
+  restore half is now measured on this backend rather than assumed: see
+  docs/restore-drills/2026-11-06-served-path-postgres.md, which also records
+  what the drill does not establish, namely completeness.
 - **It does not make the store the only writer.** A store-privileged writer can
   still rewrite a chain consistently and verification passes; external head
   anchoring is the missing piece and is not planned here.
