@@ -466,6 +466,18 @@ class AuditChain:
         policy_digest: Optional[str] = None,
         tenant_id: Optional[str] = None,
     ) -> AuditRecord:
+        # A scoped chain writes its own tenant and nothing else. The served path
+        # never passed tenant_id, so with the wiring in place every tenant's
+        # records would have landed in one NULL scope; and a record attributed
+        # to another tenant inside a per-tenant chain would be a chain that
+        # verifies for a tenant whose history it is not.
+        if tenant_id is None:
+            tenant_id = self._tenant_id
+        elif self._tenant_id is not None and tenant_id != self._tenant_id:
+            raise ValueError(
+                f"this chain is scoped to tenant {self._tenant_id!r} and cannot "
+                f"record for tenant {tenant_id!r}; open the other tenant's chain"
+            )
         with self._lock:
             previous_hash = (
                 self._records[-1].record_hash if self._records else self.GENESIS_HASH

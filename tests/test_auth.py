@@ -155,6 +155,19 @@ class TestAuthEnforcement:
         # Production now requires a real JWT secret (fail-closed startup guard).
         monkeypatch.setenv("CUSTOS_JWT_SECRET", "test-production-secret-32-bytes-long!!")
         monkeypatch.setenv("AUTH_DISABLED", "1")
+        # Production now also refuses an audit store that cannot outlive the
+        # process; this test is about auth, so give it a durable store.
+        import os
+        import tempfile
+
+        monkeypatch.setenv(
+            "AUDIT_DB_PATH", os.path.join(tempfile.mkdtemp(), "audit.sqlite")
+        )
+        from custos.tenant import DEFAULT_QUOTA, TenantConfig
+
+        app_module.tenant_manager.register(
+            "default", TenantConfig(tenant_id="default", quota=DEFAULT_QUOTA)
+        )
         # Remove the test auth override so real auth runs (module-level import)
         saved = app_module.app.dependency_overrides.pop(app_module.optional_auth, None)
         try:

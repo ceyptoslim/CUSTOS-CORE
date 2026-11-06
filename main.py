@@ -28,6 +28,11 @@ from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from custos.audit_persistence import (
+    AuditPersistenceRefused,
+    is_durable,
+    require_durable_audit,
+)
 from custos.auth import validate_production_secrets, auth_enabled, verify_token
 from custos.jwks import get_jwks_document, validate_production_key
 from custos.logging import configure_logging, get_logger
@@ -196,6 +201,16 @@ async def lifespan(app: FastAPI):
     )
     _replica_summary = validate_replica_configuration(_audit_backend)
     logger.info("custos.topology", extra=_replica_summary)
+    # Refuse a production process whose audit store cannot outlive it. The
+    # wiring means the environment now selects a durable backend; this is the
+    # half that refuses to run without one, so the guard and the mechanism
+    # arrive together rather than one of them waiting for the other.
+    try:
+        _persistence_summary = require_durable_audit(_audit_backend)
+    except AuditPersistenceRefused as exc:
+        logger.error("custos.audit_persistence.refused", extra={"reason": str(exc)})
+        raise
+    logger.info("custos.audit_persistence", extra=_persistence_summary)
     if custody_manager is not None:
         custody_manager.start()
         logger.info("custos.custody.enabled")
@@ -382,6 +397,7 @@ async def info():
     return {
         "version": VERSION,
         "audit_backend": default_ctx.audit_chain.backend_type,
+        "audit_durable": is_durable(default_ctx.audit_chain.backend_type),
         "policy_backend": tenant_manager.policy_backend,
         "tenant_count": tenant_manager.count,
         "uptime_seconds": round(
@@ -509,6 +525,12 @@ async def evaluate(
     else:
         _metrics["custos_requests_denied"] += 1
 
+    # Cite the policy the decision actually consulted. Production requires a
+    # bound record (bound_evidence_required), and this endpoint passed a
+    # trace_id but never a digest, so in production every request to it failed
+    # with "the preimage would carry an unbound record" and returned 500. The
+    # digest comes from the content engine's rule set, which is what decided
+    # here -- not the gate's tool allowlist, which this endpoint never reads.
     audit_entry = ctx.audit_chain.record(
         client_id=req.client_id,
         action=result.action.value,
@@ -516,6 +538,7 @@ async def evaluate(
         content=req.content,
         triggered_rule=result.triggered_rule,
         trace_id=span.trace_id,
+        policy_digest=ctx.policy_engine.rules_digest,
     )
 
     span.set_attribute("action", result.action.value)

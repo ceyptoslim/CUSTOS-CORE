@@ -1,9 +1,10 @@
 # Durable audit for more than one tenant
 
-Status: design decision, implemented in the chain and the backends. The served
-path is not wired to a durable backend yet; that is the next change, and this
-document exists because the wiring cannot land correctly without the two
-properties below.
+Status: implemented in the chain, the backends, and the served path. A tenant
+manager now builds each tenant's chain already scoped and already resolved from
+the environment, and production refuses to serve an audit store that cannot
+outlive the process. The two properties below are what made the wiring correct
+rather than merely present.
 
 ## The two facts that shape it
 
@@ -39,21 +40,64 @@ single-chain case. Opening a store that holds more than one tenant unscoped is
 refused with the tenant names and the remedy, because there is no honest single
 answer to "verify this" once the store holds two histories.
 
+## What the served path does now
+
+`TenantManager.register` builds `AuditChain(tenant_id=tenant_id)` and nothing
+else constructs a chain, so the store comes from one place: `DATABASE_URL` for
+PostgreSQL, `AUDIT_DB_PATH` for SQLite, and in-memory only when neither is set.
+Before this, no configuration made the API's records durable: the SQLite and
+PostgreSQL backends existed and were tested, and the request path could not
+reach either, so a restore drill would have demonstrated the library rather than
+the service.
+
+A scoped chain also writes its own tenant. `record()` fills the record's
+`tenant_id` from the chain's scope, and refuses a record attributed to a
+different tenant. The served path never passed `tenant_id`, so without the fill
+every tenant would write into one NULL scope; and a per-tenant chain holding
+another tenant's record would verify for a tenant whose history it is not.
+
+`/v1/info` reports `audit_durable` beside `audit_backend`, because a backend name
+alone does not say whether the records survive.
+
+## The production refusal
+
+`CUSTOS_ENV=production` with an in-memory audit store refuses to start. The
+refusal names the backend, the two variables that would fix it, and why it
+exists. A production process that serves an audit trail it cannot keep is the
+same defect as a document claiming a property its artifact disclaims, one layer
+down, and `/v1/info` would report a backend while the records vanished on the
+next deploy.
+
+Two reasons, deliberately distinct. When no store is configured, the message
+says so and names the variables. When a store *is* configured and the chain in
+force is still in-memory, the message says that instead: the configuration was
+read at import and the variable set later, so telling the operator to set a
+variable they already set would send them to look in the wrong place. An anomaly
+that shares its signature with a misconfiguration gets its own reason, which is
+the same rule that separates an unknown binding version from tampering.
+
+Non-production keeps the in-memory default. A development process that has to
+provision a database to run a test is a process people stop running, and the
+topology log line says `audit_durability: ephemeral` rather than leaving it to
+be assumed.
+
 ## What this does not do
 
-- **It does not make the served path durable.** `TenantManager` still builds
-  each tenant's chain with `AuditChain()`. Nothing here changes that, and item
-  1's restore drill remains a drill on the library until it does.
 - **It does not defend against a store-privileged writer**, who can rewrite a
   whole chain consistently. Measured: verification passes.
 - **It does not make truncation visible.** Measured: a six-record chain
   truncated to four returns `(True, 'OK')`. Both residuals need external head
   anchoring, which is not planned here.
-- **It does not enforce a tenant on the append path.** A scoped chain loads one
-  tenant's records; a caller that writes a record with a different `tenant_id`
-  is refused by the store's predecessor key only when that predecessor is
-  already claimed. Binding the record's tenant to the chain's scope is the
-  wiring change's job, where the tenant is established rather than passed.
+- **It does not survive a lost store.** Durable means the records outlive the
+  process, not that they survive a destroyed volume. Export, backup and a
+  restore drill against the served path are item 1's remainder and item 3's
+  territory.
+- **It does not make the store the only writer.** A store-privileged writer can
+  still rewrite a chain consistently and verification passes; external head
+  anchoring is the missing piece and is not planned here.
+- **It does not pin the salt or the commitment marker**, which item 3 adds to
+  the emitter. Records written before and after that change will hold different
+  kinds of digest, and the marker is what lets a reader tell them apart.
 
 ## The tests, and what they are for
 
@@ -68,3 +112,20 @@ is refused rather than interleaved.
 Mutation checked both halves: reverting the index to `previous_hash` alone fails
 seven cases across the two modules, and restoring the all-rows loader fails
 three.
+
+## The wiring found a second defect, unrelated to storage
+
+`/v1/evaluate` returned 500 in production on every request, before this change
+and after it, for a reason that has nothing to do with where records are stored:
+`bound_evidence_required()` is true in production, and that endpoint passed a
+`trace_id` but never a `policy_digest`, so `record()` raised "the preimage would
+carry an unbound record". Verified on `main` at `5ed4ade` with a real token, not
+inferred. The endpoint now cites `ctx.policy_engine.rules_digest`, the rule set
+its own decision consulted, which is narrower than the gate's citation and is
+therefore the honest one for this endpoint: the gate also consults a tool
+allowlist that `/v1/evaluate` never reads.
+
+Worth stating plainly because it is the pattern in code again: the check worked,
+the endpoint was wrong, and nothing served the endpoint in production long
+enough for anyone to notice. A restart drill on the served path found it in the
+first two requests.
