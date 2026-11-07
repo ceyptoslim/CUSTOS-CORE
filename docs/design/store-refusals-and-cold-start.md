@@ -55,11 +55,32 @@ other.
 The concurrency test runs two threads against a store that reproduces the race
 mechanism: the unguarded path lets both threads reach the DDL and raises the
 duplicate-type error for the loser, while the locked path serialises and the second
-thread finds the table already there. This proves the lock is taken before the DDL and
-that two booting processes both come up. It does not measure a real PostgreSQL
-cluster: the race is modelled, because a suite that skips without a database would
-leave the defect unguarded in every environment that lacks one. The real-cluster
-observation stands in the drill transcript, where it was found.
+thread finds the table already there. This shows the lock is taken before the DDL and
+that two booting processes both come up. It models the race rather than observing one,
+because a suite that skips without a database would leave the defect unguarded in
+every environment that lacks one.
+
+The modelled test is not the only evidence. `scripts/drills/phase13_cold_start_race.py`
+stages the real condition: two OS processes, one empty database, both released at the
+same wall-clock instant, repeated for five trials. On `main` at `40d6519` all five
+trials have both processes reach the end of schema creation and exactly one append
+land, the other refused at the store with `ChainForkError`. The same driver against
+the build before the lock, `58c7462`, fails all five trials at schema creation with
+the error this issue was filed for, which is the mutation check for the fix rather
+than for the unit test.
+
+    RESULT trial 1: schema up 2/2 | appends allowed 1 | refused with ChainForkError 1
+    ...
+
+    # the same driver, one commit earlier
+    RESULT trial 1: schema up 1/2 | appends allowed 1 | refused with ChainForkError 0
+    RESULT trial 1: SCHEMA died UniqueViolation: duplicate key value violates unique
+      constraint "pg_type_typname_nsp_index"
+
+It requires a real server and refuses without one, because the error is raised by the
+PostgreSQL catalogs and no store this repository can fake will raise it. The limit
+that remains: the measurement is of two processes on one host against a local server,
+not of a rolling replacement in a cluster with connection pooling in front of it.
 
 ## What these do not cover
 
