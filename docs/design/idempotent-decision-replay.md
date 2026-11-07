@@ -120,12 +120,21 @@ the decision, and it is the thing code has to conform to.
 - **Field.** `caller_request_id`, nullable, at most 255 printable ASCII
   characters, opaque to the gate. The gate validates length and character class
   because the value enters a hash preimage, and imposes no other meaning.
-- **Position.** The version 2 preimage is the version 1 preimage, byte for byte
+- **Position.** The version 3 preimage is the version 2 preimage, byte for byte
   and in the same field order, with `caller_request_id` appended at the end. An
   extension rather than a reordering, because a reordering would silently
-  invalidate every tool that recomputes version 1 hashes. A verification
+  invalidate every tool that recomputes earlier hashes. A verification
   implementation that has to special-case field order is a bug in the
   implementation, not in the format.
+- **Renumbered once, deliberately.** This field was planned as version 2 and is
+  now version 3. Version 2 landed first and it is the commitment form
+  (`docs/design/binding-version-2.md`): the marker that says whether a record's
+  `content_hash` is a bare digest, a salted one, or one whose content was purged.
+  That could not wait behind this field, because retention cannot be built on
+  digests a reader cannot classify, and because two independent features cannot
+  share a version number without giving two incompatible meanings one name. So
+  the order is version 2 = commitment form, version 3 = caller id, and each one
+  appends to the last rather than reorganising it.
 - **Absent is not empty.** No header means the field is null. An empty or
   whitespace-only header is refused at the API boundary with a client error and
   is never recorded, so absent cannot be forged by sending nothing. An
@@ -150,9 +159,12 @@ Six statements, each of which a report can get wrong:
 3. Any figure computed across both versions says so. Counting version 1 records
    as "no caller id supplied" would understate what callers did, and counting
    them as "unidentified" would overstate it.
-4. Tooling refuses to verify a version 2 record with version 1 logic, and the
-   reverse. It fails loudly rather than passing a hash that happens to match,
-   because a coincidence here would be indistinguishable from verification.
+4. Tooling refuses to verify a record at a version it does not implement, in
+   either direction, and names the version it found. It fails loudly rather than
+   passing a hash that happens to match, because a coincidence here would be
+   indistinguishable from verification, and it reports the version rather than
+   "tampering detected", because a legitimate future record and an edited one
+   must not share a signature.
 5. For version 1 records, the only correlation available is the server trace id,
    and it is navigable backwards from the record, not forwards from a caller.
    A support question of the form "what happened to my request" is not answerable
