@@ -533,6 +533,7 @@ class TestTheDrillDriversAreReExecutable:
         "phase9_disk_full.py",
         "phase10_two_writers.py",
         "phase10_worker.py",
+        "phase11_export_backup.py",
         "enospc.c",
     )
 
