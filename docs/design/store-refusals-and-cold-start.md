@@ -1,8 +1,9 @@
 # A full store is a refusal, and two cold starts must not race
 
 Two defects found by the item 1 drill and carried in its transcript as open defects
-rather than assumptions. Both are about a condition the service already handled
-correctly and reported badly.
+rather than assumptions, which is where they stood when the drill recorded them. Both
+are fixed, by the merge named in each section. Both are about a condition the service
+already handled correctly and reported badly.
 
 ## A full store reached the caller as a 500 (issue 130)
 
