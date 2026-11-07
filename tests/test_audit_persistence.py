@@ -514,3 +514,82 @@ class TestTheInjectionPhasesStayTiedToTheCode:
         phase9 = doc.split("## Phase 9")[1].split("## Phase 10")[0]
         assert "SQLite" in phase9
         assert "SQLite here rather than PostgreSQL" in phase9
+
+
+class TestTheDrillDriversAreReExecutable:
+    """The injections behind the drill are in the repository, not in a temporary
+    directory.
+
+    The transcript was checkable against its numbers and not against its code,
+    which meant it could not be re-run by a reader and could not be checked
+    against a later build. These guards bind the document to the drivers it now
+    tells a reader to run, so deleting or renaming one fails here rather than
+    leaving a document that instructs a reader to run something that is gone.
+    """
+
+    DRIVERS = (
+        "writer_loop.py",
+        "phase8_kill_mid_append.py",
+        "phase9_disk_full.py",
+        "phase10_two_writers.py",
+        "phase10_worker.py",
+        "enospc.c",
+    )
+
+    def _drills(self):
+        import pathlib
+
+        return pathlib.Path("scripts/drills")
+
+    def _doc(self):
+        import pathlib
+
+        return pathlib.Path("docs/restore-drills/2026-11-06-served-path-postgres.md").read_text()
+
+    def test_every_driver_exists_and_is_named_in_the_readme(self):
+        readme = (self._drills() / "README.md").read_text()
+        for name in self.DRIVERS:
+            assert (self._drills() / name).exists(), f"{name} is missing from scripts/drills"
+            assert name in readme, f"{name} is not named in the drills README"
+
+    def test_the_document_points_at_the_committed_drivers(self):
+        doc = self._doc()
+        assert "scripts/drills/" in doc
+        # the section that says so carries the re-run it claims
+        section = doc.split("## The drivers are in the repository, and re-run")[1].split("## Defects")[0]
+        assert "phase 8" in section and "phase 9" in section and "phase 10" in section
+        assert "reported writes: 98" in section
+        assert "RESULT audit backend: SQLiteBackend" in section
+        assert "ChainForkError" in section
+
+    def test_the_section_quotes_lines_the_scripts_actually_print(self):
+        """A quoted line that no script emits is a restatement, not a record."""
+        phase8 = (self._drills() / "phase8_kill_mid_append.py").read_text()
+        phase9 = (self._drills() / "phase9_disk_full.py").read_text()
+        phase10 = (self._drills() / "phase10_two_writers.py").read_text()
+        section = self._doc().split("## The drivers are in the repository, and re-run")[1]
+
+        assert "RESULT acknowledged <= durable" in phase8
+        assert "RESULT acknowledged <= durable" in section
+        assert "RESULT audit backend" in phase9
+        assert "RESULT audit backend" in section
+        assert "RESULT in-memory never ahead of the store" in phase9
+        assert "RESULT appends accepted" in phase10
+
+    def test_the_shim_intercepts_positional_writes(self):
+        """The first version hooked only write() and never tripped, because the
+        engine issues positional writes. The injection has to reach the call the
+        engine makes."""
+        shim = (self._drills() / "enospc.c").read_text()
+        for fn in ("ssize_t write(", "ssize_t pwrite(", "ssize_t pwrite64(", "ssize_t writev("):
+            assert fn in shim, f"{fn} is not intercepted"
+        doc = self._doc()
+        assert "LD_PRELOAD" in doc
+
+    def test_phase_nine_refuses_to_measure_nothing(self):
+        """A dev process defaults to the in-memory store, where the injection has
+        nothing to fill. The first re-run reported 39 accepted and nothing wrong;
+        the script now refuses instead."""
+        phase9 = (self._drills() / "phase9_disk_full.py").read_text()
+        assert "InMemoryBackend" in phase9
+        assert "refusing to run" in phase9

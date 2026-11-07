@@ -255,17 +255,34 @@ class TestThePurgeDrillStaysTrue:
         # salted-then-purged rather than being rewritten to the outcome
         assert chain._records[0].commitment == "salted-v1"
 
-    def test_the_drill_document_quotes_the_rerun_it_claims(self):
-        doc = self._doc()
-        assert "## Re-run after the marker (binding version 2)" in doc
-        assert "RESULT attestation record form: purged-v1 | binding: v2" in doc
-        assert "RESULT attestation preimage carries commitment: True = purged-v1" in doc
-        # the script the document tells a reader to run is in the repository
+    def test_the_rerun_has_its_own_record(self):
+        """The re-execution is its own document, not the earlier transcript with
+        a later section spliced into it. A transcript with an appendix is no
+        longer a transcript: a reader cannot tell which build produced which
+        lines, and the earlier record stops being evidence of the build it ran on.
+        """
         import pathlib
 
+        rerun = pathlib.Path("docs/restore-drills/2026-11-06-purge-path-post-marker.md")
+        assert rerun.exists(), "the post-marker run must be its own record"
+        text = rerun.read_text()
+        assert "2b9296a" in text
+        assert "RESULT attestation preimage carries commitment: True = purged-v1" in text
+        assert "RESULT attestation is a deletion, readable from the record alone: True" in text
+        # the script a reader is told to run is in the repository, and the
+        # temporary path it replaced is named only as history
         assert pathlib.Path("scripts/purge_path_drill.py").exists()
-        assert "python3 scripts/purge_path_drill.py" in doc
-        assert "/tmp/purgedrill/run.py" not in doc
+        assert "python3 scripts/purge_path_drill.py" in text
+        assert "/tmp/purgedrill/run.py" not in text
+
+    def test_the_earlier_transcript_is_left_as_recorded(self):
+        """Frozen records stay frozen: the older document is unchanged apart from
+        a pointer, and it still carries the run it actually performed."""
+        doc = self._doc()
+        assert "## Re-run after the marker" not in doc
+        assert "2026-11-06-purge-path-post-marker.md" in doc, "the pointer is the only addition"
+        # the temporary path it named is left in place, as history, in this file
+        assert "/tmp/purgedrill/run.py" in doc
 
     def test_it_keeps_the_section_naming_the_copy_problem(self):
         doc = self._doc()
