@@ -42,6 +42,25 @@ A malformed `CUSTOS_REPLICA_COUNT` is also refused. Defaulting a topology to one
 when the value cannot be parsed is how a deployment ends up horizontal while
 every log line says single.
 
+### Schema creation is inside the declared scope
+
+The three refusals above are stated in terms of chain state and quota counters,
+which is how the constraint was first described and is not the whole of what it
+covers. A cold start against an empty database creates the audit schema, and two
+processes doing that at once race on `pg_type_typname_nsp_index`: one creates the
+type, the other fails on the duplicate key. That failure happens upstream of the
+chain and before the fork guard is reached, so a deployment that would have been
+refused for the right reason instead dies for a reason that looks like a
+migration fault.
+
+The practical consequence is that the constraint also protects schema creation,
+and the case to watch is not a steady state but a rollout: a replacement pod
+booting against an empty database while another is still starting is two writers
+for the length of that overlap, whichever pid the operator declared. This is
+recorded as issue 131 and it is a defect rather than a condition, because the
+correct behaviour is a named refusal and not a database error surfaced as a crash
+loop.
+
 ## What the check does not do
 
 It cannot detect how many processes are running. An operator can start three
