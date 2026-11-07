@@ -42,6 +42,7 @@ Commercial license available upon request.
 """
 
 import hashlib
+import logging
 import secrets
 import sqlite3
 import time
@@ -61,6 +62,8 @@ from .audit import (
 MARKER_SALTED = b"CUSTOS-COMMIT-v1:salted\x00"
 MARKER_UNSALTED = b"CUSTOS-COMMIT-v0:unsalted\x00"
 COMMITMENT_VERSION = 1
+
+logger = logging.getLogger("custos.retention")
 SALT_BYTES = 32
 
 STATUS_PRESENT = "present"
@@ -182,6 +185,7 @@ class ContentStore:
         triggered_rule: Optional[str] = None,
         trace_id: Optional[str] = None,
         policy_digest: Optional[str] = None,
+        tenant_id: Optional[str] = None,
         legacy: bool = False,
     ):
         """Store the body, then record it with the form it was stored in.
@@ -201,6 +205,7 @@ class ContentStore:
             triggered_rule=triggered_rule,
             trace_id=trace_id,
             policy_digest=policy_digest,
+            tenant_id=tenant_id,
             commitment=form,
         )
 
@@ -557,3 +562,119 @@ def reconcile(records: Iterable, store: ContentStore) -> Reconciliation:
         records_read=records_read,
         digests_examined=len(claims) + len(attested - set(claims)),
     )
+
+
+def record_decision(
+    ctx,
+    *,
+    tenant_id: Optional[str] = None,
+    content: str,
+    client_id: str,
+    action: str,
+    reason: str,
+    triggered_rule: Optional[str] = None,
+    trace_id: Optional[str] = None,
+    policy_digest: Optional[str] = None,
+):
+    """Record one decision, keeping its content only when retention says to.
+
+    One implementation for every path that records a decision, because the failure
+    this prevents is a record that claims a stored form while the store holds
+    nothing. With two copies of this ordering, the action gate would eventually
+    have said ``none`` over a body retention had kept, which is the same defect the
+    commitment marker exists to make impossible.
+
+    The store is resolved per tenant from the environment rather than passed in, so
+    a caller cannot record against a store the configuration did not select.
+
+    ``tenant_id`` is accepted explicitly because one caller holds it separately from
+    the context it passes, and because it is written onto the record rather than only
+    used to find a store: an unscoped chain that is told the tenant must keep saying
+    so, or the record is attributed to whoever the reader guesses instead. When
+    neither the argument nor the context supplies a tenant, nothing is stored and the
+    record says ``none``, which is still true: no body was kept. That is a refusal to
+    guess a tenant, not an assumption about one.
+    """
+    # Imported here rather than at module scope: content_retention imports
+    # ContentStore from this module, so a top-level import would be circular.
+    from .content_retention import content_store_for
+
+    def _none() -> object:
+        return ctx.audit_chain.record(
+            client_id=client_id,
+            action=action,
+            reason=reason,
+            content=content,
+            triggered_rule=triggered_rule,
+            trace_id=trace_id,
+            policy_digest=policy_digest,
+            tenant_id=tenant_id,
+            commitment=COMMITMENT_NONE,
+        )
+
+    resolved_tenant = tenant_id or getattr(ctx, "tenant_id", None)
+    if resolved_tenant is None:
+        logger.warning(
+            "custos.content_retention.tenant_unresolved",
+            extra={
+                "consequence": (
+                    "recorded with commitment none because no tenant could be "
+                    "resolved to a content store; no body was kept"
+                )
+            },
+        )
+        return _none()
+
+    store = content_store_for(resolved_tenant)
+    if store is None:
+        return _none()
+
+    try:
+        return store.put_and_record(
+            content,
+            chain=ctx.audit_chain,
+            client_id=client_id,
+            action=action,
+            reason=reason,
+            triggered_rule=triggered_rule,
+            trace_id=trace_id,
+            policy_digest=policy_digest,
+            tenant_id=tenant_id,
+        )
+    except ContentPurged:
+        # This content was purged earlier and the store refuses to hold it again,
+        # which is what makes a purge a purge. Refusing to decide content because
+        # it was once erased would turn an erasure into a blacklist, so the
+        # decision is recorded with the form ``none`` (true of this record) and the
+        # earlier attestation stands.
+        logger.warning(
+            "custos.content_retention.purged_content_resubmitted",
+            extra={
+                "tenant_id": resolved_tenant,
+                "content_hash": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+                "consequence": (
+                    "decided and recorded with commitment none; the store will not "
+                    "re-hold content a purge removed, and the prior attestation stands"
+                ),
+            },
+        )
+        return _none()
+    except Exception:
+        # put_and_record stores the body before it writes the record, which is the
+        # only order that lets the record state the form the store used. The price
+        # is that a failed record write can leave a body nothing points at. It is
+        # logged with its digest so it can be purged by hand, and NOT deleted here:
+        # bodies are addressed by content, so the same body may belong to a record
+        # written by an earlier request.
+        logger.error(
+            "custos.content_retention.body_without_record",
+            extra={
+                "tenant_id": resolved_tenant,
+                "content_hash": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+                "consequence": (
+                    "a body may be stored with no record naming it; it is not "
+                    "attributable and only a purge by that digest removes it"
+                ),
+            },
+        )
+        raise

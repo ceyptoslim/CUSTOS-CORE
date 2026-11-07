@@ -73,10 +73,15 @@ class TestTheDesignNoteKeepsItsDisclosures:
         assert "CUSTOS_CONTENT_RETENTION=store" in doc
         assert "(default)" in doc
 
-    def test_it_names_the_action_gate_gap(self):
+    def test_it_states_the_action_gates_retention_status(self):
+        """This guard used to require the words "retains nothing", which was the
+        gap. Asserting the absence now would pin a defect as the expected state,
+        so it requires the endpoint and what it does instead: records through the
+        shared path, and says which issue closed the gap."""
         doc = _norm(DESIGN)
         assert "/v1/evaluate_action" in doc
-        assert "retains nothing" in doc.lower() or "retains nothing" in doc
+        assert "retention-aware path" in doc
+        assert "issue 140" in doc
 
     def test_it_says_why_replay_is_excluded(self):
         doc = _norm(DESIGN)

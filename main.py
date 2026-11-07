@@ -19,7 +19,6 @@ v1.0 additions:
 
 
 
-import hashlib
 import hmac
 import os
 import time
@@ -53,6 +52,7 @@ from custos.retention import (
     STATUS_PURGED,
     STATUS_UNKNOWN,
     ContentPurged,
+    record_decision,
     PurgeRefused,
     reconcile,
 )
@@ -528,87 +528,23 @@ def _record_decision(
     trace_id=None,
     policy_digest=None,
 ):
-    """Record a decision, keeping the content only when retention says to.
+    """Record a decision through the one shared retention-aware path.
 
-    One call site rather than two, because the failure this prevents is a record
-    that claims a stored form while the store holds nothing: the form is read
-    from the store it was written to, so the record cannot disagree with the
-    store about what this process did. With retention off nothing is stored and
-    the record says ``none``, which is a true statement about a gate that kept
-    nothing.
+    The body of this used to live here. It moved to ``custos.retention`` when the
+    action gate needed the same ordering, because two copies of store-then-record
+    is how one of them ends up recording a form the store did not use. This wrapper
+    stays so the call sites and their tests read the same as before.
     """
-    store = content_store_for(ctx.tenant_id)
-    if store is None:
-        return _unretained_record(
-            ctx,
-            content=content,
-            client_id=client_id,
-            action=action,
-            reason=reason,
-            triggered_rule=triggered_rule,
-            trace_id=trace_id,
-            policy_digest=policy_digest,
-        )
-    try:
-        return store.put_and_record(
-            content,
-            chain=ctx.audit_chain,
-            client_id=client_id,
-            action=action,
-            reason=reason,
-            triggered_rule=triggered_rule,
-            trace_id=trace_id,
-            policy_digest=policy_digest,
-        )
-    except ContentPurged:
-        # This content was purged earlier, and the store refuses to keep it
-        # again, which is what makes a purge a purge. The gate still has to
-        # decide: refusing to evaluate content because it was once erased would
-        # turn an erasure into a blacklist. The decision is recorded with the
-        # form ``none``, which is true of this record (it holds no stored body),
-        # and the chain already carries the attestation for that digest, so the
-        # two sides still agree.
-        logger.warning(
-            "custos.content_retention.purged_content_resubmitted",
-            extra={
-                "tenant_id": ctx.tenant_id,
-                "content_hash": hashlib.sha256(content.encode("utf-8")).hexdigest(),
-                "consequence": (
-                    "decided and recorded with commitment none; the store will not "
-                    "re-hold content a purge removed, and the prior attestation stands"
-                ),
-            },
-        )
-        return _unretained_record(
-            ctx,
-            content=content,
-            client_id=client_id,
-            action=action,
-            reason=reason,
-            triggered_rule=triggered_rule,
-            trace_id=trace_id,
-            policy_digest=policy_digest,
-        )
-    except Exception:
-        # put_and_record stores the body before it writes the record, which is
-        # the only order that lets the record state the form the store used. The
-        # price is that a failed record write can leave a body nothing points at.
-        # It is logged with its digest so it can be purged by hand, and NOT
-        # deleted here: bodies are addressed by content, so the same body may
-        # belong to a record written by an earlier request, and deleting it would
-        # destroy that record's content to tidy up this one.
-        logger.error(
-            "custos.content_retention.body_without_record",
-            extra={
-                "tenant_id": ctx.tenant_id,
-                "content_hash": hashlib.sha256(content.encode("utf-8")).hexdigest(),
-                "consequence": (
-                    "a body may be stored with no record naming it; it is not "
-                    "attributable and only a purge by that digest removes it"
-                ),
-            },
-        )
-        raise
+    return record_decision(
+        ctx,
+        content=content,
+        client_id=client_id,
+        action=action,
+        reason=reason,
+        triggered_rule=triggered_rule,
+        trace_id=trace_id,
+        policy_digest=policy_digest,
+    )
 
 
 def _unretained_record(
