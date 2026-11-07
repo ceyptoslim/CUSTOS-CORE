@@ -27,7 +27,9 @@ Three markers, used consistently:
 | `custos_requests_allowed` | counter | decisions that allowed |
 | `custos_requests_denied` | counter | decisions that denied |
 | `custos_requests_audited` | counter | decisions flagged for audit (a subset, not a third outcome) |
-| `custos_rate_limit_hits` | counter | refusals by the limiter |
+| `custos_refused_total{kind}` | counter | refusals before a decision, labelled by kind: `invalid_request`, `unknown_tenant`, `rate_limited` |
+| `custos_decisions_unrecorded` | counter | decisions reached whose record could not be persisted (a 503 from a full store) |
+| `custos_rate_limit_hits` | counter | refusals by the limiter (kept for dashboards written before the labels existed) |
 | `custos_audit_chain_length` | gauge | records in the default tenant's chain |
 | `custos_tenant_count` | gauge | registered tenants |
 | `custos_uptime_seconds` | gauge | seconds since this process started |
@@ -37,26 +39,44 @@ Three markers, used consistently:
 and `custody`. The first four gate readiness. Custody reports state and never gates,
 which is a deliberate choice recorded in `docs/design/chain-head-custody.md`.
 
-Two things the surface does not have, and both are load-bearing for what follows: a
-latency histogram, and any counter that separates refusals by kind. A request
-refused before a decision, by the limiter, by authentication, or by a full audit
-store, increments `custos_requests_total` and `custos_rate_limit_hits` only in the
-third case, so the counters cannot tell an operator which refusal they are looking
-at. Issue 158 is that instrument gap.
+One thing the surface does not have and it is load-bearing for what follows: a
+latency histogram, which is why section 8 refuses to state a latency objective.
+
+It used to have a second gap, and issue 158 was filed for it: a request refused
+before a decision incremented `custos_requests_total` and nothing else, so the
+difference between the total and the outcome counters was one remainder mixing a
+422, a 403 and a 429. An operator reading it could see that something was refused
+and not what. `custos_refused_total{kind}` closes it, and the identity in SLO-1 is
+now a sum rather than an inequality. The remainder was real for as long as it
+lasted, which is worth keeping in the document: an accounting identity that cannot
+be closed is usually a missing label rather than a bug.
 
 ## 2. Objectives the service measures
 
-**SLO-1, decision accounting is consistent.** MEASURED. Over any window,
+**SLO-1, decision accounting closes.** MEASURED. Over any window, in process
+counters:
 
-    custos_requests_total - (custos_requests_allowed + custos_requests_denied)
+    custos_requests_total
+      = custos_requests_allowed + custos_requests_audited + custos_requests_denied
+      + custos_refused_total{kind="invalid_request"}
+      + custos_refused_total{kind="unknown_tenant"}
+      + custos_refused_total{kind="rate_limited"}
 
-equals the requests refused before a decision was reached. This is written as an
-inequality with a named difference rather than as a sum, because the difference is
-real: a rate-limited request is counted in total and never allowed or denied. The
-target is that the difference is fully attributable, which it is not today. That is
-the gap in section 1, not a rounding error. Issue 158 is what would let this be
-written as a sum, and until it closes this objective stays an inequality with a
-named difference.
+Every request that reaches the decision path is in exactly one of six places, and
+the target is that the sum closes with no remainder.
+
+Writing the identity exposed a second error in the first version of this objective,
+which said the difference between the total and the allowed and denied counters was
+refusals: it was not. A decision flagged for audit increments
+`custos_requests_audited` instead of `custos_requests_allowed`, so an audited
+decision was sitting in that "difference" too, indistinguishable from a refusal.
+The labels made the remainder small enough to see, and the audit category is the
+reason the identity has six terms rather than five.
+
+The counter is per process. With more than one replica there are several counters
+and no aggregation in the service, and the constraint that refuses more than one
+replica (`docs/design/single-replica-constraint.md`) is what makes a per-process
+identity meaningful rather than a sampling of a cluster.
 
 **SLO-2, readiness reflects what the process can actually do.** MEASURED. `/ready`
 returns `ready` only when a policy engine holds at least one rule, the audit chain
