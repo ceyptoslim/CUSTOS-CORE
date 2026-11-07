@@ -115,3 +115,40 @@ class TestTheObjectivesSayWhoProducesTheNumber:
     def test_the_durability_objective_does_not_promise_a_rate(self):
         doc = _flat(DOC)
         assert "Neither drill measures a rate" in doc
+
+class TestItRecordsTheRefusalsTheHandlerNeverSees:
+    """Issue 166: the label reaches the handler, and some refusals never get there."""
+
+    def test_the_table_says_what_the_label_actually_reaches(self):
+        """Read the row, not the document: the phrase also appears in the prose.
+
+        The first version of this guard searched the flattened document for "refusals
+        raised inside the handler" and passed with the table row reverted, because the
+        paragraph below the table contains the same words. The guard has to hold the
+        row that operators actually read.
+        """
+        rows = [
+            line
+            for line in DOC.read_text(encoding="utf-8").splitlines()
+            if line.startswith("| `custos_refused_total{kind}`")
+        ]
+        assert len(rows) == 1, f"expected one row for the label, found {len(rows)}"
+        row = rows[0]
+        assert "inside the handler" in row, (
+            "the metrics table describes the label as covering refusals generally, but a "
+            "body refused by the request model never reaches the handler"
+        )
+        assert "counted nowhere" in row, (
+            "the row does not say what happens to a refusal the handler never sees"
+        )
+
+    def test_it_names_the_gap_and_the_measurement_behind_it(self):
+        doc = _flat(DOC)
+        assert "issue 166" in doc.lower(), "the document does not name the issue recording the gap"
+        assert "32,770 bytes" in doc, (
+            "the measured shape that does reach the validator is gone, so the paragraph "
+            "no longer shows what the label can see"
+        )
+        assert "indistinguishable from an idle service" in doc, (
+            "the operational consequence is missing, which is the reason the gap matters"
+        )

@@ -200,3 +200,48 @@ class TestEveryLabelIsWired:
         handler_start = source.index("async def audit_store_full_handler")
         handler_end = source.index("@app.get(\"/v1/info\")")
         assert '_metrics["custos_decisions_unrecorded"] += 1' in source[handler_start:handler_end]
+
+class TestTheRefusalsTheHandlerNeverSees:
+    """Issue 166: the model layer refuses a body before the decision path is entered.
+
+    These two guards hold both halves of the layering. If the model stops shadowing
+    the validator, the first fails because blank bodies start moving the counters. If
+    the model gains a byte limit as well, the second fails because nothing reaches the
+    validator any more and the document's "reachable only here" sentence goes stale.
+    """
+
+    def test_a_body_the_model_refuses_moves_no_counter(self):
+        with TestClient(app_module.app) as client:
+            before = _counters(client)
+            for i in range(3):
+                response = client.post(
+                    "/v1/evaluate",
+                    json={"client_id": f"model-refused-{i}", "content": "   "},
+                )
+                assert response.status_code == 422
+            after = _counters(client)
+        assert after["custos_requests_total"] == before["custos_requests_total"], (
+            "a blank body reached the decision path, so the model no longer refuses it "
+            "first and the SLO document's gap paragraph is out of date"
+        )
+        assert _refused(after, "invalid_request") == _refused(before, "invalid_request"), (
+            "a blank body incremented the refusal label. If that is now intended, issue 166 "
+            "is closed and the document should stop calling it a gap"
+        )
+
+    def test_the_one_shape_that_reaches_the_validator_moves_both(self):
+        """Characters under the model limit, bytes over the validator limit."""
+        content = "é" * 16_385
+        assert len(content) <= 32_768 and len(content.encode("utf-8")) > 32_768
+        with TestClient(app_module.app) as client:
+            before = _counters(client)
+            response = client.post(
+                "/v1/evaluate", json={"client_id": "byte-over-char-limit", "content": content}
+            )
+            after = _counters(client)
+        assert response.status_code == 422
+        assert after["custos_requests_total"] == before["custos_requests_total"] + 1, (
+            "the byte-limit shape no longer reaches the handler, so no refusal is reachable "
+            "and the label is emitted but never incremented"
+        )
+        assert _refused(after, "invalid_request") == _refused(before, "invalid_request") + 1
