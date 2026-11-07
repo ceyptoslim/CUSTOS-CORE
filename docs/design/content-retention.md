@@ -90,7 +90,15 @@ and the cold-start race.
 
 This is a statement about the evidence and not about the code. `reconcile()` reads
 records through the chain, and the content store is a filesystem side store keyed
-by `content_hash`, which does not care which backend wrote the record. But an
+by `content_hash`, which does not care which backend wrote the record.
+
+The structural half of that is guarded rather than asserted:
+`tests/test_retention_backend_independence.py` fails if either retention module
+names an audit backend, a backend class or `DATABASE_URL`. It is a claim about the
+source that a reader could not otherwise check from the sentence making it, which
+is the shape this document keeps having to correct. What the guard does not
+establish is that the behaviour is identical on every backend. Nothing branches is
+an argument about the code; the measurement is issue 149. But an
 argument from "the code paths are the same" is how the cross-tenant loader and the
 full-store refusal were both excused before each turned out to be wrong, so the
 narrower sentence is the one that goes in the document. Issue 149 is the run that
