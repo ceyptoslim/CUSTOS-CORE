@@ -200,3 +200,11 @@ is a wiring gap and not a property of this drill: the purge path exists, the
 store exists, and the endpoint that would call them does not. It is filed as
 issue 137, and no erasure claim about the served path should be made until it is
 closed.
+
+Issue 137 is closed since, by `3ed1517`. `CUSTOS_CONTENT_RETENTION=store` makes
+`/v1/evaluate` keep the evaluated body and record the commitment form it actually
+stored, erasure runs through the retention endpoints, and `docs/design/content-retention.md`
+states which endpoints are covered. So the condition the paragraph above sets is now
+met, under that mode and not under `off`, where the service keeps nothing and
+therefore erases nothing. The observation above is of this run and is left as it
+was recorded.

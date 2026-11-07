@@ -349,6 +349,14 @@ as assumptions.
 3. Two processes cold-starting against one empty database race in schema
    creation and one exits (phase 10, first attempt).
 
+Items 2 and 3 above were open when this transcript was written and are fixed on
+main since: 2 by `6c74879` (a full store is now a 503 with retry guidance, note at
+`docs/design/store-refusals-and-cold-start.md`), 3 by the same merge (advisory lock
+before the DDL). The observations above are left as they were recorded, at the
+build they were recorded on. The fix for 3 is measured on a real server by
+`scripts/drills/phase13_cold_start_race.py`, which fails on the build in this
+transcript.
+
 ## What an operator should take from this
 
 Restart survival, restore, a killed writer, a full device and a second writer

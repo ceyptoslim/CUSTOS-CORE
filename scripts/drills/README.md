@@ -60,12 +60,43 @@ both to report the head they loaded, and only then lets either append. Reproduce
 2026-11-06: **A appended 200, B refused with `ChainForkError`, B's in-process
 chain length 0, fresh process verifies `[True, 'OK']` with clients `['A']`.**
 
-The warm-up is deliberate. Two cold starts against an empty database race in
-schema creation (`pg_type_typname_nsp_index`, issue 131) and one process dies
-there, upstream of the chain and before the fork guard. Without the warm-up that
-failure looks like the guard working, which is a false pass; with it, the fork
-condition is the only thing under test. Issue 131 is a defect in its own right
-and is filed.
+The warm-up is deliberate. Two cold starts against an empty database used to race
+in schema creation (`pg_type_typname_nsp_index`, issue 131) and one process died
+there, upstream of the chain and before the fork guard, which made that failure
+look like the guard working: a false pass. The race is fixed now, and the warm-up
+stays, because this phase is about the fork condition and should not acquire a
+second reason to fail. The race itself is phase 13.
+
+## Phase 13: two cold starts on an empty database (PostgreSQL)
+
+```
+DATABASE_URL=postgresql://user:pass@host:port/db \
+  python3 scripts/drills/phase13_cold_start_race.py
+```
+
+The inverse of phase 10: no warm-up, no stagger, an empty scratch schema every
+trial, and both processes released at the same wall-clock instant. This is the
+defect the phase 10 warm-up was working around, measured directly.
+
+Pass condition, per trial: both processes reach the end of schema creation,
+exactly one append lands, and the other is refused at the store with
+`ChainForkError`.
+
+Measured 2026-11-06 on `main` at `40d6519`: **5/5 trials, both processes up, one
+append each.** The same driver on `58c7462`, before the advisory lock, **fails 5/5
+trials** with
+
+```
+psycopg2.errors.UniqueViolation: duplicate key value violates unique constraint
+  "pg_type_typname_nsp_index"
+```
+
+which is the mutation check for the fix rather than for the unit test that models
+it. Those five results are what closed issue 131.
+
+It needs a real server and refuses without one: the duplicate-key error comes from
+the PostgreSQL catalogs, so no store this repository can fake will produce it. The
+driver creates and drops its own `drill_cold_*` schemas and touches nothing else.
 
 ## Phase 11: export and backup, and the restored-from-backup negative result
 

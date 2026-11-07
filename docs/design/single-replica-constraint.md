@@ -57,9 +57,14 @@ The practical consequence is that the constraint also protects schema creation,
 and the case to watch is not a steady state but a rollout: a replacement pod
 booting against an empty database while another is still starting is two writers
 for the length of that overlap, whichever pid the operator declared. This is
-recorded as issue 131 and it is a defect rather than a condition, because the
-correct behaviour is a named refusal and not a database error surfaced as a crash
-loop.
+recorded as issue 131. It was a defect rather than a condition, because the correct
+behaviour is a named refusal and not a database error surfaced as a crash loop, and
+it is fixed: both bootstraps take `pg_advisory_xact_lock` before their DDL, so the
+second process waits and then finds the table already there. The fix is measured on a
+real server by `scripts/drills/phase13_cold_start_race.py`, two processes released at
+the same instant against an empty database, and it fails on the build before the lock.
+What this check still cannot do is detect that a rollout overlapped, so the overlap
+remains an operator fact rather than something the service reports.
 
 ## What the check does not do
 
