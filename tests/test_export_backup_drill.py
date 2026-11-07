@@ -8,6 +8,7 @@ aging into a claim nobody can re-run.
 """
 
 import pathlib
+import re
 
 DOC = pathlib.Path("docs/restore-drills/2026-11-06-export-backup.md")
 SCRIPT = pathlib.Path("scripts/drills/phase11_export_backup.py")
@@ -135,3 +136,23 @@ class TestTheScriptRefusesRatherThanPassesOnNothing:
         script = _script()
         assert "read_bytes().count(" in script
         assert "not a query through the store" in script
+
+class TestTheRecordIsCompleteAsWellAsAccurate:
+    """The guard above checks that every line the record quotes is a line the script
+    prints. It does not check the other direction, so a transcript could omit a line
+    and stay green: the same one-directional shape as the count check, found by
+    applying the rule that a guard is proven by reverting its claim.
+
+    Measured when this was added: every distinct RESULT prefix the script can print
+    appears in the record, so the reverse direction holds today and can be enforced
+    rather than left to whoever regenerates the transcript."""
+
+    def test_every_result_the_script_can_print_is_in_the_record(self):
+        script = SCRIPT.read_text(encoding="utf-8")
+        doc = _doc()
+        prefixes = {
+            m.group(1).strip().rstrip(": ")
+            for m in re.finditer(r'RESULT ([^{":]+)', script)
+        }
+        missing = sorted(p for p in prefixes if p and p not in doc)
+        assert not missing, f"the script prints lines the record does not carry: {missing}"
