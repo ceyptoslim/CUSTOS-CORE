@@ -26,6 +26,8 @@ from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.responses import PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -466,6 +468,37 @@ def _startup_binding_or_disabled() -> dict:
 AUDIT_STORE_FULL_RETRY_AFTER = 30
 
 
+# The two endpoints that reach a decision. The accounting below is scoped to them,
+# and it says which ones rather than saying "the decision path", because a claim
+# with an unstated scope is how the last two accounting errors survived.
+DECISION_PATHS = frozenset({"/v1/evaluate", "/v1/evaluate_action"})
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_handler(request: Request, exc: RequestValidationError):
+    """A body the request model refuses is a refusal, and it was counted nowhere.
+
+    FastAPI rejects a malformed body before the route handler runs, so the
+    handler's own counters never executed: not the total, not the refusal label,
+    not the chain. Twenty blank bodies returned 422 and moved nothing, which meant
+    an operator could not tell a client sending malformed requests from an idle
+    service (issue 166, measured on becc32b).
+
+    Both counters move together. Moving only the label would break SLO-1, because
+    the total would stay still while a term of the sum grew.
+
+    The response is reproduced exactly as Starlette's default handler returns it,
+    so a caller sees no change in the body it receives.
+    """
+    if request.url.path in DECISION_PATHS:
+        _metrics["custos_requests_total"] += 1
+        _metrics["custos_refused_invalid_request"] += 1
+    return JSONResponse(
+        status_code=422,
+        content={"detail": jsonable_encoder(exc.errors())},
+    )
+
+
 @app.exception_handler(AuditStoreFull)
 async def audit_store_full_handler(request: Request, exc: AuditStoreFull):
     """A full audit store is a refusal with a reason, not a 500.
@@ -552,6 +585,12 @@ async def evaluate_action(
     span.set_attribute("client_id", req.client_id)
     span.set_attribute("tenant_id", req.tenant_id)
     span.set_attribute("tool", req.tool)
+
+    # The gate already incremented the allowed and denied counters and never
+    # incremented the total, so every gate decision made the SLO-1 sum larger than
+    # the total it is supposed to equal. One line, found by sending one gate
+    # request beside one evaluate request and reading /metrics either side.
+    _metrics["custos_requests_total"] += 1
 
     gate_result = action_gate.evaluate_action(
         tenant_id=req.tenant_id,
