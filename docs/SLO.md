@@ -54,7 +54,9 @@ equals the requests refused before a decision was reached. This is written as an
 inequality with a named difference rather than as a sum, because the difference is
 real: a rate-limited request is counted in total and never allowed or denied. The
 target is that the difference is fully attributable, which it is not today. That is
-the gap in section 1, not a rounding error.
+the gap in section 1, not a rounding error. Issue 158 is what would let this be
+written as a sum, and until it closes this objective stays an inequality with a
+named difference.
 
 **SLO-2, readiness reflects what the process can actually do.** MEASURED. `/ready`
 returns `ready` only when a policy engine holds at least one rule, the audit chain
