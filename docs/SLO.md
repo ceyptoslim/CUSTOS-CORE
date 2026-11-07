@@ -27,7 +27,7 @@ Three markers, used consistently:
 | `custos_requests_allowed` | counter | decisions that allowed |
 | `custos_requests_denied` | counter | decisions that denied |
 | `custos_requests_audited` | counter | decisions flagged for audit (a subset, not a third outcome) |
-| `custos_refused_total{kind}` | counter | refusals before a decision, labelled by kind: `invalid_request`, `unknown_tenant`, `rate_limited` |
+| `custos_refused_total{kind}` | counter | refusals raised inside the handler, labelled by kind: `invalid_request`, `unknown_tenant`, `rate_limited`. A body the request model refuses never reaches the handler and is counted nowhere (see the note below) |
 | `custos_decisions_unrecorded` | counter | decisions reached whose record could not be persisted (a 503 from a full store) |
 | `custos_rate_limit_hits` | counter | refusals by the limiter (kept for dashboards written before the labels existed) |
 | `custos_audit_chain_length` | gauge | records in the default tenant's chain |
@@ -42,7 +42,7 @@ which is a deliberate choice recorded in `docs/design/chain-head-custody.md`.
 One thing the surface does not have and it is load-bearing for what follows: a
 latency histogram, which is why section 8 refuses to state a latency objective.
 
-It used to have a second gap, and issue 158 was filed for it: a request refused
+It used to have another gap, and issue 158 was filed for it: a request refused
 before a decision incremented `custos_requests_total` and nothing else, so the
 difference between the total and the outcome counters was one remainder mixing a
 422, a 403 and a 429. An operator reading it could see that something was refused
@@ -50,6 +50,26 @@ and not what. `custos_refused_total{kind}` closes it, and the identity in SLO-1 
 now a sum rather than an inequality. The remainder was real for as long as it
 lasted, which is worth keeping in the document: an accounting identity that cannot
 be closed is usually a missing label rather than a bug.
+
+A second gap runs the other way, and it does not close. The label counts refusals
+raised inside the handler, and the request model refuses some bodies before the
+handler is reached: `EvaluateRequest` in `custos/models.py` enforces the same
+constraints `InputValidator` enforces, so a malformed body is answered with a 422
+and no counter moves at all, `custos_requests_total` included. Measured on a
+production-mode process writing to PostgreSQL on 2026-11-07 at `becc32b`: twenty
+requests with blank content returned 422 and moved `custos_requests_total` by zero
+and the `invalid_request` label by zero. The label is reachable only where the two
+layers disagree, which is a string inside the model's 32,768 character limit and
+outside the validator's 32,768 byte limit: 16,385 `é` is 32,770 bytes, reaches the
+handler, and moves both counters by one.
+
+The identity above is unaffected, because a request that never reaches the decision
+path is not one of its six terms, and saying so is the difference between a gap in
+visibility and a wrong sum. What the gap costs is the operator's view: a caller
+sending malformed bodies is indistinguishable from an idle service. Counting the
+refusal where it happens, in a handler for the model's own rejection, would extend
+the identity rather than correct it, and it needs a decision about whether the total
+is meant to count requests served or requests decided. Recorded as issue 166.
 
 ## 2. Objectives the service measures
 
