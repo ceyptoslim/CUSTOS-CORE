@@ -186,7 +186,12 @@ class _FakePgCursor:
     def execute(self, sql, params=None):
         s = " ".join(sql.split()).upper()
         self._db.statements.append(s)
-        if s.startswith("CREATE TABLE"):
+        if s.startswith("SELECT PG_ADVISORY_XACT_LOCK"):
+            # Taken before the DDL so two cold starts cannot race inside it
+            # (issue 131). Counted rather than ignored: a fixture that silently
+            # accepts unknown SQL stops noticing new SQL.
+            self._db.advisory_locks += 1
+        elif s.startswith("CREATE TABLE"):
             self._db.schema_created = True
         elif s.startswith("INSERT INTO POLICY_RULES"):
             tenant, name, pattern, action, reason = params
@@ -238,6 +243,7 @@ class _FakePgDatabase:
     def __init__(self):
         self.rows = []
         self.statements = []
+        self.advisory_locks = 0
         self.commits = 0
         self.connect_urls = []
         self.schema_created = False

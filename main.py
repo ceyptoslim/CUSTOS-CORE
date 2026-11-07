@@ -27,6 +27,7 @@ from contextlib import asynccontextmanager
 from typing import Optional
 
 from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.responses import PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -58,7 +59,7 @@ from custos.retention import (
 )
 from custos.jwks import get_jwks_document, validate_production_key
 from custos.logging import configure_logging, get_logger
-from custos.audit import COMMITMENT_NONE
+from custos.audit import AuditStoreFull, COMMITMENT_NONE
 from custos.policy_citation import content_engine_digest
 from custos.models import (
     AuditRecordResponse,
@@ -436,6 +437,44 @@ def _startup_binding_or_disabled() -> dict:
         return {"enabled": False, "established": False}
     summary = {k: v for k, v in _startup_binding.items() if k != "payload"}
     return {**summary, "established": True}
+
+
+# How long a caller is told to wait when the store is full. A hint, not a promise:
+# space returning is an operator action, and the drill measured resume only after
+# the store could accept writes again.
+AUDIT_STORE_FULL_RETRY_AFTER = 30
+
+
+@app.exception_handler(AuditStoreFull)
+async def audit_store_full_handler(request: Request, exc: AuditStoreFull):
+    """A full audit store is a refusal with a reason, not a 500.
+
+    Status 503 because the service cannot serve this request now and can later:
+    the item 1 drill showed it resumes from the last durable head when space
+    returns. ``Retry-After`` carries the operator's recovery window as a hint
+    rather than a promise, and ``X-CUSTOS-Refusal`` names the condition so a
+    caller can branch on it without parsing prose.
+    """
+    logger.warning(
+        "custos.audit.store_full",
+        extra={"path": request.url.path, "reason": str(exc)},
+    )
+    return JSONResponse(
+        status_code=503,
+        headers={
+            "Retry-After": str(AUDIT_STORE_FULL_RETRY_AFTER),
+            "X-CUSTOS-Refusal": "audit-store-full",
+        },
+        content={
+            "detail": (
+                "the audit store is full, so this decision was not recorded and "
+                "the chain was not advanced. Retrying will not succeed until the "
+                "store has space; nothing was served unrecorded"
+            ),
+            "reason": "audit_store_full",
+            "retry_after_seconds": AUDIT_STORE_FULL_RETRY_AFTER,
+        },
+    )
 
 
 @app.get("/v1/info")

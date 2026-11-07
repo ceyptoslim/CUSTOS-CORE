@@ -144,6 +144,17 @@ class PostgreSQLPolicyBackend:
     def _init(self) -> None:
         with self._connect() as conn:
             with conn.cursor() as cur:
+                # The race this closes was measured, not imagined: two processes
+                # cold-starting on an empty database both create the composite
+                # type and the loser dies on pg_type_typname_nsp_index before any
+                # guard could refuse it (issue 131). Derived key, shared with the
+                # audit schema's helper so the two modules cannot drift.
+                from custos.audit import schema_lock_key
+
+                cur.execute(
+                    "SELECT pg_advisory_xact_lock(%s)",
+                    (schema_lock_key("policy_rules"),),
+                )
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS policy_rules (
                         id SERIAL PRIMARY KEY,
