@@ -27,7 +27,7 @@ Three markers, used consistently:
 | `custos_requests_allowed` | counter | decisions that allowed |
 | `custos_requests_denied` | counter | decisions that denied |
 | `custos_requests_audited` | counter | decisions flagged for audit (a subset, not a third outcome) |
-| `custos_refused_total{kind}` | counter | refusals raised inside the handler, labelled by kind: `invalid_request`, `unknown_tenant`, `rate_limited`. A body the request model refuses never reaches the handler and is counted nowhere (see the note below) |
+| `custos_refused_total{kind}` | counter | refusals before a decision, labelled by kind: `invalid_request`, `unknown_tenant`, `rate_limited`. `invalid_request` counts both a refusal raised in the handler and a body the request model refuses, and both move the total with them |
 | `custos_decisions_unrecorded` | counter | decisions reached whose record could not be persisted (a 503 from a full store) |
 | `custos_rate_limit_hits` | counter | refusals by the limiter (kept for dashboards written before the labels existed) |
 | `custos_audit_chain_length` | gauge | records in the default tenant's chain |
@@ -51,25 +51,27 @@ now a sum rather than an inequality. The remainder was real for as long as it
 lasted, which is worth keeping in the document: an accounting identity that cannot
 be closed is usually a missing label rather than a bug.
 
-A second gap runs the other way, and it does not close. The label counts refusals
-raised inside the handler, and the request model refuses some bodies before the
-handler is reached: `EvaluateRequest` in `custos/models.py` enforces the same
-constraints `InputValidator` enforces, so a malformed body is answered with a 422
-and no counter moves at all, `custos_requests_total` included. Measured on a
-production-mode process writing to PostgreSQL on 2026-11-07 at `becc32b`: twenty
-requests with blank content returned 422 and moved `custos_requests_total` by zero
-and the `invalid_request` label by zero. The label is reachable only where the two
-layers disagree, which is a string inside the model's 32,768 character limit and
-outside the validator's 32,768 byte limit: 16,385 `é` is 32,770 bytes, reaches the
-handler, and moves both counters by one.
+A gap of the opposite kind was found on 2026-11-07, measured, and closed the same
+day, and the sequence is worth keeping because the measurement is the part that is
+easy to lose. The label counted refusals the handler raised, and the request model
+refuses some bodies before the handler is reached: `EvaluateRequest` enforces the
+same constraints `InputValidator` enforces, so a malformed body was answered with a
+422 and moved no counter at all, `custos_requests_total` included. Twenty requests
+with blank content returned 422 and moved the total by zero, which meant a caller
+sending malformed bodies was indistinguishable from an idle service. Issue 166.
 
-The identity above is unaffected, because a request that never reaches the decision
-path is not one of its six terms, and saying so is the difference between a gap in
-visibility and a wrong sum. What the gap costs is the operator's view: a caller
-sending malformed bodies is indistinguishable from an idle service. Counting the
-refusal where it happens, in a handler for the model's own rejection, would extend
-the identity rather than correct it, and it needs a decision about whether the total
-is meant to count requests served or requests decided. Recorded as issue 166.
+The closure counts the refusal where it happens, in a handler for the model's own
+rejection, and moves the total and the label together. Moving only the label would
+have broken the identity above, because a term of the sum would have grown while the
+total stood still, so the two increments belong in one place or neither belongs.
+
+Closing it exposed a second defect of the same family, issue 169. The action gate
+incremented `custos_requests_allowed` and `custos_requests_denied` and never
+incremented the total, so one gate request beside one evaluate request moved the sum
+by two against a total of one: the identity was false whenever the gate was used,
+which is why the sentence above now names the two endpoints instead of saying the
+decision path. Both defects were found by reading /metrics either side of real
+requests rather than by reading the code, and both were invisible to a green suite.
 
 ## 2. Objectives the service measures
 
@@ -83,7 +85,10 @@ counters:
       + custos_refused_total{kind="rate_limited"}
 
 Every request that reaches the decision path is in exactly one of six places, and
-the target is that the sum closes with no remainder.
+the target is that the sum closes with no remainder. The two endpoints that reach a
+decision are `/v1/evaluate` and `/v1/evaluate_action`, and a malformed body counts as
+a refusal in `invalid_request` rather than disappearing, so the sentence covers what
+the counters actually serve rather than only the requests that arrive well formed.
 
 Writing the identity exposed a second error in the first version of this objective,
 which said the difference between the total and the allowed and denied counters was

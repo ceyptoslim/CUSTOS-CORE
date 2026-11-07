@@ -116,16 +116,22 @@ class TestTheObjectivesSayWhoProducesTheNumber:
         doc = _flat(DOC)
         assert "Neither drill measures a rate" in doc
 
-class TestItRecordsTheRefusalsTheHandlerNeverSees:
-    """Issue 166: the label reaches the handler, and some refusals never get there."""
+class TestItRecordsTheRefusalGapAndItsClosure:
+    """Issue 166, closed: the label now reaches a body the request model refuses.
 
-    def test_the_table_says_what_the_label_actually_reaches(self):
-        """Read the row, not the document: the phrase also appears in the prose.
+    The guards here were written while the gap was open, and they asserted the gap.
+    They are asserted from the closure side now, and the measurement stays, because
+    the number is the only part of a closed gap that cannot be reconstructed from
+    the diff.
+    """
 
-        The first version of this guard searched the flattened document for "refusals
-        raised inside the handler" and passed with the table row reverted, because the
-        paragraph below the table contains the same words. The guard has to hold the
-        row that operators actually read.
+    def _row(self) -> str:
+        """The table row itself, not the flattened document.
+
+        The first version of this guard searched the whole document for a phrase and
+        passed with the row reverted, because the prose the row points to contains
+        the same words. Reading the line an operator reads is the only version that
+        fires in the right direction.
         """
         rows = [
             line
@@ -133,22 +139,29 @@ class TestItRecordsTheRefusalsTheHandlerNeverSees:
             if line.startswith("| `custos_refused_total{kind}`")
         ]
         assert len(rows) == 1, f"expected one row for the label, found {len(rows)}"
-        row = rows[0]
-        assert "inside the handler" in row, (
-            "the metrics table describes the label as covering refusals generally, but a "
-            "body refused by the request model never reaches the handler"
+        return rows[0]
+
+    def test_the_table_says_the_label_counts_a_model_refusal(self):
+        row = self._row()
+        assert "body the request model refuses" in row, (
+            "the row does not say that a body refused before the handler is counted, "
+            "which is the thing issue 166 closed"
         )
-        assert "counted nowhere" in row, (
-            "the row does not say what happens to a refusal the handler never sees"
+        assert "move the total with them" in row, (
+            "the row no longer says the total moves with the label, and an increment on "
+            "one side only would break the identity"
         )
 
-    def test_it_names_the_gap_and_the_measurement_behind_it(self):
+    def test_it_keeps_the_measurement_and_names_both_issues(self):
         doc = _flat(DOC)
-        assert "issue 166" in doc.lower(), "the document does not name the issue recording the gap"
-        assert "32,770 bytes" in doc, (
-            "the measured shape that does reach the validator is gone, so the paragraph "
-            "no longer shows what the label can see"
+        assert "issue 166" in doc.lower(), "the document does not name the issue that found the gap"
+        assert "issue 169" in doc.lower(), (
+            "the document does not name the action-gate defect that closing the gap exposed"
+        )
+        assert "moved the total by zero" in doc, (
+            "the measurement that made the gap visible is gone, and it is the part a "
+            "reader cannot reconstruct from the diff"
         )
         assert "indistinguishable from an idle service" in doc, (
-            "the operational consequence is missing, which is the reason the gap matters"
+            "the operational consequence is missing, which is the reason the gap mattered"
         )

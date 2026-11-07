@@ -98,6 +98,30 @@ class TestTheDocumentStatesTheSum:
         para = _slo_1_paragraph()
         assert "per process" in para
 
+    def test_it_names_the_two_endpoints_the_identity_covers(self):
+        """Issue 169: "the decision path" was a scope nobody could check."""
+        para = _slo_1_paragraph()
+        assert "/v1/evaluate" in para and "/v1/evaluate_action" in para, (
+            "the identity does not name the endpoints it covers, so a request the "
+            "counters do not serve can be read as a broken identity"
+        )
+        assert "malformed body counts as a refusal" in para, (
+            "the identity does not say what happens to a body the model refuses, which "
+            "is the question issue 166 asked"
+        )
+
+
+class TestTheCountingScopeMatchesTheRoutes:
+    """The scope is a list in the code, so it can drift from the routes it names."""
+
+    def test_every_counted_path_is_a_route_that_exists(self):
+        paths = {getattr(route, "path", None) for route in app_module.app.routes}
+        missing = app_module.DECISION_PATHS - paths
+        assert not missing, (
+            f"DECISION_PATHS names paths no route serves: {sorted(missing)}. A refusal "
+            f"handler pointed at a path that does not exist counts nothing and looks wired."
+        )
+
 
 class TestTheArithmeticClosesInALiveProcess:
     def _drive(self, client, before: dict) -> dict:
@@ -202,15 +226,15 @@ class TestEveryLabelIsWired:
         assert '_metrics["custos_decisions_unrecorded"] += 1' in source[handler_start:handler_end]
 
 class TestTheRefusalsTheHandlerNeverSees:
-    """Issue 166: the model layer refuses a body before the decision path is entered.
+    """Issue 166, closed: the model layer's refusal is counted where it happens.
 
-    These two guards hold both halves of the layering. If the model stops shadowing
-    the validator, the first fails because blank bodies start moving the counters. If
-    the model gains a byte limit as well, the second fails because nothing reaches the
-    validator any more and the document's "reachable only here" sentence goes stale.
+    This class asserted the opposite until the fix landed. It said a blank body must
+    move no counter, and it was written that way on purpose, to fire on the day the
+    feature arrived rather than the day it broke. It went red the moment the handler
+    was added, which is the only evidence that it was pointed at the right thing.
     """
 
-    def test_a_body_the_model_refuses_moves_no_counter(self):
+    def test_a_body_the_model_refuses_moves_both_counters(self):
         with TestClient(app_module.app) as client:
             before = _counters(client)
             for i in range(3):
@@ -220,17 +244,22 @@ class TestTheRefusalsTheHandlerNeverSees:
                 )
                 assert response.status_code == 422
             after = _counters(client)
-        assert after["custos_requests_total"] == before["custos_requests_total"], (
-            "a blank body reached the decision path, so the model no longer refuses it "
-            "first and the SLO document's gap paragraph is out of date"
+        assert after["custos_requests_total"] == before["custos_requests_total"] + 3, (
+            "a malformed body is served as a 422 and is still invisible in the total, "
+            "which is the gap issue 166 named"
         )
-        assert _refused(after, "invalid_request") == _refused(before, "invalid_request"), (
-            "a blank body incremented the refusal label. If that is now intended, issue 166 "
-            "is closed and the document should stop calling it a gap"
-        )
+        assert (
+            _refused(after, "invalid_request")
+            == _refused(before, "invalid_request") + 3
+        ), "the refusal was counted in the total but not in the refusal label"
 
-    def test_the_one_shape_that_reaches_the_validator_moves_both(self):
-        """Characters under the model limit, bytes over the validator limit."""
+    def test_a_body_the_validator_refuses_still_moves_both_by_one(self):
+        """Characters under the model limit, bytes over the validator limit.
+
+        The handler's own refusal path, which the model layer does not intercept.
+        It moved both counters before this change and it must still move them by
+        exactly one each, or the new handler is double counting it.
+        """
         content = "é" * 16_385
         assert len(content) <= 32_768 and len(content.encode("utf-8")) > 32_768
         with TestClient(app_module.app) as client:
@@ -240,8 +269,79 @@ class TestTheRefusalsTheHandlerNeverSees:
             )
             after = _counters(client)
         assert response.status_code == 422
-        assert after["custos_requests_total"] == before["custos_requests_total"] + 1, (
-            "the byte-limit shape no longer reaches the handler, so no refusal is reachable "
-            "and the label is emitted but never incremented"
-        )
+        assert after["custos_requests_total"] == before["custos_requests_total"] + 1
         assert _refused(after, "invalid_request") == _refused(before, "invalid_request") + 1
+
+    def test_the_refusal_response_is_the_one_a_caller_already_handles(self):
+        """The handler must not change the body a caller receives."""
+        with TestClient(app_module.app) as client:
+            response = client.post(
+                "/v1/evaluate", json={"client_id": "shape-probe", "content": "   "}
+            )
+        assert response.status_code == 422
+        detail = response.json()["detail"]
+        assert isinstance(detail, list), "the 422 body is no longer a list under 'detail'"
+        assert detail[0]["loc"] == ["body", "content"]
+        assert "x-custos-version" in {h.lower() for h in response.headers}, (
+            "the model-layer 422 lost the X-CUSTOS-Version header, so the header rule "
+            "does not hold on this path"
+        )
+
+
+class TestOneEndpointWasInTheSumAndNotInTheTotal:
+    """Issue 169: the action gate moved allowed and denied but never the total.
+
+    Found while closing 166, by sending one evaluate request beside one gate request
+    and reading /metrics either side: the total moved by one and the sum by two, so
+    SLO-1's service-wide sentence was false whenever the gate was used.
+    """
+
+    def test_one_of_each_keeps_the_identity_closed(self):
+        with TestClient(app_module.app) as client:
+            before = _counters(client)
+            evaluate = client.post(
+                "/v1/evaluate", json={"client_id": "identity-eval", "content": "hello"}
+            )
+            gate = client.post(
+                "/v1/evaluate_action",
+                json={"client_id": "identity-gate", "tool": "no_such_tool", "command": "rm -rf /"},
+            )
+            after = _counters(client)
+        assert evaluate.status_code == 200 and gate.status_code == 200
+        total = after["custos_requests_total"] - before["custos_requests_total"]
+        decided = sum(after[k] - before[k] for k in TERMS)
+        refused = sum(
+            _refused(after, kind) - _refused(before, kind)
+            for kind in ("invalid_request", "unknown_tenant", "rate_limited")
+        )
+        assert total == 2, (
+            "the gate reached a decision and stayed out of the total, so the sum is "
+            "larger than the total it equals"
+        )
+        assert total == decided + refused, (
+            f"one evaluate request and one gate request did not close the identity: "
+            f"total {total}, decided {decided}, refused {refused}"
+        )
+
+    def test_a_malformed_gate_body_is_counted_like_any_other(self):
+        with TestClient(app_module.app) as client:
+            before = _counters(client)
+            response = client.post("/v1/evaluate_action", json={"client_id": "", "tool": ""})
+            after = _counters(client)
+        assert response.status_code == 422
+        assert after["custos_requests_total"] == before["custos_requests_total"] + 1
+        assert _refused(after, "invalid_request") == _refused(before, "invalid_request") + 1
+
+    def test_a_read_only_endpoint_is_out_of_scope_and_says_nothing(self):
+        """The accounting covers the two decision endpoints, and only those.
+
+        A malformed request to /v1/info is refused by the model layer too. Counting
+        it would put a request in the total that no decision term can match.
+        """
+        with TestClient(app_module.app) as client:
+            before = _counters(client)
+            response = client.post("/v1/info", json={"unexpected": "field"})
+            after = _counters(client)
+        assert response.status_code in (405, 422)
+        assert after["custos_requests_total"] == before["custos_requests_total"]
+        assert _refused(after, "invalid_request") == _refused(before, "invalid_request")
