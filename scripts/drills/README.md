@@ -82,8 +82,25 @@ not the cause; it now exits 2 saying the pre-purge copy is a file copy, which is
 property of SQLite and not of a server.
 
 The reason it cannot run on PostgreSQL is structural rather than lazy: the
-split-restore phase copies the audit store as a file. The PostgreSQL retention run
-is issue 149 and would use a dump and reload instead.
+split-restore phase copies the audit store as a file. The PostgreSQL run is phase 14
+below, which uses a dump and reload instead.
+
+## Phase 14: retention on PostgreSQL (dump instead of file copy)
+
+```
+DATABASE_URL=postgresql://user@host/db \
+  python3 scripts/drills/phase14_retention_postgres.py
+```
+
+Creates and drops its own `drill_retention_*` database, so the database named in
+`DATABASE_URL` is only used as a connection target and for creating the scratch one.
+Needs CREATEDB, psycopg2, and `pg_dump` and `pg_restore` on PATH; it refuses by name
+without any of them, and refuses a URL that is not PostgreSQL.
+
+Same sequence as phase 12 with the copy replaced: keep, erase, reconcile, split
+restore, and a resubmission of purged content that is still decided and records
+`none`. Measured 2026-11-07 on PostgreSQL 15.19: 15 of 15 checks true, recorded in
+`docs/restore-drills/2026-11-07-retention-postgres.md`.
 
 ## Phase 13: two cold starts on an empty database (PostgreSQL)
 
