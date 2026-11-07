@@ -85,6 +85,13 @@ class AuditRecordResponse(BaseModel):
     record_hash: str
     previous_hash: str
     trace_id: Optional[str] = None
+    # Binding version 2 binds these two, and they were absent from the read
+    # surface: the marker exists so a reader can classify a digest from the
+    # record alone, and the API is how a reader gets records. A client that had
+    # to guess whether a digest was salted, unsalted, purged or never bound was
+    # left with exactly the ambiguity the marker was added to remove.
+    binding_version: int = 0
+    commitment: str = "none"
 
 
 # ---------------------------------------------------------------------------
@@ -272,3 +279,54 @@ class CircuitBreakerStatus(BaseModel):
     failure_threshold: int
     last_failure_time: Optional[float] = None
     reset_timeout: float
+
+
+class RetentionPurgeRequest(BaseModel):
+    """An erasure request against one stored digest.
+
+    The reason is required and is written into the chain, because a deletion
+    without a stated reason is indistinguishable from a mistake.
+    """
+
+    tenant_id: str = Field(default="default", min_length=1, max_length=64)
+    content_hash: str = Field(..., min_length=64, max_length=64)
+    reason: str = Field(..., min_length=1, max_length=512)
+
+    @field_validator("content_hash")
+    @classmethod
+    def content_hash_is_hex(cls, v: str) -> str:
+        if not all(c in "0123456789abcdef" for c in v.lower()):
+            raise ValueError("content_hash must be 64 hexadecimal characters")
+        return v.lower()
+
+    @field_validator("reason")
+    @classmethod
+    def reason_not_blank(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("reason must not be blank")
+        return v
+
+
+class RetentionPurgeResponse(BaseModel):
+    purged: bool
+    content_hash: str
+    attestation_hash: str
+    store_status: str
+    tenant_id: str
+
+
+class RetentionFinding(BaseModel):
+    kind: str
+    content_hash: str
+    detail: str
+    record_indexes: list[int] = []
+
+
+class RetentionStatusResponse(BaseModel):
+    tenant_id: str
+    content_retention: str
+    store_file: str
+    records_read: int
+    digests_examined: int
+    ok: bool
+    findings: list[RetentionFinding] = []

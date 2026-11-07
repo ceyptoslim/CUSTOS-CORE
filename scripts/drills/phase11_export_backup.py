@@ -29,7 +29,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from custos.audit import COMMITMENT_NONE, AuditChain  # noqa: E402
-from custos.retention import ContentStore  # noqa: E402
+from custos.retention import ContentStore, reconcile  # noqa: E402
 
 BODIES = {
     "c1": "patient 4471, 118 Palm Ave, dob 1979-02-11",
@@ -171,6 +171,10 @@ def main() -> int:
     print(f"RESULT live export: {len(export_text.splitlines())} lines | forms {forms}")
     print(f"RESULT body text inside the export: {body_in_export}")
 
+    # -- what the two sides say about each other ------------------------
+    live_report = reconcile(chain._records, content)
+    print(f"RESULT live reconciliation: {'ok' if live_report.ok else live_report.describe()}")
+
     # -- the negative result: restore the pre-purge copy ----------------
     restore = root / "restored"
     restore.mkdir()
@@ -202,6 +206,10 @@ def main() -> int:
     print(f"RESULT split restore records: {len(s_chain._records)} | verify: {s_chain.verify()}")
     print(f"RESULT split restore record forms: {record_forms} | store status: {s_content.status(h1)}")
     print(f"RESULT split restore attestations: {len([r for r in s_chain._records if r.commitment == 'purged-v1'])}")
+    split_report = reconcile(s_chain._records, s_content)
+    print(f"RESULT split restore reconciliation: {split_report.describe()}")
+    restored_report = reconcile(r_chain._records, r_content)
+    print(f"RESULT restored reconciliation: {'ok' if restored_report.ok else restored_report.describe()}")
 
     restored_export = root / "export-from-restored.jsonl"
     write_export(export_chain(r_chain, r_content), restored_export)
@@ -222,10 +230,14 @@ def main() -> int:
         ("restored commitment opens", r_content.verify_commitment(h1, restored_body) is True),
         ("restored chain verifies without the attestation", len(attestations) == 0 and r_chain.verify() == (True, "OK")),
         ("exports disagree after the restore", bool(diverged)),
-        # The split restore is a failure of the pair, not of either store: the
-        # chain is green, the body is gone, and nothing states the contradiction.
-        ("split restore contradicts itself silently", s_chain.verify() == (True, "OK") and "salted-v1" in record_forms and "purged-v1" not in record_forms
-         and s_content.status(h1) == "purged"),
+        # The split restore is a failure of the pair, not of either store. The
+        # chain stays green, which is correct for what verify() claims; the
+        # contradiction is now named by reconcile() instead of being silent.
+        ("split restore does not reconcile clean", not split_report.ok),
+        ("split restore names the unattested purge",
+         [f.kind for f in split_report.findings] == ["unattested-purge"]),
+        ("live and restored pairs reconcile clean",
+         live_report.ok and restored_report.ok),
     ]
     for label, passed in checks:
         print(f"RESULT {label}: {passed}")

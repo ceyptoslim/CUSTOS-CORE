@@ -61,7 +61,9 @@ class TestTheRecordIsBoundToItsScript:
             "restored commitment opens",
             "restored chain verifies without the attestation",
             "exports disagree after the restore",
-            "split restore contradicts itself silently",
+            "split restore does not reconcile clean",
+            "split restore names the unattested purge",
+            "live and restored pairs reconcile clean",
         ]
         for label in labels:
             assert label in script, f"{label} is not a check the script performs"
@@ -72,6 +74,7 @@ class TestTheRecordIsBoundToItsScript:
         record as an observation, next to the lines that produced it."""
         doc = _doc()
         assert "## The negative result, stated" in doc
+        assert "unattested-purge" in doc
         assert "RESULT restored body reads back: True" in doc
         assert "RESULT purge attestations in the restored chain: 0" in doc
         assert "purged → present" in doc or "purged -> present" in doc

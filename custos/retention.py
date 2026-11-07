@@ -23,6 +23,13 @@ This module adds the piece that separation alone does not give:
   ``content_hash`` so the deletion is attributable to the record it affects,
   and carries no field that would let the body be reconstructed.
 
+reconcile() compares the record side against the store side and reports the
+disagreements by name. It exists because a restore can produce a state where the
+chain is green, the records say the content is held, and the store says it was
+purged, with nothing comparing the two. That finding gets its own name and its own
+call rather than being folded into verify(), which is a statement about the chain
+and would be lying if it claimed to know anything about a store it never read.
+
 What this does not do, stated here rather than left to be discovered: a purge
 cannot reach a copy of the side store taken before it. A backup retains the
 body and the salt and restoring it resurrects both. That is a property of
@@ -38,7 +45,8 @@ import hashlib
 import secrets
 import sqlite3
 import time
-from typing import Optional
+from dataclasses import dataclass
+from typing import Iterable, Optional
 
 from .audit import (
     COMMITMENT_NONE,
@@ -58,6 +66,18 @@ SALT_BYTES = 32
 STATUS_PRESENT = "present"
 STATUS_PURGED = "purged"
 STATUS_UNKNOWN = "unknown"
+
+# Finding kinds. Named because a caller has to be able to act on one without
+# parsing prose, and because collapsing them would make a deletion look like a
+# missing body.
+FINDING_BODY_MISSING = "body-missing"
+FINDING_UNATTESTED_PURGE = "unattested-purge"
+FINDING_UNEFFECTED_PURGE = "uneffected-purge"
+FINDING_KINDS = (
+    FINDING_BODY_MISSING,
+    FINDING_UNATTESTED_PURGE,
+    FINDING_UNEFFECTED_PURGE,
+)
 
 
 class PurgeRefused(RuntimeError):
@@ -384,3 +404,156 @@ def _commitment(body: str, salt: Optional[bytes]) -> str:
         payload.update(salt[:SALT_BYTES])
     payload.update(body.encode("utf-8"))
     return payload.hexdigest()
+
+
+# -- comparing the two sides ---------------------------------------------
+
+
+@dataclass(frozen=True)
+class Finding:
+    """One disagreement between a record and the store it points at.
+
+    ``kind`` is one of the module constants, and the three are kept distinct
+    because the operational response differs: a missing body is a loss, an
+    unattested purge is a restore undoing an erasure, and an uneffected purge is
+    an attestation the store does not honour.
+    """
+
+    kind: str
+    content_hash: str
+    detail: str
+    record_indexes: tuple = ()
+
+
+@dataclass
+class Reconciliation:
+    """The result of comparing records against a store. Read-only by design."""
+
+    findings: list
+    records_read: int
+    digests_examined: int
+
+    @property
+    def ok(self) -> bool:
+        return not self.findings
+
+    def by_kind(self) -> dict:
+        counts = {kind: 0 for kind in FINDING_KINDS}
+        for finding in self.findings:
+            counts[finding.kind] = counts.get(finding.kind, 0) + 1
+        return {kind: n for kind, n in counts.items() if n}
+
+    def describe(self) -> str:
+        """One line per finding, or a single line saying there were none.
+
+        Deliberately not a boolean: a caller who only learns "false" cannot tell
+        which of the three situations it is in.
+        """
+        if self.ok:
+            return (
+                f"records and store agree ({self.records_read} records, "
+                f"{self.digests_examined} digests examined)"
+            )
+        lines = [
+            f"{finding.kind} {finding.content_hash[:16]}: {finding.detail}"
+            for finding in self.findings
+        ]
+        return "\n".join(lines)
+
+
+def _field(record, name: str, default=None):
+    if isinstance(record, dict):
+        return record.get(name, default)
+    return getattr(record, name, default)
+
+
+def reconcile(records: Iterable, store: ContentStore) -> Reconciliation:
+    """Compare what the records claim about content against what the store holds.
+
+    The three things this can find, and why each is separate:
+
+    body-missing
+        A record says the digest is in a stored form and the store has neither
+        the body nor a purge record. Either the content was never in this store
+        (a record read against the wrong store) or it was lost without a trace.
+
+    unattested-purge
+        A record says the digest is in a stored form and the store says it was
+        purged, but the chain contains no purge attestation for that digest. This
+        is the shape a restore produces: an audit store restored to a point
+        before an erasure, beside a content store that is past it. The deletion
+        happened and nothing in the records says so.
+
+    uneffected-purge
+        The chain carries a purge attestation and the store still holds the body.
+        The mirror restore: the content store rolled back under an audit store
+        that recorded the deletion.
+
+    verify() is not consulted and is not affected. A green chain is a statement
+    about record linkage, and it stays true in every one of these states, which
+    is exactly why the comparison has to be made somewhere else.
+    """
+    attested = set()
+    claims: dict = {}
+    records_read = 0
+
+    for index, record in enumerate(records):
+        records_read += 1
+        # AuditChain.get_records() yields dicts and the in-process list yields
+        # records; the comparison is about two fields, so it reads both rather
+        # than forcing a caller to hand it one shape.
+        commitment = _field(record, "commitment", COMMITMENT_NONE)
+        content_hash = _field(record, "content_hash", "")
+        if commitment == COMMITMENT_PURGED_V1:
+            attested.add(content_hash)
+            continue
+        if commitment in (COMMITMENT_SALTED_V1, COMMITMENT_UNSALTED_V0):
+            claims.setdefault(content_hash, []).append(index)
+
+    findings = []
+    for content_hash, indexes in claims.items():
+        status = store.status(content_hash)
+        attested_here = content_hash in attested
+        if status == STATUS_PURGED and not attested_here:
+            findings.append(
+                Finding(
+                    kind=FINDING_UNATTESTED_PURGE,
+                    content_hash=content_hash,
+                    record_indexes=tuple(indexes),
+                    detail=(
+                        "the store says this digest was purged and no record "
+                        "attests the purge; the deletion is invisible in the chain"
+                    ),
+                )
+            )
+        elif status == STATUS_UNKNOWN:
+            findings.append(
+                Finding(
+                    kind=FINDING_BODY_MISSING,
+                    content_hash=content_hash,
+                    record_indexes=tuple(indexes),
+                    detail=(
+                        "a record claims a stored form and the store holds neither "
+                        "the body nor a purge record"
+                    ),
+                )
+            )
+
+    for content_hash in attested:
+        if store.status(content_hash) == STATUS_PRESENT:
+            findings.append(
+                Finding(
+                    kind=FINDING_UNEFFECTED_PURGE,
+                    content_hash=content_hash,
+                    detail=(
+                        "the chain attests a purge and the store still holds the "
+                        "body; the attestation does not describe this store"
+                    ),
+                )
+            )
+
+    return Reconciliation(
+        findings=findings,
+        records_read=records_read,
+        digests_examined=len(claims) + len(attested - set(claims)),
+    )
