@@ -19,12 +19,14 @@ v1.0 additions:
 
 
 
+import hashlib
+import hmac
 import os
 import time
 from contextlib import asynccontextmanager
 from typing import Optional
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
+from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -35,8 +37,28 @@ from custos.audit_persistence import (
     require_durable_audit,
 )
 from custos.auth import validate_production_secrets, auth_enabled, verify_token
+from custos.content_retention import (
+    ADMIN_TOKEN_ENV,
+    MODE_OFF,
+    MODE_ENV,
+    RetentionConfigRefused,
+    admin_token,
+    content_retention_mode,
+    content_store_for,
+    store_directory,
+    store_path_for,
+    validate_content_retention,
+)
+from custos.retention import (
+    STATUS_PURGED,
+    STATUS_UNKNOWN,
+    ContentPurged,
+    PurgeRefused,
+    reconcile,
+)
 from custos.jwks import get_jwks_document, validate_production_key
 from custos.logging import configure_logging, get_logger
+from custos.audit import COMMITMENT_NONE
 from custos.policy_citation import content_engine_digest
 from custos.models import (
     AuditRecordResponse,
@@ -52,6 +74,10 @@ from custos.models import (
     ReadyResponse,
     ReplayRequest,
     ReplayResponse,
+    RetentionFinding,
+    RetentionPurgeRequest,
+    RetentionPurgeResponse,
+    RetentionStatusResponse,
     SnapshotResponse,
     SnapshotVerifyRequest,
     SnapshotVerifyResponse,
@@ -213,6 +239,26 @@ async def lifespan(app: FastAPI):
         logger.error("custos.audit_persistence.refused", extra={"reason": str(exc)})
         raise
     logger.info("custos.audit_persistence", extra=_persistence_summary)
+    # Whether the served path keeps the content it reads, and therefore whether
+    # an erasure request has anything to act on. Validated at startup because
+    # both mistakes it catches (a store configured but unused, a retention mode
+    # with nowhere to store) are invisible at request time.
+    try:
+        _retention_summary = validate_content_retention()
+    except RetentionConfigRefused as exc:
+        logger.error("custos.content_retention.refused", extra={"reason": str(exc)})
+        raise
+    logger.info("custos.content_retention", extra=_retention_summary)
+    if _retention_summary["content_retention"] == MODE_OFF:
+        logger.warning(
+            "custos.content_retention.off",
+            extra={
+                "consequence": (
+                    "the served path keeps no content, so an erasure request "
+                    "against it has nothing to act on and is refused"
+                )
+            },
+        )
     if custody_manager is not None:
         custody_manager.start()
         logger.info("custos.custody.enabled")
@@ -404,6 +450,10 @@ async def info():
         # startup log: a reader who can reach this endpoint should not have to
         # guess which variable put the store in force.
         "audit_store_source": audit_store_source(),
+        # Named on the surface, because "does this service keep what it reads"
+        # is the first question an erasure claim has to answer and the worst one
+        # to answer by inference from an environment variable.
+        "content_retention": content_retention_mode(),
         "policy_backend": tenant_manager.policy_backend,
         "tenant_count": tenant_manager.count,
         "uptime_seconds": round(
@@ -463,6 +513,134 @@ async def evaluate_action(
     )
 
 
+# ---------------------------------------------------------------------------
+# Recording a decision, with or without the content it decided on
+# ---------------------------------------------------------------------------
+
+def _record_decision(
+    ctx,
+    *,
+    content: str,
+    client_id: str,
+    action: str,
+    reason: str,
+    triggered_rule=None,
+    trace_id=None,
+    policy_digest=None,
+):
+    """Record a decision, keeping the content only when retention says to.
+
+    One call site rather than two, because the failure this prevents is a record
+    that claims a stored form while the store holds nothing: the form is read
+    from the store it was written to, so the record cannot disagree with the
+    store about what this process did. With retention off nothing is stored and
+    the record says ``none``, which is a true statement about a gate that kept
+    nothing.
+    """
+    store = content_store_for(ctx.tenant_id)
+    if store is None:
+        return _unretained_record(
+            ctx,
+            content=content,
+            client_id=client_id,
+            action=action,
+            reason=reason,
+            triggered_rule=triggered_rule,
+            trace_id=trace_id,
+            policy_digest=policy_digest,
+        )
+    try:
+        return store.put_and_record(
+            content,
+            chain=ctx.audit_chain,
+            client_id=client_id,
+            action=action,
+            reason=reason,
+            triggered_rule=triggered_rule,
+            trace_id=trace_id,
+            policy_digest=policy_digest,
+        )
+    except ContentPurged:
+        # This content was purged earlier, and the store refuses to keep it
+        # again, which is what makes a purge a purge. The gate still has to
+        # decide: refusing to evaluate content because it was once erased would
+        # turn an erasure into a blacklist. The decision is recorded with the
+        # form ``none``, which is true of this record (it holds no stored body),
+        # and the chain already carries the attestation for that digest, so the
+        # two sides still agree.
+        logger.warning(
+            "custos.content_retention.purged_content_resubmitted",
+            extra={
+                "tenant_id": ctx.tenant_id,
+                "content_hash": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+                "consequence": (
+                    "decided and recorded with commitment none; the store will not "
+                    "re-hold content a purge removed, and the prior attestation stands"
+                ),
+            },
+        )
+        return _unretained_record(
+            ctx,
+            content=content,
+            client_id=client_id,
+            action=action,
+            reason=reason,
+            triggered_rule=triggered_rule,
+            trace_id=trace_id,
+            policy_digest=policy_digest,
+        )
+    except Exception:
+        # put_and_record stores the body before it writes the record, which is
+        # the only order that lets the record state the form the store used. The
+        # price is that a failed record write can leave a body nothing points at.
+        # It is logged with its digest so it can be purged by hand, and NOT
+        # deleted here: bodies are addressed by content, so the same body may
+        # belong to a record written by an earlier request, and deleting it would
+        # destroy that record's content to tidy up this one.
+        logger.error(
+            "custos.content_retention.body_without_record",
+            extra={
+                "tenant_id": ctx.tenant_id,
+                "content_hash": hashlib.sha256(content.encode("utf-8")).hexdigest(),
+                "consequence": (
+                    "a body may be stored with no record naming it; it is not "
+                    "attributable and only a purge by that digest removes it"
+                ),
+            },
+        )
+        raise
+
+
+def _unretained_record(
+    ctx,
+    *,
+    content: str,
+    client_id: str,
+    action: str,
+    reason: str,
+    triggered_rule=None,
+    trace_id=None,
+    policy_digest=None,
+):
+    """Record a decision without keeping its content.
+
+    One place that says ``none`` out loud, so the three reasons for it (retention
+    off, content purged earlier, a caller that is not the retention path) do not
+    drift into three different spellings of the same statement.
+    """
+    return ctx.audit_chain.record(
+        client_id=client_id,
+        action=action,
+        reason=reason,
+        content=content,
+        triggered_rule=triggered_rule,
+        trace_id=trace_id,
+        policy_digest=policy_digest,
+        commitment=COMMITMENT_NONE,
+    )
+
+
+
 @app.post("/v1/evaluate", response_model=EvaluateResponse)
 async def evaluate(
     req: EvaluateRequest,
@@ -514,8 +692,12 @@ async def evaluate(
         # and returned 500 instead of 429, so the caller was never told to wait
         # and Retry-After never reached them. Found by the restore drill's
         # write loop, which stopped at exactly the quota and only then.
-        ctx.audit_chain.record(
-            req.client_id, "rate_limited", msg, req.content,
+        _record_decision(
+            ctx,
+            content=req.content,
+            client_id=req.client_id,
+            action="rate_limited",
+            reason=msg,
             trace_id=span.trace_id,
             policy_digest=content_engine_digest(ctx.policy_engine),
         )
@@ -544,11 +726,12 @@ async def evaluate(
     # with "the preimage would carry an unbound record" and returned 500. The
     # digest comes from the content engine's rule set, which is what decided
     # here -- not the gate's tool allowlist, which this endpoint never reads.
-    audit_entry = ctx.audit_chain.record(
+    audit_entry = _record_decision(
+        ctx,
+        content=req.content,
         client_id=req.client_id,
         action=result.action.value,
         reason=result.reason,
-        content=req.content,
         triggered_rule=result.triggered_rule,
         trace_id=span.trace_id,
         policy_digest=content_engine_digest(ctx.policy_engine),
@@ -651,6 +834,141 @@ async def verify_snapshot(
 # ---------------------------------------------------------------------------
 # Replay
 # ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Retention: status and erasure
+# ---------------------------------------------------------------------------
+
+def require_retention_admin(
+    x_custos_retention_token: Optional[str] = Header(
+        default=None, alias="X-CUSTOS-Retention-Token"
+    ),
+) -> None:
+    """Operator credential for the retention surface.
+
+    Three refusals, each with its own reason, because they are different
+    situations for whoever is holding the header:
+
+    - retention is off: there is nothing stored, so a deletion call is not
+      refused for lack of authority but because it would delete nothing;
+    - no token configured: the administration surface does not exist, rather
+      than accepting anyone who finds it;
+    - token wrong or absent: authorized callers only.
+    """
+    if content_retention_mode() == MODE_OFF:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"content retention is off ({MODE_ENV}={MODE_OFF}); the served "
+                "path keeps no content, so an erasure request has nothing to act "
+                "on. This is a refusal, not a completed deletion"
+            ),
+        )
+    token = admin_token()
+    if token is None:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"retention administration is not configured; set {ADMIN_TOKEN_ENV}. "
+                "Content is being withheld from erasure until an operator "
+                "credential exists, and this endpoint stays closed rather than open"
+            ),
+        )
+    if x_custos_retention_token is None or not hmac.compare_digest(
+        x_custos_retention_token, token
+    ):
+        raise HTTPException(status_code=401, detail="retention admin token missing or wrong")
+
+
+@admin_router.get("/v1/retention/status", response_model=RetentionStatusResponse)
+async def retention_status(
+    tenant_id: str = "default",
+    _admin: None = Depends(require_retention_admin),
+):
+    """Compare the record side against the store side for one tenant.
+
+    This is the operational form of the check that closes the split-restore
+    defect: a chain restored to before an erasure, beside a store that is past
+    it, verifies green and its records claim content the store does not hold.
+    Nothing reports that unless something is asked, so there is something to ask.
+    """
+    ctx = tenant_manager.get_strict(tenant_id)
+    if ctx is None:
+        raise HTTPException(status_code=403, detail=f"Unknown tenant: {tenant_id}")
+    store = content_store_for(tenant_id)
+    report = reconcile(ctx.audit_chain.get_records(), store)
+    return RetentionStatusResponse(
+        tenant_id=tenant_id,
+        content_retention=content_retention_mode(),
+        store_file=os.path.basename(store_path_for(store_directory(), tenant_id)),
+        records_read=report.records_read,
+        digests_examined=report.digests_examined,
+        ok=report.ok,
+        findings=[
+            RetentionFinding(
+                kind=f.kind,
+                content_hash=f.content_hash,
+                detail=f.detail,
+                record_indexes=list(f.record_indexes),
+            )
+            for f in report.findings
+        ],
+    )
+
+
+@admin_router.post("/v1/retention/purge", response_model=RetentionPurgeResponse)
+async def retention_purge(
+    req: RetentionPurgeRequest,
+    _admin: None = Depends(require_retention_admin),
+):
+    """Delete a stored body, its salt and its commitment, and attest the deletion.
+
+    The deletion happens before the attestation, and a failure to delete raises
+    rather than returning a success: an attestation for content that is still
+    readable is worse than a deletion with no record of it, because the record
+    would be believed.
+    """
+    ctx = tenant_manager.get_strict(req.tenant_id)
+    if ctx is None:
+        raise HTTPException(status_code=403, detail=f"Unknown tenant: {req.tenant_id}")
+    store = content_store_for(req.tenant_id)
+    status = store.status(req.content_hash)
+    if status == STATUS_UNKNOWN:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"the store holds no content at {req.content_hash[:16]}; a purge "
+                "of something never stored would be recorded as a deletion that "
+                "never happened"
+            ),
+        )
+    if status == STATUS_PURGED:
+        prior = store.purge_record(req.content_hash)
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"content {req.content_hash[:16]} was already purged at "
+                f"{prior['purged_at'] if prior else 'an earlier time'}"
+            ),
+        )
+    try:
+        attestation_hash = store.purge(
+            req.content_hash,
+            chain=ctx.audit_chain,
+            client_id="retention-admin",
+            reason=req.reason,
+            policy_digest=content_engine_digest(ctx.policy_engine),
+        )
+    except (PurgeRefused, ContentPurged) as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return RetentionPurgeResponse(
+        purged=True,
+        content_hash=req.content_hash,
+        attestation_hash=attestation_hash,
+        store_status=store.status(req.content_hash),
+        tenant_id=req.tenant_id,
+    )
+
 
 @admin_router.post("/v1/replay", response_model=ReplayResponse)
 async def replay(

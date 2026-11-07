@@ -27,20 +27,21 @@ that a pre-erasure backup does not contain.
 ## Transcript
 
 ```
-work directory: /tmp/drill-export-u4xg49o8
+work directory: /tmp/drill-export-k53_bpfx
 RESULT records before backup: 3 | verify: (True, 'OK')
 RESULT content status: c1=present c2=present
-RESULT backup-1 audit: 16384 bytes sha256 d12f529a66fa2644
-RESULT backup-1 content: 20480 bytes sha256 fe6ce33cc94572e4
-RESULT purge attestation: 8897c19105c698f2 | records: 4
+RESULT backup-1 audit: 16384 bytes sha256 285974b2bf2d995a
+RESULT backup-1 content: 20480 bytes sha256 c55aae40cbf77283
+RESULT purge attestation: 23ae7e2fc63c729f | records: 4
 RESULT live c1 status after purge: purged
 RESULT live verify after purge: (True, 'OK')
 RESULT body bytes left in the live content store: 0
 RESULT live body readable after purge: False (ContentPurged)
-RESULT backup-2 content: 20480 bytes sha256 4784af9d21292023
+RESULT backup-2 content: 20480 bytes sha256 7a057f8b23a07c72
 RESULT body bytes inside backup-2: 0
 RESULT live export: 6 lines | forms ['none', 'purged-v1', 'salted-v1']
 RESULT body text inside the export: 0
+RESULT live reconciliation: ok
 RESULT restored records: 3 | verify: (True, 'OK')
 RESULT restored c1 status: present
 RESULT restored body reads back: True
@@ -50,6 +51,8 @@ RESULT body bytes in the restored content store: 1
 RESULT split restore records: 3 | verify: (True, 'OK')
 RESULT split restore record forms: ['salted-v1', 'salted-v1'] | store status: purged
 RESULT split restore attestations: 0
+RESULT split restore reconciliation: unattested-purge 8b6711b3f9fde933: the store says this digest was purged and no record attests the purge; the deletion is invisible in the chain
+RESULT restored reconciliation: ok
 RESULT exports disagree on: [('8b6711b3f9fde933dd6cf60987adf8b8f6983623fcc2dc60d6bc9d8afd12e35a', 'purged', 'present')]
 RESULT live purge holds in the store bytes: True
 RESULT post-purge backup carries no body: True
@@ -58,7 +61,9 @@ RESULT restore brings the body back: True
 RESULT restored commitment opens: True
 RESULT restored chain verifies without the attestation: True
 RESULT exports disagree after the restore: True
-RESULT split restore contradicts itself silently: True
+RESULT split restore does not reconcile clean: True
+RESULT split restore names the unattested purge: True
+RESULT live and restored pairs reconcile clean: True
 ```
 
 The backup digests and the attestation hash differ between runs, for the reason
@@ -104,7 +109,30 @@ RESULT split restore attestations: 0
 
 A record claiming a form its store does not hold is exactly the classification
 failure the commitment marker was added to prevent, arriving through restore
-rather than through a writer. It is filed as issue 136.
+rather than through a writer.
+
+It was issue 136, and it is closed by `reconcile()` in `custos/retention.py`,
+which compares the record side against the store side and names the
+disagreement instead of leaving it implicit:
+
+```
+RESULT split restore reconciliation: unattested-purge 8b6711b3f9fde933: the store says this digest was purged and no record attests the purge; the deletion is invisible in the chain
+```
+
+Three kinds are kept distinct, because the operational response differs:
+`body-missing` (a record claims a stored form and the store holds neither the
+body nor a purge record, so either the wrong store was read or content was lost
+without a trace), `unattested-purge` (the state above: the store is past an
+erasure the chain has no record of), and `uneffected-purge` (the mirror: the
+chain attests a purge and the store still holds the body, so the attestation
+describes a store that is not this one). The live pair and the fully restored
+pair both report `ok` in the same run, which is what makes the split case a
+finding rather than a standing complaint.
+
+`reconcile()` deliberately does not touch `verify()`. The chain stays
+`(True, 'OK')` in every one of these states, because a green chain is a statement
+about record linkage, and making it fail here would collapse that statement into
+one it does not make.
 
 ## Recovery window, per store
 
