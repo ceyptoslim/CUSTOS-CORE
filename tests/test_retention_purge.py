@@ -228,6 +228,45 @@ class TestThePurgeDrillStaysTrue:
         assert "never held" in doc
         assert "RESULT chain after purge: (True, 'OK')" in doc
 
+    def test_the_attestation_states_its_form_inside_the_preimage(self):
+        """The record side, which the original transcript could not show.
+
+        A reader holding records without the side store has to be able to tell a
+        deletion from a mismatch. ``action: PURGE`` is a label; the commitment
+        form is inside the hash, so it cannot be relabelled after the fact.
+        """
+        import tempfile
+
+        from custos.audit import COMMITMENT_PURGED_V1, preimage_fields
+
+        with tempfile.TemporaryDirectory() as d:
+            store = ContentStore(f"{d}/content.sqlite")
+            chain = AuditChain(db_path=f"{d}/audit.sqlite")
+            content_hash = store.put_and_record(
+                "erase me", chain=chain, client_id="c", action="ALLOW", reason="ok"
+            ).content_hash
+            store.purge(content_hash, chain=chain, client_id="ops", reason="erasure")
+
+        attestation = chain._records[-1]
+        assert attestation.commitment == COMMITMENT_PURGED_V1
+        fields = preimage_fields(attestation, attestation.previous_hash)
+        assert fields["commitment"] == COMMITMENT_PURGED_V1
+        # the purged record keeps the form it was stored in, so the pair reads
+        # salted-then-purged rather than being rewritten to the outcome
+        assert chain._records[0].commitment == "salted-v1"
+
+    def test_the_drill_document_quotes_the_rerun_it_claims(self):
+        doc = self._doc()
+        assert "## Re-run after the marker (binding version 2)" in doc
+        assert "RESULT attestation record form: purged-v1 | binding: v2" in doc
+        assert "RESULT attestation preimage carries commitment: True = purged-v1" in doc
+        # the script the document tells a reader to run is in the repository
+        import pathlib
+
+        assert pathlib.Path("scripts/purge_path_drill.py").exists()
+        assert "python3 scripts/purge_path_drill.py" in doc
+        assert "/tmp/purgedrill/run.py" not in doc
+
     def test_it_keeps_the_section_naming_the_copy_problem(self):
         doc = self._doc()
         assert "## What the run does not establish" in doc
