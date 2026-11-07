@@ -1,31 +1,47 @@
-"""SLO-1 is an inequality because the difference is real, and the difference is
-measured here rather than believed.
+"""SLO-1 now closes, and the closure is measured here rather than believed.
 
-The document says the counting is not a tidy sum:
+The history matters to a reader of these guards, so it is in the module docstring
+rather than in a commit nobody opens:
 
-    custos_requests_total - (custos_requests_allowed + custos_requests_denied)
+The first version of SLO-1 said the difference between `custos_requests_total` and
+the allowed and denied counters was "requests refused before a decision". That was
+wrong twice. It was unattributable, because no counter separated a 422 from a 403
+from a 429, and it also silently contained decisions flagged for audit, which
+increment `custos_requests_audited` instead of `custos_requests_allowed`. Issue 158
+asked for the labels. They are in `custos_refused_total{kind}` now, and SLO-1 is a
+six-term sum with no remainder:
 
-equals the requests refused before a decision was reached, and that remainder is
-unattributable because no counter separates a 429 from a 401 from a 503 from the
-gate's fail-closed refusal. Issue 158 is the counter that would let the objective be
-written as a sum.
+    total = allowed + audited + denied + refused{invalid_request}
+                                  + refused{unknown_tenant}
+                                  + refused{rate_limited}
 
-Two things are guarded, and they are different directions of the same claim. The
-document must keep saying inequality rather than sum while 158 is open, because the
-sum would be false and a reader would believe it. And the remainder must actually be
-non-zero when the service refuses a request before deciding, because if it ever went
-to zero the document's caution would be the wrong caution and the honest thing would
-be to tighten it. A document that is more careful than the code needs is still a
-document that is wrong about the code.
+What is guarded, in both directions:
+
+* the document keeps the sum, names all six terms, and does not fall back to a
+  difference that hides a category;
+* the arithmetic closes in a live process, exercised through every path that can
+  reach one of the six terms rather than asserted over counters alone;
+* the labelled counter's total equals what the identity says it should, per kind,
+  so a label that stops being incremented fails here rather than in a dashboard.
+
+The third of those is the one that would have caught the original error. An
+identity checked only in aggregate passes while a category is missing, because the
+missing category is on both sides of a difference. Checked per kind, it does not.
 """
 
 import pathlib
+import re
 
 from fastapi.testclient import TestClient
 
 import main as app_module
 
 SLO = pathlib.Path("docs/SLO.md")
+TERMS = (
+    "custos_requests_allowed",
+    "custos_requests_audited",
+    "custos_requests_denied",
+)
 
 
 def _norm(text: str) -> str:
@@ -41,6 +57,7 @@ def _slo_1_paragraph() -> str:
 
 
 def _counters(client) -> dict:
+    """Every custos_ line, with the labelled series kept under their full name."""
     out = {}
     for line in client.get("/metrics").text.splitlines():
         if not line.startswith("custos_") or line.startswith("#"):
@@ -53,80 +70,133 @@ def _counters(client) -> dict:
     return out
 
 
-class TestTheDocumentKeepsSayingInequality:
-    def test_it_is_written_as_an_inequality_with_the_remainder_named(self):
-        para = _slo_1_paragraph()
-        assert "inequality" in para, "SLO-1 no longer says it is an inequality"
-        assert "difference is real" in para or "not fully attributable" in para
+def _refused(counters: dict, kind: str) -> float:
+    return counters.get(f'custos_refused_total{{kind="{kind}"}}', 0.0)
 
-    def test_it_names_the_counter_that_would_make_it_a_sum(self):
-        para = _slo_1_paragraph()
-        assert "158" in para, "SLO-1 must name the issue whose closure upgrades it"
 
-    def test_it_does_not_present_the_accounting_as_a_sum(self):
-        """The formula itself, not the vocabulary around it.
-
-        The first version of this guard listed forbidden phrases, and a mutation that
-        rewrote the formula into an equality while leaving the word "inequality" in
-        the closing sentence stayed green. Pinning the arithmetic rather than the
-        adjectives is what makes the check touch the claim.
-        """
+class TestTheDocumentStatesTheSum:
+    def test_it_is_written_as_a_sum_that_closes(self):
         para = _slo_1_paragraph()
-        subtraction = "custos_requests_total - (custos_requests_allowed + custos_requests_denied)"
-        assert subtraction in para, (
-            "SLO-1 no longer shows the remainder as a subtraction; if the counters now "
-            "add up, the objective should be rewritten deliberately, not by drift"
+        assert "closes" in para, "SLO-1 no longer says the accounting closes"
+        assert "inequality" not in para, (
+            "SLO-1 is an inequality again, which is only true if a category is missing"
         )
-        equality_forms = [
-            "custos_requests_total = custos_requests_allowed",
-            "custos_requests_allowed + custos_requests_denied = custos_requests_total",
-        ]
-        for form in equality_forms:
-            assert form not in para, (
-                f"SLO-1 is now written as an equality ({form!r}) while the remainder "
-                "is still unattributable"
+
+    def test_it_names_all_six_terms(self):
+        para = _slo_1_paragraph()
+        for term in TERMS:
+            assert term in para, f"SLO-1 does not name {term}"
+        for kind in ("invalid_request", "unknown_tenant", "rate_limited"):
+            assert f'kind="{kind}"' in para, f"SLO-1 does not name the {kind} label"
+
+    def test_it_keeps_the_reason_the_first_version_was_wrong(self):
+        """The audit category is the term a reader would drop first."""
+        para = _slo_1_paragraph()
+        assert "audit" in para and "indistinguishable from a refusal" in para
+
+    def test_it_says_the_counter_is_per_process(self):
+        para = _slo_1_paragraph()
+        assert "per process" in para
+
+
+class TestTheArithmeticClosesInALiveProcess:
+    def _drive(self, client, before: dict) -> dict:
+        """Every path that can reach one of the six terms, then read again."""
+        client.post(
+            "/v1/evaluate",
+            json={"client_id": "slo-probe", "tenant_id": "default",
+                  "content": "hello", "token_count": 1},
+        )
+        client.post(
+            "/v1/evaluate",
+            json={"client_id": "slo-probe", "tenant_id": "no-such-tenant",
+                  "content": "hello", "token_count": 1},
+        )
+        # The model limits content by characters and the validator by bytes, so a
+        # multi-byte character string under the character limit and over the byte
+        # limit is the one shape that reaches validate_request. An empty string is
+        # refused by the model, before the decision path is entered, which is why
+        # the first version of this probe measured nothing and said so.
+        client.post(
+            "/v1/evaluate",
+            json={"client_id": "slo-probe", "tenant_id": "default",
+                  "content": "\u00e9" * 16_385, "token_count": 1},
+        )
+        for _ in range(200):
+            r = client.post(
+                "/v1/evaluate",
+                json={"client_id": "slo-probe", "tenant_id": "default",
+                      "content": "hello", "token_count": 1},
             )
+            if r.status_code == 429:
+                break
+        return _counters(client)
 
-
-class TestTheRemainderIsActuallyNonZero:
-    def test_a_rate_limited_request_lands_in_total_and_not_in_an_outcome(self):
-        """Measured, not asserted: drive the limiter into refusal and read /metrics.
-
-        If this ever fails because the remainder is zero, that is good news and the
-        document should be tightened rather than this test deleted, which is why the
-        assertion message says so.
-        """
+    def test_the_six_terms_account_for_every_request(self):
         with TestClient(app_module.app) as client:
             before = _counters(client)
-            posts = 0
-            saw_429 = False
-            for _ in range(200):
-                r = client.post(
-                    "/v1/evaluate",
-                    json={
-                        "client_id": "slo-accounting-probe",
-                        "tenant_id": "default",
-                        "content": "hello",
-                        "token_count": 1,
-                    },
-                )
-                posts += 1
-                if r.status_code == 429:
-                    saw_429 = True
-                    break
-            after = _counters(client)
-
-        assert saw_429, "no 429 was produced, so the remainder could not be measured"
+            after = self._drive(client, before)
         total = after["custos_requests_total"] - before["custos_requests_total"]
-        decided = (after["custos_requests_allowed"] - before["custos_requests_allowed"]) + (
-            after["custos_requests_denied"] - before["custos_requests_denied"]
+        decided = sum(after[t] - before[t] for t in TERMS)
+        refused = sum(
+            _refused(after, k) - _refused(before, k)
+            for k in ("invalid_request", "unknown_tenant", "rate_limited")
         )
-        assert total == posts, (
-            f"every request should be counted in total: posted {posts}, counted {total}"
+        assert total > 0, "nothing reached the decision path, so nothing was measured"
+        assert refused >= 3, f"the probe did not refuse three times, it refused {refused}"
+        assert total == decided + refused, (
+            f"the identity does not close: total {total}, decided {decided}, "
+            f"refused {refused}. Either a refusal site was added without a label or a "
+            f"decision outcome was added without a term in SLO-1."
         )
-        assert after["custos_rate_limit_hits"] > before["custos_rate_limit_hits"]
-        remainder = total - decided
-        assert remainder >= 1, (
-            "the remainder is zero: the refusal was counted as an outcome, so SLO-1 "
-            "can be written as a sum and the document should be tightened"
+
+    def test_each_label_moves_for_its_own_reason(self):
+        """Per kind, because an aggregate identity hides a missing category."""
+        with TestClient(app_module.app) as client:
+            before = _counters(client)
+            after = self._drive(client, before)
+        for kind, reason in (
+            ("invalid_request", "the empty content should have been refused as invalid"),
+            ("unknown_tenant", "the unknown tenant should have been refused"),
+            ("rate_limited", "the loop should have driven the limiter into refusal"),
+        ):
+            moved = _refused(after, kind) - _refused(before, kind)
+            assert moved >= 1, f"{kind} did not move: {reason}"
+
+
+class TestEveryLabelIsWired:
+    """The identity is only as true as the labels behind it.
+
+    A labelled counter can fail in two quiet ways that a sum cannot see: the series
+    stops being emitted while the key and the increment stay in the code, or the key
+    is emitted and never incremented so the series is always zero. The second is the
+    worse one, because a zero looks like a healthy absence of refusals.
+    """
+
+    SOURCE = pathlib.Path("main.py")
+
+    def test_the_emitted_kinds_are_the_three_the_identity_needs(self):
+        kinds = set(
+            re.findall(
+                r'custos_refused_total\{\{kind="([a-z_]+)"\}\}',
+                self.SOURCE.read_text(encoding="utf-8"),
+            )
         )
+        assert kinds == {"invalid_request", "unknown_tenant", "rate_limited"}, (
+            f"the identity needs three labelled refusals and the body emits {sorted(kinds)}"
+        )
+
+    def test_every_emitted_label_is_incremented_somewhere(self):
+        source = self.SOURCE.read_text(encoding="utf-8")
+        for kind in ("invalid_request", "unknown_tenant", "rate_limited"):
+            key = f"custos_refused_{kind}"
+            assert f'_metrics["{key}"] += 1' in source, (
+                f"{key} is emitted but nothing increments it, so the series would "
+                f"always read zero and look like an absence of refusals"
+            )
+
+    def test_the_burn_counter_is_incremented_by_the_handler_that_serves_the_503(self):
+        source = self.SOURCE.read_text(encoding="utf-8")
+        handler_start = source.index("async def audit_store_full_handler")
+        handler_end = source.index("@app.get(\"/v1/info\")")
+        assert '_metrics["custos_decisions_unrecorded"] += 1' in source[handler_start:handler_end]

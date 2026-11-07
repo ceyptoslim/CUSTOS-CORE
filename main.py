@@ -162,6 +162,19 @@ _metrics = {
     "custos_requests_denied": 0,
     "custos_requests_audited": 0,
     "custos_rate_limit_hits": 0,
+    # Refusals that happen before a decision is reached. Issue 158: total minus
+    # the outcome counters used to be one remainder that mixed a 422, a 403 and a
+    # 429, so an operator could not tell a throttle from a bad request from a
+    # tenancy error. Each site now labels its own refusal, and the labels are
+    # required to sum to the remainder by tests/test_slo_accounting.py.
+    "custos_refused_invalid_request": 0,
+    "custos_refused_unknown_tenant": 0,
+    "custos_refused_rate_limited": 0,
+    # Decisions whose record could not be persisted. A subset of the decided
+    # counters, not a refusal before a decision: the policy was consulted and the
+    # caller got a 503, so the decision happened and the audit chain does not have
+    # it. That is an audit burn, counted where SLO-3 can see it.
+    "custos_decisions_unrecorded": 0,
     "custos_executions_forwarded": 0,
     "custos_executions_blocked": 0,
     "custos_circuit_open": 0,
@@ -400,6 +413,14 @@ async def metrics():
         "# HELP custos_rate_limit_hits Requests rejected by rate limiter",
         "# TYPE custos_rate_limit_hits counter",
         f"custos_rate_limit_hits {_metrics['custos_rate_limit_hits']}",
+        "# HELP custos_refused_total Requests refused before a decision was reached",
+        "# TYPE custos_refused_total counter",
+        f'custos_refused_total{{kind="invalid_request"}} {_metrics["custos_refused_invalid_request"]}',
+        f'custos_refused_total{{kind="unknown_tenant"}} {_metrics["custos_refused_unknown_tenant"]}',
+        f'custos_refused_total{{kind="rate_limited"}} {_metrics["custos_refused_rate_limited"]}',
+        "# HELP custos_decisions_unrecorded Decisions whose record could not be persisted",
+        "# TYPE custos_decisions_unrecorded counter",
+        f"custos_decisions_unrecorded {_metrics['custos_decisions_unrecorded']}",
         "# HELP custos_audit_chain_length Total audit records (default tenant)",
         "# TYPE custos_audit_chain_length gauge",
         f"custos_audit_chain_length {audit_length}",
@@ -459,6 +480,11 @@ async def audit_store_full_handler(request: Request, exc: AuditStoreFull):
         "custos.audit.store_full",
         extra={"path": request.url.path, "reason": str(exc)},
     )
+    # Counted here rather than at the raise site so it captures every path that
+    # reaches the handler. This is deliberately NOT one of the refusal labels:
+    # a decision was reached and a 503 was served, so it belongs in the decided
+    # population, and the missing record is an audit burn for SLO-3.
+    _metrics["custos_decisions_unrecorded"] += 1
     return JSONResponse(
         status_code=503,
         headers={
@@ -635,10 +661,12 @@ async def evaluate(
     if not val.valid:
         span.set_status("ERROR")
         tracer.finish_span(span)
+        _metrics["custos_refused_invalid_request"] += 1
         raise HTTPException(status_code=422, detail=val.error)
 
     ctx = tenant_manager.get_strict(req.tenant_id)
     if ctx is None:
+        _metrics["custos_refused_unknown_tenant"] += 1
         raise HTTPException(status_code=403, detail=f"Unknown tenant: {req.tenant_id}")
     rate_key = (
         f"{req.tenant_id}:{req.client_id}"
@@ -661,6 +689,7 @@ async def evaluate(
     allowed, msg = ctx.rate_limiter.check_and_consume(rate_key, req.token_count)
     if not allowed:
         _metrics["custos_rate_limit_hits"] += 1
+        _metrics["custos_refused_rate_limited"] += 1
         # The refusal is a decision and has to be recorded like one. It was
         # written without a policy citation, which production refuses: every
         # request past a client's quota raised ValueError inside the refusal

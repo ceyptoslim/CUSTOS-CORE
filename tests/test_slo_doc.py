@@ -26,18 +26,26 @@ def _metric_names_emitted() -> set[str]:
     # after the name and returned an empty set, which made the "names only real
     # metrics" guard pass over everything: a scan that finds nothing agrees with
     # every claim.
-    return set(re.findall(r'f"(custos_[a-z_]+) \{', source))
+    # Two shapes reach the body: f"custos_name {value}" and the labelled form
+    # f'custos_name{{kind="..."}} {value}'. The first version of this extractor
+    # handled only the first, so `custos_refused_total` was invisible on the
+    # emitting side while also being written in the document with a brace suffix
+    # that the backtick scan could not see, and the two gaps cancelled: the guard
+    # passed while the metric was neither extractable nor checkable. Both shapes
+    # are read now, and the document scan strips a label suffix back to the name.
+    names = set(re.findall(r'f["\'](custos_[a-z_]+)', source))
+    return names
 
 
 class TestEveryMetricTheDocumentNamesIsEmitted:
     def test_the_metrics_table_names_only_real_metrics(self):
         doc = _flat(DOC)
         emitted = _metric_names_emitted()
-        named = {
+        documented = {
             name
-            for name in emitted | set(re.findall(r"`(custos_[a-z_]+)`", doc))
-            if f"`{name}`" in doc
+            for name in re.findall(r"`(custos_[a-z_]+)(?:\{[^}`]*\})?`", doc)
         }
+        named = {n for n in emitted | documented if n in documented or f"`{n}`" in doc}
         assert named, "the document names no metrics at all"
         missing = sorted(n for n in named if n not in emitted)
         assert not missing, f"the document names metrics main.py does not emit: {missing}"
@@ -70,10 +78,14 @@ class TestTheDocumentDoesNotClaimAnInstrumentItLacks:
         source = MAIN.read_text(encoding="utf-8")
         assert "histogram" not in source.lower()
 
-    def test_it_names_the_refusal_accounting_gap(self):
+    def test_it_records_the_refusal_accounting_gap_and_its_closure(self):
+        """It said the labels were missing. They are not missing now, and the
+        document has to say both: a reader needs to know the identity closed and
+        that it was open long enough to be written down."""
         doc = _flat(DOC)
-        assert "cannot tell an operator which refusal" in doc
-        assert "issue 158" in doc.lower() or "Issue 158" in doc
+        assert "issue 158" in doc.lower()
+        assert "custos_refused_total{kind}" in doc
+        assert "now a sum rather than an inequality" in doc
 
 
 class TestTheDrillsItCitesExist:
