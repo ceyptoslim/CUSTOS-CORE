@@ -5,6 +5,14 @@ is written first because the implementation has to conform to something a reader
 can check, and because two of the choices below would be fail-open if they were
 made by whoever writes the code at the end of a long day.
 
+Issue 113 is closed as not planned rather than completed, and this document is the
+artifact that closure rests on. The reopen condition is a deployment with more than
+one tenant, or a pilot participant who needs a retried request not to decide twice.
+Until then nothing in the service is idempotent, no caller can supply a correlation
+id, and retries are not deduplicated: three sentences that must not be written about
+this build, because a reader who assumed them would be trusting a decision that was
+made and not a behaviour that was measured.
+
 ## The defect this addresses
 
 A request that times out and is retried currently produces a second decision and
