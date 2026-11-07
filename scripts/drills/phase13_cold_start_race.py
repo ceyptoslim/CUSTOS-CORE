@@ -143,7 +143,22 @@ def main() -> int:
     if failed:
         print(f"FAILED {failed}")
         return 1
-    print(f"RESULT every trial: {len(checks)} checks, both processes up, one append each")
+    # Derived from the checks rather than written beside them: the previous
+    # version of this line implied each process appended one, the opposite of
+    # what the checks above it assert, and a summary that can contradict its own
+    # results is the same defect as a drill that declares a precondition and does
+    # not check it. It now reports what it measured or says the run failed.
+    refused_every_trial = all(
+        passed for label, passed in checks if "the other was refused" in label
+    )
+    print(
+        f"RESULT every trial: {len(checks)} checks, both processes up, "
+        + (
+            "one append total and the other refused at the store"
+            if refused_every_trial
+            else "AT LEAST ONE TRIAL DID NOT REFUSE THE SECOND WRITER"
+        )
+    )
     return 0
 
 
