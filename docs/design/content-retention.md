@@ -86,11 +86,18 @@ Covered: `/v1/evaluate`, including its rate-limited refusal path, which records
 `rate_limited` through the same call so a refusal is retained and erasable like a
 decision.
 
-**Named gap: `/v1/evaluate_action` retains nothing.** Its record is written
-inside the action gate, which binds the proposed action blob with
-`commitment: none` and stores no body. So an erasure claim about the action gate
-is still empty, and the reconciliation cannot report what was never claimed. The
-gap is recorded rather than implied, and it is the follow-up work.
+Covered: `/v1/evaluate_action`. Until issue 140 this endpoint retained
+nothing: the gate wrote its own record with `commitment: none`, which was a true
+statement about a gate that stored no body but meant an erasure request could
+never reach a decision to run a command. The gate now records through the same
+retention-aware path as `/v1/evaluate`, so both endpoints read the form from the
+store instead of asserting one, and a purge reaches the gate's records.
+
+**The gate's fail-closed behaviour widened with that change, deliberately.** A
+store that cannot accept the body now makes an ALLOW unrecordable, and an
+unrecordable allow is a DENY with the reason naming it. The refusal is a
+decision, not an exception on the enforcement path: a caller that gets a 500 has
+no stated rule to act on.
 
 **Replay records are excluded on purpose.** `POST /v1/replay` binds the content
 the caller supplies for verification. Routing it through the store would make a

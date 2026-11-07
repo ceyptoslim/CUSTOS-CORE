@@ -318,16 +318,32 @@ class ActionGate:
         enforcement path: an exception is not a decision, and a caller that gets
         one has no stated rule to act on. It also must never leave an allow
         standing, which is what the callers do with a None return.
+
+        Recording goes through the same retention-aware path as the evaluate
+        endpoint. Before this, the gate wrote its record directly with no
+        commitment argument, which meant ``none``: coherent, and empty as an
+        erasure claim, because this gate decided on the proposed payload and kept
+        nothing an erasure request could act on. The form is read from the store
+        inside that shared function, so a record cannot claim a form the store did
+        not use.
+
+        The fail-closed behaviour is unchanged and now covers a fuller store too:
+        if storing the body or writing the record raises, this returns None and
+        the caller refuses the action rather than allowing one it could not
+        record.
         """
+        from .retention import record_decision
+
         try:
-            return ctx.audit_chain.record(
+            return record_decision(
+                ctx,
+                tenant_id=tenant_id,
+                content=blob,
                 client_id=client_id,
                 action=decision.action.value,
                 reason=decision.reason,
-                content=blob,
                 triggered_rule=decision.triggered_rule,
                 policy_digest=cited_digest,
-                tenant_id=tenant_id,
                 trace_id=trace_id,
             )
         except Exception as exc:  # noqa: BLE001 - a store failure is the case handled here

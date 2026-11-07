@@ -17,6 +17,8 @@ import os
 import pytest
 from fastapi.testclient import TestClient
 
+from custos.retention import ContentPurged
+
 from custos.content_retention import (
     ADMIN_TOKEN_ENV,
     MODE_ENV,
@@ -56,6 +58,22 @@ def _enable(monkeypatch, tmp_path, token=TOKEN):
     if token is not None:
         monkeypatch.setenv(ADMIN_TOKEN_ENV, token)
     return directory
+
+
+def _fresh_manager(monkeypatch, app_module):
+    """Replace the tenant manager the way a fresh process would, in both places.
+
+    The manager is module state and the action gate keeps the one it was built
+    with, so rebinding only ``tenant_manager`` leaves the gate deciding against a
+    manager the app no longer serves: its records land in a chain ``/v1/audit``
+    does not read. These tests rebind to pick up a new AUDIT_DB_PATH, so they have
+    to rebind both. ``monkeypatch.setattr`` restores them at the end of the test,
+    which the assignments did not.
+    """
+    manager = app_module.TenantManager()
+    monkeypatch.setattr(app_module, "tenant_manager", manager)
+    monkeypatch.setattr(app_module, "action_gate", app_module.ActionGate(manager))
+    return manager
 
 
 class TestTheModeIsReadNotGuessed:
@@ -297,7 +315,7 @@ class TestTheServedPathWithRetentionOn:
         audit_path = tmp_path / "audit.sqlite"
         monkeypatch.setenv("AUDIT_DB_PATH", str(audit_path))
         # A fresh manager so the chain is built against the file we will copy.
-        app_module.tenant_manager = app_module.TenantManager()
+        _fresh_manager(monkeypatch, app_module)
         with TestClient(app_module.app) as c:
             c.post("/v1/evaluate", json={"client_id": "c", "content": BODY})
             content_hash = c.get("/v1/audit").json()[-1]["content_hash"]
@@ -310,7 +328,7 @@ class TestTheServedPathWithRetentionOn:
             assert purge.status_code == 200
 
             shutil.copy2(tmp_path / "audit-pre-purge.sqlite", audit_path)
-            app_module.tenant_manager = app_module.TenantManager()
+            _fresh_manager(monkeypatch, app_module)
             restored_chain = AuditChain(tenant_id="default")
             assert restored_chain.verify() == (True, "OK")
 
@@ -429,7 +447,11 @@ class TestTheEdgeCasesFoundByFactChecking:
                 seen.append(record.getMessage())
 
         handler = Capture()
-        logger = logging.getLogger("custos.main")
+        # The event is emitted by the shared retention-aware record path, which both
+        # the evaluate endpoint and the action gate call. It used to be logged from
+        # custos.main because the ordering lived there; capturing the old logger now
+        # would pass on silence.
+        logger = logging.getLogger("custos.retention")
         logger.addHandler(handler)
         try:
             with client:
@@ -449,3 +471,126 @@ class TestTheEdgeCasesFoundByFactChecking:
                 assert any("body_without_record" in message for message in seen), seen
         finally:
             logger.removeHandler(handler)
+
+
+class TestTheActionGateKeepsWhatItDecidedOn:
+    """Issue 140: the gate decides on a proposed action and kept nothing.
+
+    That was coherent and empty at the same time. ``commitment none`` is a true
+    statement about a gate that stores no body, so nothing in the chain was wrong;
+    but it also meant an erasure request could never reach a decision to run a
+    command, which is the record an operator most wants to be able to respond to.
+    The gate now records through the same retention-aware path as /v1/evaluate, so
+    the two cannot disagree about which form was used.
+    """
+
+    def _client(self, monkeypatch, tmp_path):
+        import main as app_module
+
+        directory = _enable(monkeypatch, tmp_path)
+        app_module.action_gate.register_tools("default", {"lookup"})
+        return TestClient(app_module.app), directory
+
+    @staticmethod
+    def _action(command="lookup --id 42"):
+        from custos.action_gate import ActionRequest
+
+        return ActionRequest(tool="lookup", command=command)
+
+    def test_the_gate_keeps_the_action_and_the_record_says_which_form(self, monkeypatch, tmp_path):
+        client, _ = self._client(monkeypatch, tmp_path)
+        with client:
+            response = client.post(
+                "/v1/evaluate_action",
+                json={"tool": "lookup", "command": "lookup --id 42", "tenant_id": "default"},
+            )
+            assert response.status_code == 200
+            assert response.json()["allowed"] is True
+
+            record = client.get("/v1/audit").json()[-1]
+            assert record["commitment"] == "salted-v1", (
+                "the gate claimed no stored form while retention was on"
+            )
+            store = content_store_for("default")
+            assert store.open_body(record["content_hash"]) == self._action().serialize()
+
+    def test_a_purge_reaches_the_gates_records(self, monkeypatch, tmp_path):
+        client, _ = self._client(monkeypatch, tmp_path)
+        with client:
+            client.post(
+                "/v1/evaluate_action",
+                json={"tool": "lookup", "command": "lookup --id 42", "tenant_id": "default"},
+            )
+            content_hash = client.get("/v1/audit").json()[-1]["content_hash"]
+
+            response = client.post(
+                "/v1/retention/purge",
+                json={
+                    "tenant_id": "default",
+                    "content_hash": content_hash,
+                    "reason": "erasure request from the operator",
+                },
+                headers={"X-CUSTOS-Retention-Token": TOKEN},
+            )
+            assert response.status_code == 200, response.text
+
+            store = content_store_for("default")
+            # The store raises rather than answering False for content it purged:
+            # absence is not a mismatch, and a caller that gets a body-less None
+            # back cannot tell a purge from a store that never held the digest.
+            with pytest.raises(ContentPurged):
+                store.open_body(content_hash)
+            status = client.get(
+                "/v1/retention/status", headers={"X-CUSTOS-Retention-Token": TOKEN}
+            ).json()
+            assert status["ok"] is True, status
+            assert status["findings"] == [], status
+
+    def test_purged_action_content_is_still_decided(self, monkeypatch, tmp_path):
+        """An erasure must not become a blacklist: the gate still decides, and the
+        new record says ``none`` because the store will not hold that body again."""
+        client, _ = self._client(monkeypatch, tmp_path)
+        with client:
+            client.post(
+                "/v1/evaluate_action",
+                json={"tool": "lookup", "command": "lookup --id 42", "tenant_id": "default"},
+            )
+            content_hash = client.get("/v1/audit").json()[-1]["content_hash"]
+            client.post(
+                "/v1/retention/purge",
+                json={
+                    "tenant_id": "default",
+                    "content_hash": content_hash,
+                    "reason": "erasure request from the operator",
+                },
+                headers={"X-CUSTOS-Retention-Token": TOKEN},
+            )
+
+            response = client.post(
+                "/v1/evaluate_action",
+                json={"tool": "lookup", "command": "lookup --id 42", "tenant_id": "default"},
+            )
+            assert response.status_code == 200, response.text
+            assert response.json()["allowed"] is True
+            assert client.get("/v1/audit").json()[-1]["commitment"] == "none"
+
+    def test_an_unrecordable_allow_is_refused_not_raised(self, monkeypatch, tmp_path):
+        """Storing the body is now on the gate's path, so a store failure has to
+        land as a decision. An allow the gate could not record is a deny."""
+        client, _ = self._client(monkeypatch, tmp_path)
+        with client:
+            store = content_store_for("default")
+
+            def boom(*args, **kwargs):
+                raise OSError(28, "No space left on device")
+
+            monkeypatch.setattr(store, "put_and_record", boom)
+            response = client.post(
+                "/v1/evaluate_action",
+                json={"tool": "lookup", "command": "lookup --id 42", "tenant_id": "default"},
+            )
+            assert response.status_code == 200, response.text
+            body = response.json()
+            assert body["allowed"] is False, body
+            assert "could not be recorded" in body["reason"], body
+            assert body["audit_record_hash"] is None, body
