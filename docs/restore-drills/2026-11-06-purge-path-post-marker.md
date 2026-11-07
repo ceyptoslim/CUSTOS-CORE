@@ -47,6 +47,13 @@ RESULT restored body reads back: True
 RESULT restored commitment opens: True
 ```
 
+The stored digests in the block (`79cfab6621ec6c65`-class values) differ between
+runs and are not meant to reproduce: each record carries its own CSPRNG salt, so
+every execution produces different hashes. What reproduces is the shape:
+`purged-v1` on the attestation, `salted-v1` on the record it purges, the chain
+green on both sides, and `any body text left in the side store: 0`. A reader
+re-running this should compare the forms and the RESULT lines, not the hex.
+
 Two things this adds beyond the original run, and one thing it corrects.
 
 The added fact is the third line from the bottom of the record group: the
