@@ -28,6 +28,7 @@ WORKER = pathlib.Path("scripts/drills/phase13_cold_start_worker.py")
 DESIGN_NOTE = pathlib.Path("docs/design/store-refusals-and-cold-start.md")
 DRILLS_README = pathlib.Path("scripts/drills/README.md")
 CONSTRAINT_DOC = pathlib.Path("docs/design/single-replica-constraint.md")
+RESTORE_RECORD = pathlib.Path("docs/restore-drills/2026-11-06-served-path-postgres.md")
 
 FIXED_COMMIT = "40d6519"
 BEFORE_LOCK = "58c7462"
@@ -126,3 +127,41 @@ class TestTheConstraintDocStopsCallingItAnOpenDefect:
         flat = _flat(CONSTRAINT_DOC)
         assert "cannot detect how many processes are running" in flat
         assert "operator fact" in flat
+
+
+class TestTheMechanismIsConcurrentDdlNotOneIndex:
+    """Five re-runs of the driver against the pre-lock build produced both
+    `pg_class_relname_nsp_index` and `pg_type_typname_nsp_index`, in a 3/2 split.
+    Three documents named one of them as the mechanism, which makes the other look
+    like a different fault to whoever reads the error text next."""
+
+    def test_the_constraint_doc_records_both_indexes(self):
+        flat = _flat(CONSTRAINT_DOC)
+        assert "pg_class_relname_nsp_index" in flat
+        assert "pg_type_typname_nsp_index" in flat
+
+    def test_it_says_the_index_depends_on_which_statement_came_first(self):
+        flat = _flat(CONSTRAINT_DOC)
+        assert "artifact of which statement" in flat
+
+
+class TestTheDrillSummaryReportsWhatItChecked:
+    """The closing line said "one append each" while the checks above it asserted
+    exactly one writer appended and the other was refused. A summary that can
+    contradict its own results is the same defect as a drill that declares a
+    precondition and does not check it."""
+
+    def test_the_summary_is_derived_from_the_checks(self):
+        source = DRIVER.read_text(encoding="utf-8")
+        assert '"the other was refused" in label' in source
+        assert "one append each" not in source
+
+    def test_the_restore_record_no_longer_calls_issue_131_open(self):
+        """It said the race "is filed rather than worked around" while the race was
+        closed and measured. The warm-up below it stays, because that drill's
+        subject is the fork guard. This guard read the wrong file on its first
+        version, which the mutation check caught and a green run had not."""
+        flat = _flat(RESTORE_RECORD)
+        assert "is filed rather than worked around" not in flat
+        assert "fixed on main" in flat
+        assert "phase 13" in flat

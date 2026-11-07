@@ -47,8 +47,14 @@ every log line says single.
 The three refusals above are stated in terms of chain state and quota counters,
 which is how the constraint was first described and is not the whole of what it
 covers. A cold start against an empty database creates the audit schema, and two
-processes doing that at once race on `pg_type_typname_nsp_index`: one creates the
-type, the other fails on the duplicate key. That failure happens upstream of the
+processes doing that at once race in the catalogs: whichever object one process
+creates first, the other fails on a duplicate key. Measured on the pre-lock build
+across five trials, the index named in the error was
+`pg_class_relname_nsp_index` in three and `pg_type_typname_nsp_index` in two, so
+the mechanism is concurrent DDL and the index is an artifact of which statement
+each process reached first. Naming one index as the mechanism, as this paragraph
+did until the drill was run repeatedly, makes a reader treat the other as a
+different fault. That failure happens upstream of the
 chain and before the fork guard is reached, so a deployment that would have been
 refused for the right reason instead dies for a reason that looks like a
 migration fault.

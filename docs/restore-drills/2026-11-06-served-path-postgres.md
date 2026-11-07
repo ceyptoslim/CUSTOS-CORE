@@ -325,8 +325,14 @@ run, because a store that already holds records makes the gap between
 acknowledged and durable meaningless. Phase 10 warms the schema with a single
 boot before starting the two replicas, because two cold starts against an empty
 database race in schema creation and that failure arriving first looks exactly
-like the fork guard firing. The warm-up isolates the condition under test; the
-race itself is issue 131 and is filed rather than worked around.
+like the fork guard firing. The warm-up isolates the condition under test. The
+race itself was filed as issue 131, is fixed on main by an advisory lock around
+schema creation, and is measured by the phase 13 drill rather than argued: two
+processes released together on an empty database, five trials, both reaching the
+end of schema creation and one append landing with the other refused at the store.
+The warm-up stays here on purpose, because this drill's subject is the fork guard
+and warming the schema is how the condition under test is isolated from a second
+one that looks the same from the outside.
 
 Phase 9 refuses to run when the served path resolves to `InMemoryBackend`. A dev
 process defaults to memory, where there is no store to fill, and the first
