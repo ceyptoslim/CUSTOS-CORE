@@ -1,3 +1,10 @@
+> **Note on the record.** This is the transcript as run, on `feat/purge-path` at
+> `671825f`, before the commitment form existed on the record. It is kept exactly
+> as recorded rather than edited, including the temporary script path it names.
+> The run for the current build, which carries the attestation's form inside its
+> preimage, is
+> [`2026-11-06-purge-path-post-marker.md`](2026-11-06-purge-path-post-marker.md).
+
 # Purge path, measured
 
 Run 2026-11-06 on branch `feat/purge-path`, cut from `main` at `671825f`. This is
@@ -13,12 +20,8 @@ could be purged.
 ## What was run
 
 ```
-python3 scripts/purge_path_drill.py
+python3 /tmp/purgedrill/run.py
 ```
-
-The script lives in the repository since the re-run below. It used to run from a
-temporary path, which meant a reader could not re-execute the transcript and the
-transcript could not be re-checked against a later build.
 
 Three records through `AuditChain.record`, each body stored first through
 `ContentStore.put`, so the record's `content_hash` and the side store's key are
@@ -68,64 +71,6 @@ alongside it. Two writers storing the same body produce the same `content_hash`
 digests, so the stored digest is not linkable by the stored value alone. Re-offering
 a purged body is refused rather than stored again, since a purge that a second
 submission undoes is not a purge.
-
-## Re-run after the marker (binding version 2)
-
-The transcript above was produced on `feat/purge-path` at `671825f`, before the
-commitment form existed on the record. So the attestation in it was written by a
-build that could not classify its own deletions: a reader holding those records
-without the side store saw `action: PURGE` and nothing that said, in the record
-itself, that the content's absence was a deletion rather than a mismatch.
-
-Since version 2 the attestation carries `purged-v1` inside its preimage. This is
-the same drill re-executed on `main` at `2b9296a`, which contains both the purge
-path and the marker:
-
-```
-RESULT chain before purge: (True, 'OK') | records: 3
-RESULT markers: {'r1': 'salted-v1', 'r2': 'salted-v1', 'r3': 'salted-v1'}
-RESULT record-side forms: {'r1': 'salted-v1', 'r2': 'salted-v1', 'r3': 'salted-v1'}
-RESULT commitments open with the body: {'r1': True, 'r2': True, 'r3': True}
-RESULT attestation: b449109ee785f11b | action: PURGE
-RESULT chain after purge: (True, 'OK') | records: 4
-RESULT status after purge: {'r1': 'present', 'r2': 'purged', 'r3': 'present'}
-RESULT markers after purge: {'r1': 'salted-v1', 'r2': 'purged', 'r3': 'salted-v1'}
-RESULT attestation record form: purged-v1 | binding: v2
-RESULT attestation preimage carries commitment: True = purged-v1
-RESULT attestation is a deletion, readable from the record alone: True
-RESULT purged record keeps the form it was stored in: salted-v1 (salted) while the attestation says purged-v1
-RESULT rows in content_bodies: 2 | rows with a salt: 2
-RESULT purge row: content_hash=62088bd17439a753 reason='erasure request 2026-11-06' attestation=a6b6d4e92fc797cd
-RESULT any body text left in the side store: 0
-RESULT read after purge refused: content 62088bd17439a753 was purged at 1794011407.820626
-RESULT restored-from-backup status: salted-v1
-RESULT restored body reads back: True
-RESULT restored commitment opens: True
-```
-
-Two things this adds beyond the original run, and one thing it corrects.
-
-The added fact is the third line from the bottom of the record group: the
-attestation's preimage carries `commitment = purged-v1`, so the deletion is
-readable from the record alone. `preimage_fields` returns the key, which means it
-is inside the hash and not beside it, and the same build that refuses an
-unimplemented binding version can now answer "was this content deleted, or does
-this digest simply not match?" without the side store.
-
-The second added fact is the asymmetry worth stating: the purged record keeps
-`salted-v1`, because that is how its content was stored, while the attestation
-says `purged-v1`, because that is what happened to it. A reader combining the two
-learns salted-then-purged, which is the true history. Rewriting the original
-record's form to `purged-v1` would have been the tempting simplification and it
-would have been a lie about the storage that produced the digest.
-
-The correction is in the original transcript above, and it was mine: the line
-counted non-empty body columns instead of looking for the purged body's bytes, so
-it read `2` on a run where the purged content was gone. The current line scans
-every row for the purged text, which is what "any body text left" was always
-supposed to mean, and it reads `0`. A count of columns is not a search for
-content, and the difference is exactly the class of defect this project files
-against itself.
 
 ## What the run does not establish
 

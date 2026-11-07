@@ -282,6 +282,58 @@ a reason upstream of the audit chain. It does not change the phase 10 result,
 which is about the append, but it does mean "one replica" is protecting more
 than the chain.
 
+## The drivers are in the repository, and re-run
+
+Every command in phases 8, 9 and 10 above referenced a script that lived outside
+the repository (`writer_loop.py`, `phase9.py`, `phase10_worker.py`, `enospc.c`,
+all in a temporary directory). That made the transcript checkable against its
+numbers and not against its code, and it could not be re-executed against a later
+build. The drivers are now committed under `scripts/drills/` with a README stating
+the prerequisites, and all three were re-run on 2026-11-06 against a freshly
+initialised cluster:
+
+```
+phase 8   reported writes: 98
+          rows in store: 99 (before this run: 0, durable from this run: 99)
+          torn rows: 0
+          fresh process: PostgreSQLBackend | records: 99 | verify: [True, 'OK']
+          RESULT acknowledged <= durable: True (at-least-once gap 1)
+
+phase 9   RESULT audit backend: SQLiteBackend
+          RESULT accepted before the store filled: 1
+          RESULT failure: (2, 'OperationalError', 'database or disk is full')
+          RESULT in-process chain length at failure: 1
+          rows: 1 | integrity_check: ok | client ids: ['full-1']
+
+phase 10  RESULT A booted holding 0 records
+          RESULT A append: 200
+          RESULT B append refused: ChainForkError: another writer extended this
+                  chain after this process loaded it.
+          RESULT B in-process chain length after: 0
+          fresh process: records 1 | verify: [True, 'OK'] | clients ['A']
+```
+
+The same three properties as the original run, with different counts because this
+one started from an empty store instead of a store already holding earlier phases.
+The counts are not the finding; the directions are: acknowledged is a subset of
+durable, the in-memory chain never runs ahead of the store, and a stale writer is
+refused without leaving a record behind.
+
+Two things the re-run needed that the original transcript did not, and both are
+findings rather than setup noise. Phase 8 now reports the row count before the
+run, because a store that already holds records makes the gap between
+acknowledged and durable meaningless. Phase 10 warms the schema with a single
+boot before starting the two replicas, because two cold starts against an empty
+database race in schema creation and that failure arriving first looks exactly
+like the fork guard firing. The warm-up isolates the condition under test; the
+race itself is issue 131 and is filed rather than worked around.
+
+Phase 9 refuses to run when the served path resolves to `InMemoryBackend`. A dev
+process defaults to memory, where there is no store to fill, and the first
+re-execution of this phase reported 39 requests accepted and nothing wrong
+because the injection had nothing to act on. A drill that passes while measuring
+nothing is worse than one that fails.
+
 ## Defects this drill found
 
 Three, in the order they appeared. The first is fixed on this branch and its
