@@ -149,13 +149,20 @@ class TestTheRecordNamesTheBackendItWasMeasuredOn:
     claim, so it is pinned like the others: a paragraph that can be deleted without
     a failure is a paragraph that will be."""
 
-    def test_the_design_note_states_which_backend_was_measured(self):
+    def test_the_design_note_states_which_backends_were_measured(self):
+        """This guard used to require "has not been run there", which pinned the gap
+        as the expected state. It now requires both runs to be named, because a
+        pinned limitation that has since been closed is a guard holding a document
+        to a false statement."""
         doc = _norm(DESIGN)
-        assert "on the SQLite audit backend" in doc
-        assert "has not been run there" in doc
+        assert "2017-11-07-retention-postgres.md" not in doc  # typo cannot slip in
+        assert "2026-11-07-retention-postgres.md" in doc
+        assert "phase 12" in doc and "phase 14" in doc
 
-    def test_it_names_the_open_gap_rather_than_implying_coverage(self):
-        assert "Issue 149" in _norm(DESIGN)
+    def test_it_says_the_run_that_closed_the_gap_and_why_it_was_owed(self):
+        doc = _norm(DESIGN)
+        assert "Issue 149 asked for that run, phase 14 is it" in doc
+        assert "found the behaviour the argument predicted rather than a defect" in doc
 
     def test_the_transcript_names_the_same_gap(self):
         doc = _norm(DOC)

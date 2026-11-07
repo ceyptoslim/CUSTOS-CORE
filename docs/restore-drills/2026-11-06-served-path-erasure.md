@@ -14,10 +14,11 @@ Both stores in this run are SQLite, because the split-restore phase takes its
 pre-purge copy with a file copy of the audit store. That is a property of the
 SQLite backend and not of a server, so the driver refuses to run when the store
 is redirected rather than reporting a failure it did not measure. Consequence
-worth stating plainly: the retention sequence below is measured on one backend,
-and the deployment backend is PostgreSQL, which is drilled here for durability and
-restore and by phase 13 for the cold-start race, but not for retention. Issue 149
-carries that gap.
+worth stating plainly: the retention sequence below is measured on one backend.
+The deployment backend is PostgreSQL, and it was measured separately on 2026-11-07
+by phase 14 (`docs/restore-drills/2026-11-07-retention-postgres.md`), which runs the
+same sequence with a `pg_dump` copy instead of a file copy and reaches the same
+result. Issue 149 was that run and is closed by it.
 
 ## Two runs of one API, differing only in configuration
 

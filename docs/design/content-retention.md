@@ -82,27 +82,31 @@ client may delete" is not a policy anyone would write. The refusals are distinct
 
 ## The backend the erasure claims were measured on
 
-The retention sequence has been run end to end over HTTP on the SQLite audit
-backend: kept, erased, reconciled, and the split restore reported by name. The
-deployment backend is PostgreSQL, and the same sequence has not been run there.
-What has been run on PostgreSQL is the audit side, for durability and restore,
-and the cold-start race.
+The retention sequence has been run end to end over HTTP on both backends now:
+SQLite by phase 12, and PostgreSQL by phase 14
+(`docs/restore-drills/2026-11-07-retention-postgres.md`, 15 checks, all true, on
+PostgreSQL 15.19). Both show the same four things: the record names the form the
+store used, the purge removes body and salt and appends a `purged-v1` attestation,
+the pair reconciles clean on both sides, and a chain restored to before the purge
+beside a store past it is reported as `unattested-purge` rather than verifying
+green.
 
 This is a statement about the evidence and not about the code. `reconcile()` reads
 records through the chain, and the content store is a filesystem side store keyed
 by `content_hash`, which does not care which backend wrote the record.
 
 The structural half of that is guarded rather than asserted:
-`tests/test_retention_backend_independence.py` fails if either retention module
-names an audit backend, a backend class or `DATABASE_URL`. It is a claim about the
-source that a reader could not otherwise check from the sentence making it, which
-is the shape this document keeps having to correct. What the guard does not
-establish is that the behaviour is identical on every backend. Nothing branches is
-an argument about the code; the measurement is issue 149. But an
-argument from "the code paths are the same" is how the cross-tenant loader and the
-full-store refusal were both excused before each turned out to be wrong, so the
-narrower sentence is the one that goes in the document. Issue 149 is the run that
-would widen it.
+`tests/test_retention_backend_independence.py` fails if either retention module names
+an audit backend, a backend class or `DATABASE_URL`. It is a claim about the source
+that a reader could not otherwise check from the sentence making it, which is the
+shape this document keeps having to correct, and the guard establishes exactly what
+the sentence claims: that nothing branches. It is not the measurement.
+
+The measurement was owed anyway, which is the part worth keeping. An argument from
+"the code paths are the same" is how the cross-tenant loader and the full-store
+refusal were both excused before each turned out to be wrong, and both were found by
+running the thing rather than reading it. Issue 149 asked for that run, phase 14 is
+it, and it found the behaviour the argument predicted rather than a defect.
 
 ## What the served path does and does not cover
 
