@@ -67,6 +67,24 @@ look like the guard working: a false pass. The race is fixed now, and the warm-u
 stays, because this phase is about the fork condition and should not acquire a
 second reason to fail. The race itself is phase 13.
 
+## Phase 12: the served path keeps, erases and reconciles
+
+```
+python3 scripts/drills/phase12_served_path_retention.py
+```
+
+Needs no server, and refuses when one is configured. Both stores in this drill are
+SQLite, and the condition is asserted before `main` is imported, because importing
+it builds the audit backend and with `DATABASE_URL` set the import is already a
+connection attempt. A run with the variable inherited from the shell used to get
+nine results deep and die on a missing `audit.sqlite`, which names the symptom and
+not the cause; it now exits 2 saying the pre-purge copy is a file copy, which is a
+property of SQLite and not of a server.
+
+The reason it cannot run on PostgreSQL is structural rather than lazy: the
+split-restore phase copies the audit store as a file. The PostgreSQL retention run
+is issue 149 and would use a dump and reload instead.
+
 ## Phase 13: two cold starts on an empty database (PostgreSQL)
 
 ```

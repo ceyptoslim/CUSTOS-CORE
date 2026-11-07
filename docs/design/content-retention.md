@@ -80,6 +80,22 @@ client may delete" is not a policy anyone would write. The refusals are distinct
   surface does not exist rather than accepting whoever finds it;
 - token absent or wrong: `401`.
 
+## The backend the erasure claims were measured on
+
+The retention sequence has been run end to end over HTTP on the SQLite audit
+backend: kept, erased, reconciled, and the split restore reported by name. The
+deployment backend is PostgreSQL, and the same sequence has not been run there.
+What has been run on PostgreSQL is the audit side, for durability and restore,
+and the cold-start race.
+
+This is a statement about the evidence and not about the code. `reconcile()` reads
+records through the chain, and the content store is a filesystem side store keyed
+by `content_hash`, which does not care which backend wrote the record. But an
+argument from "the code paths are the same" is how the cross-tenant loader and the
+full-store refusal were both excused before each turned out to be wrong, so the
+narrower sentence is the one that goes in the document. Issue 149 is the run that
+would widen it.
+
 ## What the served path does and does not cover
 
 Covered: `/v1/evaluate`, including its rate-limited refusal path, which records
