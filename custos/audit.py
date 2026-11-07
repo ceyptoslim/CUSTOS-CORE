@@ -101,6 +101,60 @@ class ChainForkError(RuntimeError):
     """
 
 
+class AuditStoreFull(RuntimeError):
+    """The store could not accept the record because it has no space.
+
+    A refusal reason, not a fault in the gate: the chain is not advanced and the
+    decision is not served unrecorded, which is the behaviour a full store should
+    produce. What was wrong was the shape of the failure the caller saw, an
+    unhandled 500, indistinguishable from a bug in the gate and teaching a caller
+    to retry something that will not succeed. Measured by the item 1 drill, phase
+    9, where ENOSPC arrived as a 500.
+    """
+
+
+# Text and SQLSTATE of a full store, in the two engines this build uses. Kept as
+# data rather than a chain of `or` so a new engine adds a line instead of editing
+# a condition, and so the test can assert this list rather than a code path.
+_FULL_STORE_SQLSTATES = {"53100", "53200"}  # disk_full, out_of_memory
+_FULL_STORE_TEXT = (
+    "database or disk is full",
+    "no space left on device",
+    "disk full",
+    "could not extend file",
+    "insufficient space",
+)
+
+
+def is_full_store_error(exc: BaseException) -> bool:
+    """Whether an exception from a store means "no space" rather than "no idea".
+
+    Deliberately narrow. A storage failure this does not recognise stays a 500,
+    because guessing that an unknown error is a full store would tell a caller to
+    retry a condition that may never clear, which is the failure this exists to
+    stop. Recognising too little is recoverable; recognising too much is not.
+    """
+    sqlstate = getattr(exc, "pgcode", None) or getattr(exc, "sqlstate", None)
+    if sqlstate and str(sqlstate) in _FULL_STORE_SQLSTATES:
+        return True
+    text = str(exc).lower()
+    return any(fragment in text for fragment in _FULL_STORE_TEXT)
+
+
+def schema_lock_key(namespace: str) -> int:
+    """A stable advisory-lock key for one schema, derived rather than chosen.
+
+    Two processes cold-starting against an empty database race inside
+    ``CREATE TABLE IF NOT EXISTS``: both see no table, both try to create it, and
+    the loser dies on the composite type before it reaches anything that would
+    have refused it politely (drill phase 10, issue 131). The lock serialises that
+    window. Derived from a name so two deployments agree without coordination and
+    two different schemas do not block each other.
+    """
+    digest = hashlib.sha256(f"custos.schema:{namespace}".encode("utf-8")).digest()
+    return int.from_bytes(digest[:8], "big", signed=True)
+
+
 class InMemoryBackend:
     """Default backend. Fast, no dependencies. Resets on restart."""
 
@@ -213,6 +267,15 @@ class SQLiteBackend:
                 raise ChainForkError(
                     'another writer extended this chain after this process loaded it. The predecessor this record would append after is already claimed in the store, so appending would fork the chain. Two writers must not share one store: reload the chain before appending.'
                 ) from exc
+            except sqlite3.OperationalError as exc:
+                # A full store is not a fork and must not be reported as one: the
+                # caller has to be told which condition to wait for.
+                if is_full_store_error(exc):
+                    raise AuditStoreFull(
+                        "the audit store is full, so this decision was not recorded "
+                        "and the chain was not advanced"
+                    ) from exc
+                raise
             conn.commit()
 
     def load_all(self) -> List[AuditRecord]:
@@ -272,6 +335,12 @@ class PostgreSQLBackend:
     def _init(self) -> None:
         with self._connect() as conn:
             with conn.cursor() as cur:
+                # Held until this transaction ends, so the DDL below runs once
+                # even when two processes boot together on an empty database.
+                cur.execute(
+                    "SELECT pg_advisory_xact_lock(%s)",
+                    (schema_lock_key("audit_records"),),
+                )
                 cur.execute("""
                     CREATE TABLE IF NOT EXISTS audit_records (
                         id SERIAL PRIMARY KEY,
@@ -324,6 +393,11 @@ class PostgreSQLBackend:
             if duplicate:
                 raise ChainForkError(
                     'another writer extended this chain after this process loaded it. The predecessor this record would append after is already claimed in the store, so appending would fork the chain. Two writers must not share one store: reload the chain before appending.'
+                ) from exc
+            if is_full_store_error(exc):
+                raise AuditStoreFull(
+                    "the audit store is full, so this decision was not recorded "
+                    "and the chain was not advanced"
                 ) from exc
             raise
 
