@@ -67,6 +67,30 @@ failure looks like the guard working, which is a false pass; with it, the fork
 condition is the only thing under test. Issue 131 is a defect in its own right
 and is filed.
 
+## Phase 11: export and backup, and the restored-from-backup negative result
+
+```
+python3 scripts/drills/phase11_export_backup.py
+```
+
+No prerequisites beyond the project dependencies, and no server: both stores are
+SQLite files, so a backup is a file copy. The run writes three records (two with
+content, one without), backs up both stores, purges one body, backs up again,
+exports the record side plus the store inventory, then restores the pre-purge
+copy and measures what the restore did to the erasure.
+
+Reproduced 2026-11-06: **live purge holds (`0` body bytes in the store file),
+post-purge backup carries no body, export carries forms and no bodies, and the
+restore brings the body back with the commitment opening again while the restored
+chain verifies `(True, 'OK')` with zero purge attestations.** The record is
+`docs/restore-drills/2026-11-06-export-backup.md`.
+
+It also measures a split restore, audit store from the backup and content store
+live, which produces a chain that verifies green while its records say
+`salted-v1` and its store says `purged` (issue 136). The script's preconditions
+are asserted and a failed check reaches the exit code, per the rule that came out
+of the InMemoryBackend pass.
+
 ## What these do not show
 
 The store must be one writer at a time for these results to mean what they say.
