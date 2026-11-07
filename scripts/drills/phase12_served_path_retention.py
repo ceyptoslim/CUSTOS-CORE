@@ -18,6 +18,14 @@ reaches the exit code, so this cannot report a pass it did not earn.
 
 Run:  python3 scripts/drills/phase12_served_path_retention.py
 SQLite for both stores, so no server is required.
+
+That condition is asserted at the top and the drill refuses by name instead of
+running without it, because it is load-bearing rather than incidental: the
+split-restore phase takes its pre-purge copy with a file copy of the audit store,
+which is a thing a SQLite store is and a PostgreSQL store is not. It was assumed
+once, and a run with DATABASE_URL inherited from the shell got nine results deep
+before dying on a missing audit.sqlite, which describes the symptom and not the
+cause. The PostgreSQL served path is measured by phases 6 and 13, not here.
 """
 
 from __future__ import annotations
@@ -42,6 +50,24 @@ os.environ["CUSTOS_ENV"] = "development"
 os.environ["CUSTOS_CONTENT_RETENTION"] = "off"
 os.environ.pop("CUSTOS_CONTENT_STORE_DIR", None)
 os.environ.pop("CUSTOS_RETENTION_ADMIN_TOKEN", None)
+
+# The SQLite condition is checked HERE, before main is imported, because importing
+# it builds the policy store and the audit backend: with DATABASE_URL pointing
+# anywhere, the import is already a connection attempt. A refusal placed after the
+# import is a refusal after the work it was meant to prevent, which is exactly what
+# the guard for this found when it pointed the variable at an unreachable host and
+# got psycopg2 rather than the drill's own sentence.
+if os.environ.get("DATABASE_URL"):
+    print(
+        "REFUSED: DATABASE_URL is set, so the audit store is PostgreSQL and this drill "
+        "cannot take its pre-purge copy.\n"
+        "The split-restore phase copies the audit store as a file, which is a property "
+        "of the SQLite backend and not of a server.\n"
+        "The PostgreSQL served path is measured by the phase 6 restore drill "
+        "(docs/restore-drills/2026-11-06-served-path-postgres.md) and the cold-start "
+        "race by phase 13. Unset DATABASE_URL to run this one."
+    )
+    raise SystemExit(2)
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -74,9 +100,33 @@ def served_state() -> None:
     app_module.action_gate = app_module.ActionGate(manager)
 
 
+def require_sqlite_audit_store() -> str | None:
+    """The resolved backend, returned as a refusal when it is not SQLite.
+
+    The environment variable is checked at import time, above, because the import
+    is itself a connection attempt. This is the second check, for a route to
+    PostgreSQL that is not that variable: it would otherwise fail five phases later
+    at the file copy, which reports the symptom and not the cause.
+    """
+    ctx = app_module.tenant_manager.get("default")
+    backend = ctx.audit_chain.backend_type if ctx is not None else "memory"
+    if backend != "SQLiteBackend":
+        return (
+            f"REFUSED: the audit backend resolved to {backend}, not SQLiteBackend, so "
+            "the pre-purge copy would copy a file the store does not use.\nNothing "
+            "below this point would be a measurement of what the run claims."
+        )
+    return None
+
+
 def main() -> int:
     checks = []
     print(f"work directory: {ROOT}")
+    refusal = require_sqlite_audit_store()
+    if refusal:
+        print(refusal)
+        return 2
+    print(f"RESULT audit backend = {app_module.tenant_manager.get('default').audit_chain.backend_type} | the pre-purge copy is a file copy")
     if not AUTH.get("Authorization"):
         print("REFUSED: no bearer token could be minted, so nothing here would run")
         return 2

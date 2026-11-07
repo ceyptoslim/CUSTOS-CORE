@@ -10,6 +10,15 @@ This closes the last open piece of the retention item: whether the served path
 keeps the content it reads, and whether an erasure request against it acts on
 anything.
 
+Both stores in this run are SQLite, because the split-restore phase takes its
+pre-purge copy with a file copy of the audit store. That is a property of the
+SQLite backend and not of a server, so the driver refuses to run when the store
+is redirected rather than reporting a failure it did not measure. Consequence
+worth stating plainly: the retention sequence below is measured on one backend,
+and the deployment backend is PostgreSQL, which is drilled here for durability and
+restore and by phase 13 for the cold-start race, but not for retention. Issue 149
+carries that gap.
+
 ## Two runs of one API, differing only in configuration
 
 | run | configuration | what a record says | what an erasure request gets |

@@ -100,3 +100,68 @@ class TestTheDesignNoteKeepsItsDisclosures:
         doc = _norm(DESIGN)
         assert "still verifies" in doc
         assert "reconcile()" in doc
+
+
+class TestTheDrillRefusesAConfigurationItCannotMeasure:
+    """The pre-purge copy is a file copy of the audit store, which is a property of
+    the SQLite backend rather than of a server. The docstring always said so; the
+    code did not check, and a run with DATABASE_URL inherited from the shell got
+    nine results deep before dying on a missing audit.sqlite. A refusal that names
+    the cause is the fix; a traceback that names the symptom is not."""
+
+    def test_a_redirected_audit_store_is_refused_by_name(self):
+        import os
+        import subprocess
+        import sys
+
+        env = dict(os.environ)
+        env["DATABASE_URL"] = "postgresql://drill/drill"
+        result = subprocess.run(
+            [sys.executable, str(SCRIPT)],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=180,
+        )
+        assert result.returncode == 2, result.stdout[-800:] + result.stderr[-800:]
+        assert "REFUSED: DATABASE_URL is set" in result.stdout
+        assert "copies the audit store as a file" in result.stdout
+        # A refusal that does not say what would have been wrong is a stop sign
+        # without a direction, so it names the property and the drill that does
+        # cover this configuration.
+        assert "a property of the SQLite backend and not of a server" in result.stdout
+
+    def test_the_refusal_says_where_the_postgres_path_is_measured(self):
+        script = SCRIPT.read_text(encoding="utf-8")
+        assert "2026-11-06-served-path-postgres.md" in script
+
+    def test_the_backend_that_resolved_is_checked_rather_than_the_variable_alone(self):
+        """A second check on the backend the app actually built, because the
+        environment variable is one route to PostgreSQL and not the only one."""
+        script = SCRIPT.read_text(encoding="utf-8")
+        assert "backend_type" in script
+        assert '!= "SQLiteBackend"' in script
+
+
+class TestTheRecordNamesTheBackendItWasMeasuredOn:
+    """The retention claims rest on a run whose stores are SQLite, and the deployment
+    backend is PostgreSQL. The disclosure is the part a reader needs to weigh the
+    claim, so it is pinned like the others: a paragraph that can be deleted without
+    a failure is a paragraph that will be."""
+
+    def test_the_design_note_states_which_backend_was_measured(self):
+        doc = _norm(DESIGN)
+        assert "on the SQLite audit backend" in doc
+        assert "has not been run there" in doc
+
+    def test_it_names_the_open_gap_rather_than_implying_coverage(self):
+        assert "Issue 149" in _norm(DESIGN)
+
+    def test_the_transcript_names_the_same_gap(self):
+        doc = _norm(DOC)
+        assert "Both stores in this run are SQLite" in doc
+        assert "Issue 149" in doc
+
+    def test_the_design_note_still_says_why_the_argument_from_code_is_insufficient(self):
+        doc = _norm(DESIGN)
+        assert "cross-tenant loader" in doc
