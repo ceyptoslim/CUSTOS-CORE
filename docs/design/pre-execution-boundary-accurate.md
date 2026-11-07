@@ -36,7 +36,7 @@ AUDIT is not a third authorization outcome. It flags a matched rule on a call th
 
 `custos/policy_citation.py:3-9` "sha256 digest of the exact in-force policy set" states the property: every emitted record cites the digest of the policy set it was enforced against, read on the same code path that made the decision. The digest is computed at emission rather than cached, deliberately, so an in-flight policy change shows up in the very next record. The gate computes it in `custos/action_gate.py:165-181` "def _cited_policy_digest".
 
-Each record is hash-chained to its predecessor through `custos/audit.py:417` "def compute_record_hash(record, previous_hash: str)", which makes a silent edit to the middle of a chain detectable to anyone holding the chain. The reconciliation path records the same citation `custos/action_gate.py:297` "policy_digest=digest".
+Each record is hash-chained to its predecessor through `custos/audit.py:467` "def compute_record_hash(record, previous_hash: str)", which makes a silent edit to the middle of a chain detectable to anyone holding the chain. The reconciliation path records the same citation `custos/action_gate.py:297` "policy_digest=digest".
 
 What this is not: ground truth. The record is produced by the system being governed. It is a statement about a decision, made by the decider, and it is checkable against the policy digest only to the extent the digest computation is trustworthy. In a dispute about whether an action was in bounds, the record is the artifact that outlives the disagreement. It does not settle who was right, because nothing in this lane can.
 

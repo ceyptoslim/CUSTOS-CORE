@@ -40,7 +40,13 @@ import sqlite3
 import time
 from typing import Optional
 
-from .audit import AuditChain
+from .audit import (
+    COMMITMENT_NONE,
+    COMMITMENT_PURGED_V1,
+    COMMITMENT_SALTED_V1,
+    COMMITMENT_UNSALTED_V0,
+    AuditChain,
+)
 
 # The marker is digested with the body, so the two commitment forms are not
 # interchangeable and a bare digest cannot be presented as a salted one.
@@ -145,6 +151,39 @@ class ContentStore:
             )
         return content_hash
 
+    def put_and_record(
+        self,
+        body: str,
+        *,
+        chain: AuditChain,
+        client_id: str,
+        action: str,
+        reason: str,
+        triggered_rule: Optional[str] = None,
+        trace_id: Optional[str] = None,
+        policy_digest: Optional[str] = None,
+        legacy: bool = False,
+    ):
+        """Store the body, then record it with the form it was stored in.
+
+        The two calls are ordered and joined here so a record cannot be written
+        claiming a form the store did not use, which would defeat the marker
+        exactly where it is meant to help: a reader classifying digests from
+        records alone.
+        """
+        content_hash = self.put_legacy(body) if legacy else self.put(body)
+        form = self.commitment_form(content_hash)
+        return chain.record(
+            client_id=client_id,
+            action=action,
+            reason=reason,
+            content=body,
+            triggered_rule=triggered_rule,
+            trace_id=trace_id,
+            policy_digest=policy_digest,
+            commitment=form,
+        )
+
     def put_legacy(self, body: str) -> str:
         """Store a body with no salt, for content that arrived before this store.
 
@@ -221,6 +260,7 @@ class ContentStore:
             triggered_rule="retention.purge",
             trace_id=trace_id,
             policy_digest=policy_digest,
+            commitment=COMMITMENT_PURGED_V1,
         )
         if record.content_hash != content_hash:
             raise RuntimeError(
@@ -247,6 +287,21 @@ class ContentStore:
             ).fetchone():
                 return STATUS_PURGED
         return STATUS_UNKNOWN
+
+    def commitment_form(self, content_hash: str) -> str:
+        """The form to bind in the record, in this build's vocabulary.
+
+        A reader of the record alone learns which form the digest is in, which is
+        the half of the marker that lives outside this store. ``purged`` maps to
+        its own form because "cannot be recomputed, by design" is a different
+        fact from either stored form.
+        """
+        marker = self.marker(content_hash)
+        return {
+            "salted-v1": COMMITMENT_SALTED_V1,
+            "unsalted-v0": COMMITMENT_UNSALTED_V0,
+            "purged": COMMITMENT_PURGED_V1,
+        }.get(marker, COMMITMENT_NONE)
 
     def marker(self, content_hash: str) -> str:
         """``salted-v1``, ``unsalted-v0``, ``purged``, or ``unknown``.

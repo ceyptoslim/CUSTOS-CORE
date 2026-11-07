@@ -28,7 +28,33 @@ from typing import List, Optional
 # binding (legacy preimage, unchanged, still verifiable). Version >= 1 = the
 # request-correlation identifier (trace_id) is covered by the record hash, so
 # correlation is intrinsically bound rather than merely stored alongside.
-RECORD_BINDING_CURRENT = 1
+RECORD_BINDING_CURRENT = 2
+
+# Commitment forms. The marker names the form of the digest bound in
+# content_hash, so "this cannot be checked because it was purged" is
+# distinguishable from "this does not match the content" -- the same class of
+# defect as a future binding version sharing a failure signature with tampering.
+COMMITMENT_NONE = "none"
+COMMITMENT_UNSALTED_V0 = "unsalted-v0"
+COMMITMENT_SALTED_V1 = "salted-v1"
+COMMITMENT_PURGED_V1 = "purged-v1"
+COMMITMENT_FORMS = (
+    COMMITMENT_NONE,
+    COMMITMENT_UNSALTED_V0,
+    COMMITMENT_SALTED_V1,
+    COMMITMENT_PURGED_V1,
+)
+
+
+class UnknownBindingVersion(ValueError):
+    """A record names a binding version this build does not implement.
+
+    Raised rather than hashed, because hashing an unimplemented version with
+    this build's field list produces a mismatch that reads as tampering. A
+    legitimate future record would then be an attack, and the distinction
+    between "written by a newer writer" and "edited" would be lost exactly
+    where it matters most.
+    """
 
 # When set, a record must carry the policy citation and the correlation
 # identifier. The gate supplies both; this makes the requirement checkable
@@ -53,6 +79,12 @@ class AuditRecord:
     policy_digest: Optional[str] = None
     tenant_id: Optional[str] = None
     binding_version: int = 0
+    # Which form the content_hash digest is in. Version 2 binds this, so a
+    # reader holding records without the content store can classify each
+    # digest instead of guessing. Version 1 records have no such field; for
+    # them the answer is genuinely unknown, and "none" is what this build
+    # reports for a record that never claimed one.
+    commitment: str = "none"
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -110,7 +142,8 @@ class SQLiteBackend:
                     trace_id TEXT,
                     policy_digest TEXT,
                     tenant_id TEXT,
-                    binding_version INTEGER DEFAULT 0
+                    binding_version INTEGER DEFAULT 0,
+                    commitment TEXT DEFAULT 'none'
                 )
             """)
             self._migrate(conn)
@@ -155,6 +188,7 @@ class SQLiteBackend:
             ("policy_digest", "TEXT"),
             ("tenant_id", "TEXT"),
             ("binding_version", "INTEGER DEFAULT 0"),
+            ("commitment", "TEXT DEFAULT 'none'"),
         ):
             if column not in present:
                 conn.execute(f"ALTER TABLE audit_records ADD COLUMN {column} {decl}")
@@ -166,14 +200,14 @@ class SQLiteBackend:
                     INSERT INTO audit_records
                 (timestamp, client_id, action, triggered_rule, reason,
                  content_hash, record_hash, previous_hash, trace_id,
-                 policy_digest, tenant_id, binding_version)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 policy_digest, tenant_id, binding_version, commitment)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 record.timestamp, record.client_id, record.action,
                 record.triggered_rule, record.reason, record.content_hash,
                 record.record_hash, record.previous_hash, record.trace_id,
                 record.policy_digest, record.tenant_id,
-                    record.binding_version,
+                    record.binding_version, record.commitment,
                 ))
             except sqlite3.IntegrityError as exc:
                 raise ChainForkError(
@@ -186,7 +220,7 @@ class SQLiteBackend:
             query = """
                 SELECT timestamp, client_id, action, triggered_rule, reason,
                        content_hash, record_hash, previous_hash, trace_id,
-                       policy_digest, tenant_id, binding_version
+                       policy_digest, tenant_id, binding_version, commitment
                 FROM audit_records"""
             if self._tenant_id is not None:
                 rows = conn.execute(
@@ -202,6 +236,7 @@ class SQLiteBackend:
                 record_hash=r[6], previous_hash=r[7], trace_id=r[8],
                 policy_digest=r[9], tenant_id=r[10],
                 binding_version=r[11] or 0,
+                commitment=r[12] or COMMITMENT_NONE,
             )
             for r in rows
         ]
@@ -251,7 +286,8 @@ class PostgreSQLBackend:
                         trace_id TEXT,
                         policy_digest TEXT,
                         tenant_id TEXT,
-                        binding_version INTEGER DEFAULT 0
+                        binding_version INTEGER DEFAULT 0,
+                        commitment TEXT DEFAULT 'none'
                     )
                 """)
                 # Columns first, then the index: the tenant column has to exist
@@ -260,6 +296,7 @@ class PostgreSQLBackend:
                     ("policy_digest", "TEXT"),
                     ("tenant_id", "TEXT"),
                     ("binding_version", "INTEGER DEFAULT 0"),
+                    ("commitment", "TEXT DEFAULT 'none'"),
                 ):
                     cur.execute(
                         f"ALTER TABLE audit_records ADD COLUMN IF NOT EXISTS {column} {decl}"
@@ -297,14 +334,14 @@ class PostgreSQLBackend:
                     INSERT INTO audit_records
                     (timestamp, client_id, action, triggered_rule, reason,
                      content_hash, record_hash, previous_hash, trace_id,
-                     policy_digest, tenant_id, binding_version)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     policy_digest, tenant_id, binding_version, commitment)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     record.timestamp, record.client_id, record.action,
                     record.triggered_rule, record.reason, record.content_hash,
                     record.record_hash, record.previous_hash, record.trace_id,
                     record.policy_digest, record.tenant_id,
-                    record.binding_version,
+                    record.binding_version, record.commitment,
                 ))
             conn.commit()
 
@@ -314,7 +351,7 @@ class PostgreSQLBackend:
                 query = """
                     SELECT timestamp, client_id, action, triggered_rule, reason,
                            content_hash, record_hash, previous_hash, trace_id,
-                           policy_digest, tenant_id, binding_version
+                           policy_digest, tenant_id, binding_version, commitment
                     FROM audit_records"""
                 if self._tenant_id is not None:
                     cur.execute(
@@ -332,6 +369,7 @@ class PostgreSQLBackend:
                 record_hash=r[6], previous_hash=r[7], trace_id=r[8],
                 policy_digest=r[9], tenant_id=r[10],
                 binding_version=r[11] or 0,
+                commitment=r[12] or COMMITMENT_NONE,
             )
             for r in rows
         ]
@@ -406,11 +444,23 @@ def preimage_fields(record, previous_hash: str) -> dict:
     if tenant_id:
         fields["tenant_id"] = tenant_id
     binding_version = _field(record, "binding_version") or 0
+    if binding_version > RECORD_BINDING_CURRENT:
+        raise UnknownBindingVersion(
+            f"this record claims binding version {binding_version}; this build "
+            f"implements up to {RECORD_BINDING_CURRENT}. Recomputing it here would "
+            "produce a mismatch that looks like tampering, so it is refused instead."
+        )
     if binding_version >= 1:
         fields["binding"] = f"v{binding_version}"
         trace_id = _field(record, "trace_id")
         if trace_id:
             fields["trace_id"] = trace_id
+    if binding_version >= 2:
+        # Appended after the version 1 fields, never reordered, so a v1 reader
+        # recomputing a v1 record is byte-identical and a v2 record differs only
+        # by this one key. Present even when the form is "none": a v2 record
+        # states what it is, rather than leaving absence to be interpreted.
+        fields["commitment"] = _field(record, "commitment") or COMMITMENT_NONE
     return fields
 
 
@@ -465,12 +515,21 @@ class AuditChain:
         trace_id: Optional[str] = None,
         policy_digest: Optional[str] = None,
         tenant_id: Optional[str] = None,
+        commitment: str = COMMITMENT_NONE,
     ) -> AuditRecord:
         # A scoped chain writes its own tenant and nothing else. The served path
         # never passed tenant_id, so with the wiring in place every tenant's
         # records would have landed in one NULL scope; and a record attributed
         # to another tenant inside a per-tenant chain would be a chain that
         # verifies for a tenant whose history it is not.
+        # Refused rather than defaulted: a marker that is a typo would record a
+        # classifiable-looking record whose class is wrong, which is worse than
+        # a record that says it does not know.
+        if commitment not in COMMITMENT_FORMS:
+            raise ValueError(
+                f"unknown commitment form {commitment!r}; expected one of "
+                + ", ".join(COMMITMENT_FORMS)
+            )
         if tenant_id is None:
             tenant_id = self._tenant_id
         elif self._tenant_id is not None and tenant_id != self._tenant_id:
@@ -494,6 +553,7 @@ class AuditChain:
                 policy_digest=policy_digest,
                 tenant_id=tenant_id,
                 binding_version=RECORD_BINDING_CURRENT,
+                commitment=commitment,
             )
             if bound_evidence_required():
                 missing = [
@@ -560,6 +620,18 @@ class AuditChain:
             for i, record in enumerate(self._records):
                 if record.previous_hash != previous_hash:
                     return False, f"Chain broken at record {i}: previous_hash mismatch"
+                version = record.binding_version or 0
+                if version > RECORD_BINDING_CURRENT:
+                    # Deliberately not "tampering detected". A record written by
+                    # a newer writer is not an attack, and this build cannot tell
+                    # the two apart, so it says which one it is looking at and
+                    # stops rather than reporting the wrong diagnosis.
+                    return False, (
+                        f"Record {i} claims binding version {version}, which this "
+                        f"build does not implement (up to {RECORD_BINDING_CURRENT}). "
+                        "This is not a tampering finding: verify with a build that "
+                        f"implements version {version}."
+                    )
                 expected = self._compute_record_hash(record, previous_hash)
                 if record.record_hash != expected:
                     return False, f"Record {i} hash invalid -- tampering detected"
