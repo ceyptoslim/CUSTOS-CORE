@@ -1,8 +1,8 @@
 # AgentDojo Pre-Registration v2: Model Independence on Gemini Flash
 
-Status: drafted, not yet frozen, nothing run.
-Commit: not yet frozen. The freeze commit SHA goes here in a follow-up commit that changes nothing else.
-Intended first run: not yet scheduled.
+Status: frozen on main, nothing run.
+Commit: `b9d4312a1c7a1b6880f2e1d09203745b942c02c3` (merge of PR 177, the commit that put this text on main on November 8, 2026, recorded here by a follow-up commit that changes nothing else).
+Intended first run: Arm A on `gemini-3.6-flash`, not yet scheduled. Blocked on the `--provider` path and the 429 classifier named at the end of this file.
 Author: Tavares Heath / CUSTOS-CORE.
 Written: November 8, 2026.
 
