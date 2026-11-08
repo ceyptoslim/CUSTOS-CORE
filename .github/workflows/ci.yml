@@ -126,9 +126,23 @@ jobs:
       - name: Validate Rego policy syntax
         run: |
           # OPA 1.0.0+ makes if/in/contains native keywords (matches our v1 Rego syntax)
-          curl -L -o opa https://openpolicyagent.org/downloads/v1.0.0/opa_linux_amd64_static
+          # A CDN error page saved as ./opa and then executed is worse than no OPA
+          # at all. That is how an upstream 504 surfaced here as
+          # "syntax error near unexpected token `<'" and failed the job with no
+          # hint about the real cause. --fail refuses an HTTP error instead of
+          # writing its body to disk, both sources are retried, and the binary has
+          # to answer "./opa version" with the pinned release before it is used.
+          fetch_opa() {
+            curl --fail --show-error --location --retry 3 --retry-all-errors \
+                 --retry-delay 2 --max-time 180 -o opa "$1"
+          }
+          fetch_opa https://github.com/open-policy-agent/opa/releases/download/v1.0.0/opa_linux_amd64_static \
+            || fetch_opa https://openpolicyagent.org/downloads/v1.0.0/opa_linux_amd64_static \
+            || { echo "::error::OPA 1.0.0 could not be downloaded from either source"; exit 1; }
           chmod +x opa
           ./opa version
+          ./opa version | grep -q "Version: 1.0.0" \
+            || { echo "::error::downloaded binary is not OPA 1.0.0"; exit 1; }
           echo "=== Rego syntax check ==="
           ./opa check policies/custos_governance.rego
           echo "=== Rego policy format check ==="
