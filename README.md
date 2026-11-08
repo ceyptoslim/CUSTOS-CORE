@@ -21,7 +21,12 @@ CUSTOS-CORE and LORL-9.1 provide the open-core governance and agent infrastructu
 
 [github.com/ceyptoslim/CUSTOS-CORE](https://github.com/ceyptoslim/CUSTOS-CORE)
 
-**Verified:** 2026-11-07 run on `main` (`9483e44`) | **Tests:** 1062 passed, 14 skipped | **Coverage:** 91%
+**Verified:** 2026-11-08 CI run on `main` (`8d4f245`) | **Tests:** 1062 passed, 37 skipped | **Coverage:** 90%
+
+*Count basis:* the `CUSTOS CI` job for that commit (Python 3.11), so every figure in the line above is
+reproducible from the workflow run rather than from a laptop. A local run collects a different total
+depending on which optional packages are present (`requirements-benchmark.txt`, the MCP SDK, a local
+OPA server), which is why the committed figure is the CI one.
 
 Verified implementation:
 
@@ -215,7 +220,7 @@ Architecture targets that are NOT yet implemented. These should not be presented
 | "Google OAuth in Base44 apps" | ✅ | |
 | "Google OAuth in CUSTOS-CORE" | | ❌ — not in the codebase |
 | "Solana/Ethereum/ZK implemented" | | ❌ — architecture target |
-| "1062 tests, 91% coverage" (CUSTOS-CORE) | ✅ | |
+| "1062 tests, 90% coverage" (CUSTOS-CORE) | ✅ | |
 | "129 tests, 93% coverage" (LORL-9.1) | ✅ | |
 
 For formal audit: authoritative evidence should be commit SHA + CI run + test output + coverage artifact, not a document stating test counts.

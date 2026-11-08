@@ -54,8 +54,11 @@ one.
   legacy record verifies; mixed chain verifies; SQLite round-trip preserves `policy_digest`,
   `tenant_id`, `trace_id`, `binding_version` and re-verifies after reload; an older database gains
   the columns in place without losing rows.
-* Full suite: 1062 passed, 14 skipped (measured after the truth guards landed; the count in
-  README is canonical and guarded by `tests/test_docs_truth.py`).
+* Full suite: 1062 passed, 37 skipped in the `CUSTOS CI` job for `8d4f245` (the count in README is
+  canonical, guarded by `tests/test_docs_truth.py`, and is the CI figure rather than a local one
+  because a local run collects a different total depending on optional packages). The eight
+  AgentDojo element tests in `tests/test_agentdojo_element.py` skip unless
+  `requirements-benchmark.txt` is installed.
 
 ## Still missing (stated, not implied)
 
