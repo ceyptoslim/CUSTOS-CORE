@@ -1,8 +1,8 @@
 # AgentDojo Pre-Registration v1: What a Tool-Allowlist Gate Buys and Costs
 
 Status: DRAFT with commitment clause, not committed, nothing run.
-Commit: ______________________ (filled at commit; pre-registration SHA)
-Intended first run: ______________________
+Commit: 578a22fc6598b35e764093a3e9d0afbd14d4db81 (the commit that froze this text; recorded here by a follow-up commit that changes nothing else)
+Intended first run: not yet scheduled
 Author: Tavares Heath / CUSTOS-CORE.
 Written: November 8, 2026.
 
