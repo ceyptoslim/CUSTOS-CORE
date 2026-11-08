@@ -10,9 +10,22 @@ every departure from that is an exit code rather than a judgement call:
     2  the attack is not declared (it is deliberately not defaulted)
     2  results for this arm already exist in the output directory
     2  no provider key in the environment
+    2  a partial run exists and ``--resume`` was not given
+    2  the journal on disk belongs to a different arm, model, attack or case list
+    3  the provider kept failing after the retry budget (progress is in the journal)
+    3  the run ended with cases still unrecorded
+
+Exit 3 is not a result. It means the provider, not the gate, stopped the run:
+nothing was written to ``results`` or ``decisions``, the journal holds every case
+that did complete, and ``--resume`` continues from there under the same identity
+digest. Free-tier quotas make this the ordinary path rather than the exceptional
+one, and a quota wall scored as a failed case would have entered the frozen record
+as an observation about the gate.
 
 There is no ``--force`` flag. Rerunning an arm is the one thing a pre-registration
-exists to prevent, so the escape hatch is absent rather than discouraged.
+exists to prevent, so the escape hatch is absent rather than discouraged. Resuming
+is not rerunning: it replays only cases with no journal entry and refuses the
+moment the identity differs.
 
 Usage, once, per arm:
 
@@ -30,6 +43,7 @@ three arms, since a different attack changes the injection, not just the scoring
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import pathlib
@@ -38,6 +52,18 @@ from datetime import datetime, timezone
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
+
+from agentdojo_resilience import (  # noqa: E402
+    EXIT_INTERRUPTED,
+    Journal,
+    JournalConflict,
+    JournalCorrupt,
+    RetryPolicy,
+    RetryingQuery,
+    RunInterrupted,
+    is_auth_failure,
+    is_transient,
+)
 
 from agentdojo_guard import (  # noqa: E402
     ARM_A,
@@ -72,11 +98,39 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="frozen case list; its hash is checked before anything else happens",
     )
     parser.add_argument("--logdir", default=None, help="optional AgentDojo log directory")
+    parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="continue a run interrupted at exit 3; refuses if the identity changed",
+    )
+    parser.add_argument(
+        "--max-attempts",
+        type=int,
+        default=5,
+        help="provider attempts per model call before the run is interrupted (default 5)",
+    )
+    parser.add_argument(
+        "--base-delay",
+        type=float,
+        default=2.0,
+        help="first backoff delay in seconds, doubled per attempt (default 2.0)",
+    )
+    parser.add_argument(
+        "--max-delay",
+        type=float,
+        default=60.0,
+        help="ceiling for a single backoff delay in seconds (default 60.0)",
+    )
     return parser.parse_args(argv)
 
 
-def build_pipeline(model: str, arm: str, case_id: str = "", sink=None):
-    """The benchmark chain, with the guard inserted only for the gated arms."""
+def build_pipeline(model: str, arm: str, case_id: str = "", sink=None, policy=None):
+    """The benchmark chain, with the guard inserted only for the gated arms.
+
+    ``policy`` wraps the model element, never the tool executor: a retried model
+    call re-asks the same question, while a retried tool execution would re-run a
+    decision the gate already made and record its consequences twice.
+    """
     from openai import OpenAI
 
     from agentdojo.agent_pipeline import (
@@ -96,6 +150,8 @@ def build_pipeline(model: str, arm: str, case_id: str = "", sink=None):
     # configuration. A retry would hide a provider failure inside a benchmark
     # result, which is the one place it would never be questioned.
     llm = OpenAILLM(OpenAI(max_retries=0), model, temperature=0.0)
+    if policy is not None:
+        llm = RetryingQuery(llm, policy, case_id=case_id, name=f"retrying-{model}")
     loop_elements = []
     gate = None
     if arm != ARM_A:
@@ -150,36 +206,81 @@ def main(argv: list[str] | None = None) -> int:
             "a rerun voids the pre-registration."
         )
 
-    out_dir.mkdir(parents=True, exist_ok=True)
-    manifest = {
-        "prereg_commit": FROZEN_PREREG_COMMIT,
-        "benchmark": "agentdojo",
-        "suite": "banking",
-        "suite_pin": BANKING_SUITE_PIN,
-        "arm": args.arm,
-        "allowlist": sorted(ARM_ALLOWLISTS[args.arm]),
-        "model": args.model,
-        "attack": args.attack,
-        "case_list": str(case_list),
-        "case_count": len(cases),
-        "started_utc": datetime.now(timezone.utc).isoformat(),
-        "note": "payload rules at defaults; no banking rule added",
-    }
-    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+    binding = Journal.binding(
+        arm=args.arm,
+        model=args.model,
+        attack=args.attack,
+        case_list_sha256=_file_sha256(case_list),
+        case_count=len(cases),
+        allowlist=ARM_ALLOWLISTS[args.arm],
+        prereg_commit=FROZEN_PREREG_COMMIT,
+        suite_pin=BANKING_SUITE_PIN,
+    )
+    journal = Journal(out_dir / f"journal-{args.arm}.jsonl")
+    completed: dict[str, dict] = {}
+
+    if journal.exists():
+        if not args.resume:
+            _refuse(
+                f"{journal.path} holds a partial run for arm {args.arm}. Pass --resume "
+                "to continue it; a fresh start would discard recorded cases and, with "
+                "one run per arm, the arm."
+            )
+        try:
+            completed = journal.open_resume(binding)
+            _verify_manifest(manifest_path, binding)
+        except (JournalConflict, JournalCorrupt) as exc:
+            _refuse(str(exc))
+        print(
+            f"resuming arm {args.arm}: {len(completed)}/{len(cases)} cases already recorded",
+            file=sys.stderr,
+        )
+    else:
+        if args.resume:
+            _refuse(f"--resume was given but {journal.path} does not exist; nothing to resume")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        manifest = {
+            "prereg_commit": FROZEN_PREREG_COMMIT,
+            "benchmark": "agentdojo",
+            "suite": "banking",
+            "suite_pin": BANKING_SUITE_PIN,
+            "arm": args.arm,
+            "allowlist": sorted(ARM_ALLOWLISTS[args.arm]),
+            "model": args.model,
+            "attack": args.attack,
+            "case_list": str(case_list),
+            "case_count": len(cases),
+            "case_list_sha256": binding["case_list_sha256"],
+            "journal_sha256": Journal.digest(binding),
+            "started_utc": datetime.now(timezone.utc).isoformat(),
+            "note": "payload rules at defaults; no banking rule added",
+        }
+        manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
+        try:
+            journal.start(binding)
+        except JournalConflict as exc:
+            _refuse(str(exc))
 
     from agentdojo.attacks.attack_registry import load_attack
     from agentdojo.benchmark import run_task_with_injection_tasks
     from agentdojo.task_suite.load_suites import get_suite
 
     suite = get_suite("v1", "banking")
-    decisions: list[dict] = []
-    rows: list[dict] = []
     logdir = pathlib.Path(args.logdir) if args.logdir else None
+    pending = [case for case in cases if case not in completed]
 
-    for case in cases:
+    for position, case in enumerate(pending, start=1):
         user_id, injection_id = case.split(":")
         user_task = suite.get_user_task_by_id(user_id)
-        pipeline, _gate = build_pipeline(args.model, args.arm, case_id=case)
+        policy = RetryPolicy(
+            max_attempts=args.max_attempts,
+            base_delay=args.base_delay,
+            max_delay=args.max_delay,
+            on_retry=_retry_recorder(journal, case),
+        )
+        pipeline, _gate = build_pipeline(
+            args.model, args.arm, case_id=case, policy=policy
+        )
         attack = load_attack(args.attack, suite, pipeline)
         try:
             utility, security = run_task_with_injection_tasks(
@@ -191,23 +292,63 @@ def main(argv: list[str] | None = None) -> int:
                 force_rerun=False,
                 injection_tasks=[injection_id],
             )
-        except Exception as exc:  # noqa: BLE001 - a failed case is a reported case
-            # Not skipped, not retried. The count of these is part of the result.
-            rows.append({"case": case, "error": f"{type(exc).__name__}: {exc}"})
+        except RunInterrupted as exc:
+            journal.append_abort(
+                "provider_retry_exhausted", case_id=case, attempts=exc.attempts, detail=str(exc)
+            )
+            print(_resume_hint(args, journal, len(completed), len(cases)), file=sys.stderr)
+            return EXIT_INTERRUPTED
+        except Exception as exc:  # noqa: BLE001 - classification decides the outcome
+            detail = f"{type(exc).__name__}: {exc}"
+            if is_auth_failure(exc):
+                journal.append_abort("provider_auth_failure", case_id=case, detail=detail)
+                _refuse(
+                    f"provider rejected the credentials at case {case} ({detail}). No "
+                    "case was scored: a bad key would otherwise write 144 error rows "
+                    "and call it a result."
+                )
+            if is_transient(exc):
+                journal.append_abort("provider_transient", case_id=case, detail=detail)
+                print(_resume_hint(args, journal, len(completed), len(cases)), file=sys.stderr)
+                return EXIT_INTERRUPTED
+            # A genuine failure of this case. Not skipped, not retried: the count of
+            # these is part of the result.
+            row = {"case": case, "error": detail}
+            journal.append_case(case, row, [])
+            completed[case] = {"row": row, "decisions": []}
+            print(f"[{len(completed)}/{len(cases)}] {case}: error {type(exc).__name__}", file=sys.stderr)
             continue
         key = (user_id, injection_id)
-        rows.append(
-            {
-                "case": case,
-                "utility": bool(utility.get(key)),
-                "injection_success": bool(security.get(key)),
-            }
-        )
-        guarded = _loop_runtime_records(pipeline)
-        for record in guarded:
+        row = {
+            "case": case,
+            "utility": bool(utility.get(key)),
+            "injection_success": bool(security.get(key)),
+        }
+        decisions = []
+        for record in _loop_runtime_records(pipeline):
             record["case_id"] = case
             decisions.append(record)
+        journal.append_case(case, row, decisions)
+        completed[case] = {"row": row, "decisions": decisions}
+        print(
+            f"[{len(completed)}/{len(cases)}] {case}: utility {row['utility']}, "
+            f"injection {row['injection_success']}",
+            file=sys.stderr,
+        )
 
+    missing = [case for case in cases if case not in completed]
+    if missing:
+        print(
+            f"arm {args.arm} ended with {len(missing)} cases unrecorded; no results file "
+            "was written. Resume with --resume to finish it.",
+            file=sys.stderr,
+        )
+        return EXIT_INTERRUPTED
+
+    # The journal is the record. These two files are views of it, rebuilt in case
+    # order so a resumed run writes exactly what an uninterrupted run would have.
+    rows = [completed[case]["row"] for case in cases]
+    decisions = [record for case in cases for record in completed[case]["decisions"]]
     results = {
         "arm": args.arm,
         "cases": len(cases),
@@ -215,6 +356,7 @@ def main(argv: list[str] | None = None) -> int:
         "utility_true": sum(1 for r in rows if r.get("utility") is True),
         "injection_success_true": sum(1 for r in rows if r.get("injection_success") is True),
         "rows": rows,
+        "journal_sha256": Journal.digest(binding),
         "finished_utc": datetime.now(timezone.utc).isoformat(),
     }
     results_path.write_text(json.dumps(results, indent=2, sort_keys=True) + "\n")
@@ -228,6 +370,56 @@ def main(argv: list[str] | None = None) -> int:
         f"errors {results['errors']}"
     )
     return 0
+
+
+def _file_sha256(path: pathlib.Path) -> str:
+    return hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()
+
+
+def _verify_manifest(path: pathlib.Path, binding: dict) -> None:
+    """The manifest and the journal must describe the same run."""
+    if not path.exists():
+        raise JournalConflict(f"{path} is missing; a journal without a manifest is not resumable")
+    manifest = json.loads(path.read_text())
+    comparisons = {
+        "arm": binding["arm"],
+        "model": binding["model"],
+        "attack": binding["attack"],
+        "case_count": binding["case_count"],
+        "suite_pin": binding["suite_pin"],
+        "prereg_commit": binding["prereg_commit"],
+        "case_list_sha256": binding["case_list_sha256"],
+    }
+    for field_name, expected in comparisons.items():
+        if manifest.get(field_name) != expected:
+            raise JournalConflict(
+                f"{path} records {field_name}={manifest.get(field_name)!r} but this "
+                f"invocation expects {expected!r}; refusing to resume across a changed run"
+            )
+
+
+def _retry_recorder(journal: Journal, case: str):
+    """Every retry lands in the journal before the delay is slept."""
+
+    def record(attempt: int, delay: float, exc: BaseException) -> None:
+        journal.append_event(
+            "retry",
+            case_id=case,
+            attempt=attempt,
+            delay_s=round(delay, 3),
+            error=f"{type(exc).__name__}: {exc}",
+        )
+        print(f"  retry {attempt} for {case} in {delay:.1f}s ({type(exc).__name__})", file=sys.stderr)
+
+    return record
+
+
+def _resume_hint(args: argparse.Namespace, journal: Journal, done: int, total: int) -> str:
+    return (
+        f"INTERRUPTED: provider failure, not a case result. {done}/{total} cases are in "
+        f"{journal.path} and nothing was written to results. Continue with the same "
+        "command plus --resume once the provider will serve again."
+    )
 
 
 def _loop_runtime_records(pipeline) -> list[dict]:
