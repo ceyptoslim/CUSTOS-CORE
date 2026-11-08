@@ -47,6 +47,8 @@ Verified implementation:
 
 **Audit trail:** Tamper-evident hash-chained. NOT WORM/immutable storage. Events are append-only with SHA-256 content hashes and chained record hashes, but the storage backend (SQLite/PostgreSQL) is not write-once-read-many.
 
+**Provenance:** every artifact in this repository is public and dated. The commit history records when each document, drill record, test and guard first appeared, so the date attached to a claim is carried by the object that makes it rather than by a separate statement about it, and `git log` answers when a given sentence entered the tree. What that record is worth in any legal proceeding is a question for counsel. This repository draws no conclusion from it and claims no legal effect.
+
 **Authentication vs. authorization:** JWT handles authentication (who are you). Tenant authorization binding (JWT `sub` = `client_id`) handles authorization (can you access this tenant's resources). These are separate concerns, both implemented.
 
 **Design essay:** [*The Impossibility Result Is the Design Spec*](docs/essays/the-impossibility-result-is-the-design-spec.md) — why the incomputability of behavioral prediction (Alfonseca et al. 2021, JAIR) is the design rationale for a deterministic, fail-closed action boundary, with citations to Yampolskiy (2012) and Bostrom (2014).
