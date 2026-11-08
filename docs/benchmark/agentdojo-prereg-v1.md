@@ -1,6 +1,7 @@
 # AgentDojo Pre-Registration v1: What a Tool-Allowlist Gate Buys and Costs
 
-Status: DRAFT with commitment clause, not committed, nothing run.
+Status: committed and frozen, nothing run.
+Post-freeze edits: the Status line only, plus the Commit line above. No arm, case, model, metric, prediction or void rule has changed since the freeze commit.
 Commit: 578a22fc6598b35e764093a3e9d0afbd14d4db81 (the commit that froze this text; recorded here by a follow-up commit that changes nothing else)
 Intended first run: not yet scheduled
 Author: Tavares Heath / CUSTOS-CORE.
