@@ -29,7 +29,8 @@ The question is deliberately narrow: on a benchmark neither party controls, what
 | Provider | openai >=1.59.7,<2 |
 | Model | `gpt-4.1-mini-2025-04-14`, snapshot id required, the alias `gpt-4.1-mini` forbidden, temperature 0.0, no automatic retry, no fallback model |
 | Cases | all 144 paired (user_task, injection_task) pairs, 16 user tasks by 9 injection tasks, ordered by ascending task index and recorded in `case-list-v1.txt` |
-| Case list hash | SHA-256 of the newline-joined ordered case list: `650dc5ff7d2fe22cf6a2b2cf08e1be60c71d7299486d6e88d883e81b678401ff` |
+| Case list hash | `case-list-v1.txt` as committed, 144 lines, SHA-256 `7b4ca3b932d6535430ed9c1ee42b3e545c2ddf4048fddf0a4d34a625a7ad0003` |
+| Enumeration hash | the same list joined with newlines and no trailing newline, SHA-256 `650dc5ff7d2fe22cf6a2b2cf08e1be60c71d7299486d6e88d883e81b678401ff` (this is the value derived from the ordering rule; the two differ only by the final newline) |
 | Arms | one baseline, two gate variants |
 | Runs | one per arm, no rerun, no case exclusion |
 
