@@ -7,6 +7,8 @@ Intended first run: not yet scheduled
 Author: Tavares Heath / CUSTOS-CORE.
 Written: November 8, 2026.
 
+> **Amendments before data collection:** `docs/benchmark/attack-model-name-addendum.md` declares the `{model}` string the injected text carries (`GPT-4` for this series) and records the two blockers found when the runner was first exercised live. No arm, case, model, metric or prediction is changed.
+
 ## Purpose
 
 VERITAS OS reports 20/128 to 0/128 injection success with legitimate utility falling 93/128 to 64/128 on AgentDojo banking. CUSTOS-CORE has no comparable number in either direction. This pre-registration fixes the design before any run, so the result cannot be shaped by what comes back.

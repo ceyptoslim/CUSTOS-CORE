@@ -6,6 +6,8 @@ Intended first run: Arm A on `gemini-3.6-flash`, not yet scheduled. Blocked on t
 Author: Tavares Heath / CUSTOS-CORE.
 Written: November 8, 2026.
 
+Amendments before data collection: `docs/benchmark/attack-model-name-addendum.md` declares the `{model}` string the injected text carries for this provider, and records the two blockers found by attempting the first live run. It changes no arm, case, model, metric or prediction.
+
 ## Relationship to v1
 
 `docs/benchmark/agentdojo-prereg-v1.md` stays frozen and unedited. It fixes the arms, policy, metrics and predictions for the primary series on GPT-4.1-mini, and nothing here changes it.

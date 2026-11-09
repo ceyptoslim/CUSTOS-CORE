@@ -16,6 +16,7 @@ the wrapped runtime is returned in place of the original.
 
 from __future__ import annotations
 
+import json
 from typing import Any, Callable, Optional, Sequence
 
 from agentdojo.agent_pipeline import BasePipelineElement
@@ -98,6 +99,70 @@ class ModelVersionRecorder:
         return len(self._counts) > 1
 
 
+class _ThoughtSignatures:
+    """Re-attaches the signature Google puts on every function-call part.
+
+    Gemini 3.x refuses a request whose replayed history carries a ``functionCall``
+    part without the ``thought_signature`` that accompanied it, with 400
+    INVALID_ARGUMENT and the sentence "Function call is missing a thought_signature
+    in functionCall parts". AgentDojo rebuilds its history from its own
+    ``ChatMessage`` objects, which have no field to carry a signature, so the
+    second turn of every tool-using case died on that 400 before the gate was
+    consulted. Measured: the first Arm A attempt that reached the model at all
+    recorded 144 ClientError rows quoting exactly that sentence.
+
+    The cache sits under the client, keyed by the call's name and arguments, which
+    are what make a replayed part the same part. Nothing here reads or writes the
+    model's decision: it restores a field the provider requires for the
+    conversation to continue at all.
+    """
+
+    def __init__(self) -> None:
+        self._by_call: dict[tuple[str, str], Any] = {}
+
+    @staticmethod
+    def _call_of(part: Any) -> Any:
+        return getattr(part, "function_call", None) or (
+            part.get("function_call") if isinstance(part, dict) else None
+        )
+
+    @classmethod
+    def key_of(cls, part: Any) -> Optional[tuple[str, str]]:
+        call = cls._call_of(part)
+        if call is None:
+            return None
+        name = getattr(call, "name", None) or (
+            call.get("name") if isinstance(call, dict) else None
+        )
+        args = getattr(call, "args", None)
+        if args is None and isinstance(call, dict):
+            args = call.get("args")
+        if name is None:
+            return None
+        return (str(name), json.dumps(args, sort_keys=True, default=str))
+
+    def remember(self, response: Any) -> None:
+        for candidate in getattr(response, "candidates", None) or []:
+            content = getattr(candidate, "content", None)
+            for part in getattr(content, "parts", None) or []:
+                signature = getattr(part, "thought_signature", None)
+                key = self.key_of(part)
+                if signature and key is not None:
+                    self._by_call[key] = signature
+
+    def attach(self, contents: Any) -> None:
+        if contents is None:
+            return
+        blocks = contents if isinstance(contents, (list, tuple)) else [contents]
+        for content in blocks:
+            for part in getattr(content, "parts", None) or []:
+                if getattr(part, "thought_signature", None):
+                    continue
+                key = self.key_of(part)
+                if key is not None and key in self._by_call:
+                    part.thought_signature = self._by_call[key]
+
+
 class _RecordingModels:
     """Delegates to the provider's models endpoint, adding the frozen knob.
 
@@ -111,6 +176,7 @@ class _RecordingModels:
         self._models = models
         self._recorder = recorder
         self._thinking_budget = thinking_budget
+        self._signatures = _ThoughtSignatures()
 
     def generate_content(self, *, model: str, contents: Any, config: Any = None) -> Any:
         if config is not None and self._thinking_budget is not None:
@@ -123,7 +189,9 @@ class _RecordingModels:
                     )
                 }
             )
+        self._signatures.attach(contents)
         response = self._models.generate_content(model=model, contents=contents, config=config)
+        self._signatures.remember(response)
         self._recorder.record(getattr(response, "model_version", None))
         return response
 
