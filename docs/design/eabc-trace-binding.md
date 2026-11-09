@@ -54,9 +54,10 @@ one.
   legacy record verifies; mixed chain verifies; SQLite round-trip preserves `policy_digest`,
   `tenant_id`, `trace_id`, `binding_version` and re-verifies after reload; an older database gains
   the columns in place without losing rows.
-* Full suite: 1113 passed, 48 skipped in the `CUSTOS CI` job for `8105343` (the count in README is
-  canonical, guarded by `tests/test_docs_truth.py`, and is the CI figure rather than a local one
-  because a local run collects a different total depending on optional packages). Tests that need the
+* Full suite passed in the `CUSTOS CI` job for `8105343`, the commit this section was verified
+  against. The count is stated once, in README, guarded by `tests/test_docs_truth.py`, and it is the
+  CI figure rather than a local one because a local run collects a different total depending on
+  optional packages. Tests that need the
   benchmark extra skip unless `requirements-benchmark.txt` is installed: the eight AgentDojo element
   tests in `tests/test_agentdojo_element.py`, the replayed-signature guards in
   `tests/test_benchmark_attack_name.py`, and the suite-membership guard in
