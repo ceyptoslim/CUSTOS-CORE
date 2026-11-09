@@ -13,7 +13,9 @@ every departure from that is an exit code rather than a judgement call:
     2  a partial run exists and ``--resume`` was not given
     2  the journal on disk belongs to a different arm, model, attack or case list
     3  the provider kept failing after the retry budget (progress is in the journal)
+    3  the provider's daily quota is spent and the sitting cannot finish
     3  the run ended with cases still unrecorded
+    4  the provider served a second model version under one name; series void
 
 Exit 3 is not a result. It means the provider, not the gate, stopped the run:
 nothing was written to ``results`` or ``decisions``, the journal holds every case
@@ -32,6 +34,14 @@ Usage, once, per arm:
     python scripts/benchmarks/run_agentdojo_ab.py \
         --arm B1 --attack important_instructions \
         --model gpt-4.1-mini-2025-04-14 --out runs/agentdojo-B1
+
+    python scripts/benchmarks/run_agentdojo_ab.py --provider google \
+        --arm B1 --attack important_instructions \
+        --model gemini-3.6-flash --out runs/agentdojo-B1-gemini
+
+The provider decides which pre-registration the run is bound to, which model id is
+accepted, and which arms exist. The Gemini series runs A and B1 only; v2 omits B2
+as a cost decision made before any measurement.
 
 The attack name is recorded in the manifest and must be the same string for all
 three arms, since a different attack changes the injection, not just the scoring.
@@ -58,6 +68,7 @@ from agentdojo_resilience import (  # noqa: E402
     Journal,
     JournalConflict,
     JournalCorrupt,
+    QuotaExhausted,
     RetryPolicy,
     RetryingQuery,
     RunInterrupted,
@@ -69,8 +80,10 @@ from agentdojo_guard import (  # noqa: E402
     ARM_A,
     ARM_ALLOWLISTS,
     BANKING_SUITE_PIN,
-    FROZEN_MODEL_ID,
-    FROZEN_PREREG_COMMIT,
+    PREREG_BY_PROVIDER,
+    PROVIDER_KEY_ENV,
+    PROVIDER_MODELS,
+    PROVIDER_THINKING_BUDGET,
     ArmConfig,
     CaseListDrift,
     RunRefused,
@@ -79,6 +92,7 @@ from agentdojo_guard import (  # noqa: E402
 )
 
 EXIT_REFUSED = 2
+EXIT_VOID = 4
 
 
 def _refuse(message: str) -> None:
@@ -90,7 +104,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--arm", required=True, choices=sorted(ARM_ALLOWLISTS))
     parser.add_argument("--attack", required=True, help="AgentDojo attack name, recorded verbatim")
-    parser.add_argument("--model", required=True, help=f"must be {FROZEN_MODEL_ID}")
+    parser.add_argument(
+        "--provider",
+        default="openai",
+        choices=sorted(PROVIDER_MODELS),
+        help="which pinned provider this arm runs against (default openai)",
+    )
+    parser.add_argument(
+        "--model",
+        required=True,
+        help=f"the pinned model for --provider: {PROVIDER_MODELS['openai']} or "
+        f"{PROVIDER_MODELS['google']}",
+    )
     parser.add_argument("--out", required=True, help="output directory for the frozen record")
     parser.add_argument(
         "--case-list",
@@ -124,15 +149,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def build_pipeline(model: str, arm: str, case_id: str = "", sink=None, policy=None):
+def build_pipeline(
+    model: str,
+    arm: str,
+    case_id: str = "",
+    sink=None,
+    policy=None,
+    provider: str = "openai",
+    recorder=None,
+):
     """The benchmark chain, with the guard inserted only for the gated arms.
 
     ``policy`` wraps the model element, never the tool executor: a retried model
     call re-asks the same question, while a retried tool execution would re-run a
     decision the gate already made and record its consequences twice.
     """
-    from openai import OpenAI
-
     from agentdojo.agent_pipeline import (
         AgentPipeline,
         InitQuery,
@@ -146,10 +177,25 @@ def build_pipeline(model: str, arm: str, case_id: str = "", sink=None, policy=No
 
     from agentdojo_element import GuardedRuntimeElement
 
-    # max_retries=0 and temperature=0.0 are copied from the frozen model
-    # configuration. A retry would hide a provider failure inside a benchmark
-    # result, which is the one place it would never be questioned.
-    llm = OpenAILLM(OpenAI(max_retries=0), model, temperature=0.0)
+    # temperature 0.0 and no provider-side retry in the client are copied from the
+    # frozen model configuration. A retry would hide a provider failure inside a
+    # benchmark result, which is the one place it would never be questioned. Each
+    # provider gets the closest available construction of that same rule.
+    if provider == "google":
+        from agentdojo_element import build_google_llm
+
+        if recorder is None:
+            raise RunRefused("the google provider records model versions; none was supplied")
+        llm = build_google_llm(
+            model,
+            os.environ[PROVIDER_KEY_ENV["google"]],
+            recorder,
+            PROVIDER_THINKING_BUDGET["google"],
+        )
+    else:
+        from openai import OpenAI
+
+        llm = OpenAILLM(OpenAI(max_retries=0), model, temperature=0.0)
     if policy is not None:
         llm = RetryingQuery(llm, policy, case_id=case_id, name=f"retrying-{model}")
     loop_elements = []
@@ -184,6 +230,7 @@ def main(argv: list[str] | None = None) -> int:
         attack=args.attack,
         case_list=case_list,
         out_dir=out_dir,
+        provider=args.provider,
     )
     problems = config.validate()
     if problems:
@@ -194,8 +241,9 @@ def main(argv: list[str] | None = None) -> int:
     except CaseListDrift as exc:
         _refuse(str(exc))
 
-    if not os.environ.get("OPENAI_API_KEY"):
-        _refuse("OPENAI_API_KEY is not set; no arm may run without a provider")
+    key_env = PROVIDER_KEY_ENV[args.provider]
+    if not os.environ.get(key_env):
+        _refuse(f"{key_env} is not set; no arm may run without a provider")
 
     results_path = out_dir / f"results-{args.arm}.json"
     decisions_path = out_dir / f"decisions-{args.arm}.jsonl"
@@ -208,12 +256,13 @@ def main(argv: list[str] | None = None) -> int:
 
     binding = Journal.binding(
         arm=args.arm,
+        provider=args.provider,
         model=args.model,
         attack=args.attack,
         case_list_sha256=_file_sha256(case_list),
         case_count=len(cases),
         allowlist=ARM_ALLOWLISTS[args.arm],
-        prereg_commit=FROZEN_PREREG_COMMIT,
+        prereg_commit=PREREG_BY_PROVIDER[args.provider],
         suite_pin=BANKING_SUITE_PIN,
     )
     journal = Journal(out_dir / f"journal-{args.arm}.jsonl")
@@ -240,13 +289,16 @@ def main(argv: list[str] | None = None) -> int:
             _refuse(f"--resume was given but {journal.path} does not exist; nothing to resume")
         out_dir.mkdir(parents=True, exist_ok=True)
         manifest = {
-            "prereg_commit": FROZEN_PREREG_COMMIT,
+            "prereg_commit": PREREG_BY_PROVIDER[args.provider],
             "benchmark": "agentdojo",
             "suite": "banking",
             "suite_pin": BANKING_SUITE_PIN,
             "arm": args.arm,
             "allowlist": sorted(ARM_ALLOWLISTS[args.arm]),
+            "provider": args.provider,
             "model": args.model,
+            "thinking_budget": PROVIDER_THINKING_BUDGET[args.provider],
+            "temperature": 0.0,
             "attack": args.attack,
             "case_list": str(case_list),
             "case_count": len(cases),
@@ -268,6 +320,15 @@ def main(argv: list[str] | None = None) -> int:
     suite = get_suite("v1", "banking")
     logdir = pathlib.Path(args.logdir) if args.logdir else None
     pending = [case for case in cases if case not in completed]
+    # Only the Google path has a version to record. The recorder lives out here
+    # rather than inside the pipeline because the void rule is a property of the
+    # series, not of a case, and the import stays inside the branch so the OpenAI
+    # path does not need the benchmark package to be importable.
+    recorder = None
+    if args.provider == "google":
+        from agentdojo_element import ModelVersionRecorder
+
+        recorder = ModelVersionRecorder()
 
     for position, case in enumerate(pending, start=1):
         user_id, injection_id = case.split(":")
@@ -279,7 +340,12 @@ def main(argv: list[str] | None = None) -> int:
             on_retry=_retry_recorder(journal, case),
         )
         pipeline, _gate = build_pipeline(
-            args.model, args.arm, case_id=case, policy=policy
+            args.model,
+            args.arm,
+            case_id=case,
+            policy=policy,
+            provider=args.provider,
+            recorder=recorder,
         )
         attack = load_attack(args.attack, suite, pipeline)
         try:
@@ -292,6 +358,22 @@ def main(argv: list[str] | None = None) -> int:
                 force_rerun=False,
                 injection_tasks=[injection_id],
             )
+        except QuotaExhausted as exc:
+            journal.append_abort(
+                "provider_quota_exhausted",
+                case_id=case,
+                quota=exc.quota,
+                attempts=exc.attempts,
+                detail=str(exc),
+            )
+            print(
+                "INTERRUPTED: the provider's daily quota is spent. Nothing was scored "
+                f"for {case}. {len(completed)}/{len(cases)} cases are in {journal.path}. "
+                "Continue with the same command plus --resume when the quota resets; "
+                "this is an interruption, not a void.",
+                file=sys.stderr,
+            )
+            return EXIT_INTERRUPTED
         except RunInterrupted as exc:
             journal.append_abort(
                 "provider_retry_exhausted", case_id=case, attempts=exc.attempts, detail=str(exc)
@@ -317,6 +399,8 @@ def main(argv: list[str] | None = None) -> int:
             journal.append_case(case, row, [])
             completed[case] = {"row": row, "decisions": []}
             print(f"[{len(completed)}/{len(cases)}] {case}: error {type(exc).__name__}", file=sys.stderr)
+            if _void_on_mixed_versions(recorder, journal):
+                return EXIT_VOID
             continue
         key = (user_id, injection_id)
         row = {
@@ -335,6 +419,8 @@ def main(argv: list[str] | None = None) -> int:
             f"injection {row['injection_success']}",
             file=sys.stderr,
         )
+        if _void_on_mixed_versions(recorder, journal):
+            return EXIT_VOID
 
     missing = [case for case in cases if case not in completed]
     if missing:
@@ -349,12 +435,19 @@ def main(argv: list[str] | None = None) -> int:
     # order so a resumed run writes exactly what an uninterrupted run would have.
     rows = [completed[case]["row"] for case in cases]
     decisions = [record for case in cases for record in completed[case]["decisions"]]
+    _header, entries = journal.read()
+    interruptions = [entry for entry in entries if entry.get("type") in ("abort", "event")]
     results = {
         "arm": args.arm,
+        "provider": args.provider,
+        "model": args.model,
+        "model_versions": recorder.counts() if recorder is not None else {},
         "cases": len(cases),
         "errors": sum(1 for r in rows if "error" in r),
         "utility_true": sum(1 for r in rows if r.get("utility") is True),
         "injection_success_true": sum(1 for r in rows if r.get("injection_success") is True),
+        "interruptions": len(interruptions),
+        "interruption_events": interruptions,
         "rows": rows,
         "journal_sha256": Journal.digest(binding),
         "finished_utc": datetime.now(timezone.utc).isoformat(),
@@ -372,6 +465,27 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _void_on_mixed_versions(recorder, journal: Journal) -> bool:
+    """Stop a series the moment the provider serves a second model version.
+
+    Prereg v2 pins the Gemini model by name, and a name is an alias. One series can
+    only describe one model, so the second version is the end of it: the journal
+    records why, and the runner returns 4 rather than writing a result that would
+    read as though a single model produced it.
+    """
+    if recorder is None or not recorder.mixed():
+        return False
+    versions = recorder.counts()
+    journal.append_abort("model_version_changed", versions=recorder.versions(), counts=versions)
+    print(
+        f"VOID: the provider served more than one model version under {recorder.versions()!r} "
+        f"({versions}). The series describes no single model and stops here; prereg v2 "
+        "voids it. No results file was written.",
+        file=sys.stderr,
+    )
+    return True
+
+
 def _file_sha256(path: pathlib.Path) -> str:
     return hashlib.sha256(pathlib.Path(path).read_bytes()).hexdigest()
 
@@ -383,6 +497,7 @@ def _verify_manifest(path: pathlib.Path, binding: dict) -> None:
     manifest = json.loads(path.read_text())
     comparisons = {
         "arm": binding["arm"],
+        "provider": binding["provider"],
         "model": binding["model"],
         "attack": binding["attack"],
         "case_count": binding["case_count"],

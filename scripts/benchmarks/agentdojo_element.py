@@ -70,3 +70,114 @@ class GuardedRuntimeElement(BasePipelineElement):
             runtime, self._gate, self._arm, case_id=self._case_id, sink=self._sink
         )
         return query, guarded, env, messages, extra_args
+
+
+class ModelVersionRecorder:
+    """Every model version the provider reported, counted per version.
+
+    Prereg v2 pins the Gemini model by name rather than by snapshot, because no
+    dated snapshot is callable. A name is an alias: on November 8, 2026 the same
+    name served 3.5 and then 3.6 inside half an hour. The recorder is what makes
+    that visible instead of silent, and ``mixed`` is what the runner stops on.
+    """
+
+    def __init__(self) -> None:
+        self._counts: dict[str, int] = {}
+
+    def record(self, version: Optional[str]) -> None:
+        key = version or "unreported"
+        self._counts[key] = self._counts.get(key, 0) + 1
+
+    def versions(self) -> list[str]:
+        return sorted(self._counts)
+
+    def counts(self) -> dict[str, int]:
+        return dict(self._counts)
+
+    def mixed(self) -> bool:
+        return len(self._counts) > 1
+
+
+class _RecordingModels:
+    """Delegates to the provider's models endpoint, adding the frozen knob.
+
+    The thinking budget cannot be reached through ``GoogleLLM``'s constructor: it
+    builds one ``GenerateContentConfig`` and exposes no hook. Sitting under the
+    client instead of copying the element's ``query`` keeps this file to the seam
+    and leaves message conversion where AgentDojo maintains it.
+    """
+
+    def __init__(self, models: Any, recorder: ModelVersionRecorder, thinking_budget: Optional[int]):
+        self._models = models
+        self._recorder = recorder
+        self._thinking_budget = thinking_budget
+
+    def generate_content(self, *, model: str, contents: Any, config: Any = None) -> Any:
+        if config is not None and self._thinking_budget is not None:
+            from google.genai import types as genai_types
+
+            config = config.model_copy(
+                update={
+                    "thinking_config": genai_types.ThinkingConfig(
+                        thinking_budget=self._thinking_budget
+                    )
+                }
+            )
+        response = self._models.generate_content(model=model, contents=contents, config=config)
+        self._recorder.record(getattr(response, "model_version", None))
+        return response
+
+
+class _RecordingClient:
+    """Holds the provider client for the life of the run, not just its models endpoint.
+
+    Keeping only ``client.models`` is not enough: the ``Client`` owns the HTTP
+    transport, so dropping the reference lets it be collected and the next call
+    fails with "the client has been closed". Measured here, not guessed: with only
+    ``models`` held, a single-call smoke failed on its first send.
+    """
+
+    def __init__(self, client: Any, recorder: ModelVersionRecorder, thinking_budget: Optional[int]):
+        self._client = client
+        self.models = _RecordingModels(client.models, recorder, thinking_budget)
+
+
+def _single_attempt_completion(model: str, client: Any, contents: Any, generation_config: Any) -> Any:
+    return client.models.generate_content(
+        model=model, contents=contents, config=generation_config
+    )
+
+
+def install_single_attempt_google_calls() -> None:
+    """Remove AgentDojo's own retry from the Google path.
+
+    Upstream wraps the request in three tenacity attempts with exponential waits
+    up to forty seconds, which would hide provider failures inside a benchmark
+    result and overlap the runner's own journaled retries. The pre-registration
+    puts retries in one place, so this replaces the wrapped function with a single
+    attempt and the runner's policy owns everything above it. Idempotent.
+    """
+    from agentdojo.agent_pipeline.llms import google_llm as module
+
+    if module.chat_completion_request is not _single_attempt_completion:
+        module.chat_completion_request = _single_attempt_completion
+
+
+def build_google_llm(
+    model: str,
+    api_key: str,
+    recorder: ModelVersionRecorder,
+    thinking_budget: Optional[int] = 0,
+) -> Any:
+    """A GoogleLLM with the frozen sampling, the frozen thinking budget, and a recorder."""
+    from google import genai
+
+    from agentdojo.agent_pipeline import GoogleLLM
+
+    install_single_attempt_google_calls()
+    client = genai.Client(api_key=api_key)
+    return GoogleLLM(
+        model,
+        _RecordingClient(client, recorder, thinking_budget),
+        temperature=0.0,
+    )

@@ -41,6 +41,14 @@ from custos.tenant import TenantConfig, TenantManager
 
 # Frozen by the pre-registration. Changing any of these voids the run.
 FROZEN_PREREG_COMMIT = "578a22fc6598b35e764093a3e9d0afbd14d4db81"
+# Prereg v2 (docs/benchmark/agentdojo-prereg-v2-gemini.md) is the separate series
+# that governs the Google arms. Its freeze commit is the merge that put the text
+# on main, recorded in the document's own Commit line.
+FROZEN_PREREG_COMMIT_V2 = "b9d4312a1c7a1b6880f2e1d09203745b942c02c3"
+PREREG_BY_PROVIDER: dict[str, str] = {
+    "openai": FROZEN_PREREG_COMMIT,
+    "google": FROZEN_PREREG_COMMIT_V2,
+}
 FROZEN_CASE_LIST_SHA256 = (
     "7b4ca3b932d6535430ed9c1ee42b3e545c2ddf4048fddf0a4d34a625a7ad0003"
 )
@@ -50,6 +58,24 @@ FROZEN_CASE_LIST_ENUMERATION_SHA256 = (
 FROZEN_CASE_COUNT = 144
 FROZEN_MODEL_ID = "gpt-4.1-mini-2025-04-14"
 FORBIDDEN_MODEL_ALIAS = "gpt-4.1-mini"
+# The secondary series (prereg v2) runs one model per provider. The Gemini name is
+# a name pin and not a snapshot, because Google publishes no callable dated
+# snapshot: the element records the version every response reports, and a second
+# distinct version inside a series voids it.
+FROZEN_GOOGLE_MODEL_ID = "gemini-3.6-flash"
+PROVIDER_MODELS: dict[str, str] = {
+    "openai": FROZEN_MODEL_ID,
+    "google": FROZEN_GOOGLE_MODEL_ID,
+}
+PROVIDER_KEY_ENV: dict[str, str] = {
+    "openai": "OPENAI_API_KEY",
+    "google": "GEMINI_API_KEY",
+}
+# None means the provider has no such knob, not that it is left at a default.
+PROVIDER_THINKING_BUDGET: dict[str, int | None] = {
+    "openai": None,
+    "google": 0,
+}
 BANKING_SUITE_PIN = "a75aba7631d3ca5fb7ab938965c97ead2f9ff84b"
 
 # The eleven tools the banking suite exposes at the pinned commit. The partition
@@ -100,6 +126,15 @@ class RunRefused(RuntimeError):
 
 def _sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+# Prereg v2 runs two arms and says why it omits the third: B2's prediction is
+# near-parity with Arm A on both metrics, which is a null result, and it would
+# spend a third of a quota that is the binding constraint on that series.
+PROVIDER_ARMS: dict[str, frozenset[str]] = {
+    "openai": frozenset(ARM_ALLOWLISTS),
+    "google": frozenset({ARM_A, ARM_B1}),
+}
 
 
 def verify_case_list(path: pathlib.Path | str) -> list[str]:
@@ -274,20 +309,32 @@ class ArmConfig:
     attack: str
     case_list: pathlib.Path
     out_dir: pathlib.Path
+    provider: str = "openai"
     extra: dict[str, Any] = field(default_factory=dict)
 
     def validate(self) -> list[str]:
         problems: list[str] = []
         if self.arm not in ARM_ALLOWLISTS:
             problems.append(f"unknown arm {self.arm!r}")
-        if self.model == FORBIDDEN_MODEL_ALIAS:
+        elif self.provider in PROVIDER_ARMS and self.arm not in PROVIDER_ARMS[self.provider]:
+            problems.append(
+                f"arm {self.arm!r} is not part of the {self.provider} series; "
+                f"its pre-registration runs {sorted(PROVIDER_ARMS[self.provider])}"
+            )
+        if self.provider not in PROVIDER_MODELS:
+            problems.append(
+                f"unknown provider {self.provider!r}; the pinned providers are "
+                f"{sorted(PROVIDER_MODELS)}"
+            )
+        elif self.model == FORBIDDEN_MODEL_ALIAS:
             problems.append(
                 "model alias refused; the pre-registration requires the snapshot id "
                 f"{FROZEN_MODEL_ID}"
             )
-        elif self.model != FROZEN_MODEL_ID:
+        elif self.model != PROVIDER_MODELS[self.provider]:
             problems.append(
-                f"model {self.model!r} is not the frozen snapshot {FROZEN_MODEL_ID}"
+                f"model {self.model!r} is not the frozen snapshot "
+                f"{PROVIDER_MODELS[self.provider]} for provider {self.provider!r}"
             )
         if not self.attack:
             problems.append("attack is not declared; it is not defaulted anywhere")

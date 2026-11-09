@@ -95,6 +95,20 @@ _AUTH_TEXT_MARKERS = (
 )
 
 
+# A 429 carries two very different meanings and they must not be handled the same
+# way: a per-minute wall is worth waiting out inside a sitting, a per-day quota is
+# spent until the provider's clock rolls over and waiting only burns the run.
+QUOTA_PER_DAY_MARKERS = ("perday", "per_day", "per day", "requestsperday", "daily")
+QUOTA_PER_MINUTE_MARKERS = (
+    "perminute",
+    "per_minute",
+    "per minute",
+    "perhour",
+    "per_hour",
+    "per hour",
+)
+
+
 class RunInterrupted(RuntimeError):
     """The run stopped for a reason that says nothing about the gate.
 
@@ -185,6 +199,62 @@ def retry_after_seconds(exc: BaseException) -> float | None:
     return value if value >= 0 else None
 
 
+def _strings(value: Any) -> list[str]:
+    """Every string inside a nested provider payload, without assuming its shape."""
+    found: list[str] = []
+    if isinstance(value, str):
+        found.append(value)
+    elif isinstance(value, Mapping):
+        for item in value.values():
+            found.extend(_strings(item))
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            found.extend(_strings(item))
+    return found
+
+
+def quota_exhaustion(exc: BaseException) -> str | None:
+    """Which quota a 429 spent, read from the provider's own identifiers.
+
+    "per_day" means stop the sitting. "per_minute" means wait. None means the
+    provider throttled without saying which, which is treated as per-minute
+    because that is the recoverable reading: a wrong guess costs one sitting, and
+    the alternative costs the arm.
+    """
+    if not (_status_codes(exc) & {429}):
+        return None
+    payload = getattr(exc, "response_json", None)
+    if payload is None:
+        payload = getattr(exc, "details", None)
+    text = " ".join(_strings(payload)).lower()
+    text = f"{text} {_text(exc)}"
+    if any(marker in text for marker in QUOTA_PER_DAY_MARKERS):
+        return "per_day"
+    if any(marker in text for marker in QUOTA_PER_MINUTE_MARKERS):
+        return "per_minute"
+    return None
+
+
+class QuotaExhausted(RunInterrupted):
+    """The provider's daily quota is spent; this sitting cannot finish.
+
+    Raised instead of retried on the first 429 that names a daily quota, because
+    the retry loop's remaining attempts would each sleep against a wall that only
+    clears when the provider's day rolls over.
+    """
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        quota: str = "per_day",
+        case_id: str | None = None,
+        attempts: int = 0,
+    ):
+        super().__init__(message, case_id=case_id, attempts=attempts)
+        self.quota = quota
+
+
 @dataclass
 class RetryPolicy:
     """Bounded, recorded, jittered backoff for provider-side failures only.
@@ -219,6 +289,13 @@ class RetryPolicy:
                     raise
                 if not is_transient(exc):
                     raise
+                if quota_exhaustion(exc) == "per_day":
+                    raise QuotaExhausted(
+                        f"the provider's daily quota is spent: {type(exc).__name__}: {exc}",
+                        quota="per_day",
+                        case_id=case_id,
+                        attempts=attempt,
+                    )
                 if attempt >= self.max_attempts:
                     raise RunInterrupted(
                         f"provider still failing after {attempt} attempts: "
@@ -269,10 +346,17 @@ class Journal:
         allowlist: Iterable[str],
         prereg_commit: str,
         suite_pin: str,
+        provider: str = "openai",
     ) -> dict[str, Any]:
-        """The identity a resumed run must match exactly."""
+        """The identity a resumed run must match exactly.
+
+        ``provider`` is part of the identity because two providers can share an arm
+        name and a plan while describing different series under different
+        pre-registrations, and a resume across them would be a different run.
+        """
         return {
             "journal_version": Journal.VERSION,
+            "provider": provider,
             "arm": arm,
             "model": model,
             "attack": attack,

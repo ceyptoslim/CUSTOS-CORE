@@ -65,7 +65,7 @@ def runner(resilience, monkeypatch):
     monkeypatch.syspath_prepend(str(ROOT / "scripts" / "benchmarks"))
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     module = _load(RUNNER_PATH, "run_agentdojo_ab_under_test")
-    module.build_pipeline = lambda model, arm, case_id="", sink=None, policy=None: (
+    module.build_pipeline = lambda model, arm, case_id="", sink=None, policy=None, **kwargs: (
         types.SimpleNamespace(elements=[]),
         None,
     )
