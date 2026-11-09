@@ -141,6 +141,50 @@ class TestWhatTheProviderRefusesBeforeItSpendsACall:
                 tmp_path, provider="openai", model=guard.FROZEN_MODEL_ID, arm=arm
             ).validate() == []
 
+    def _dir_with_manifest(self, tmp_path, provider, arm="A", payload=None):
+        out = tmp_path / "out"
+        out.mkdir(exist_ok=True)
+        path = out / guard.MANIFEST_PATTERN.format(arm=arm)
+        if payload is None:
+            payload = {"provider": provider, "arm": arm}
+        path.write_text(payload if isinstance(payload, str) else __import__("json").dumps(payload))
+        return out, path
+
+    def test_an_output_directory_holding_the_other_series_is_refused(self, tmp_path):
+        out, _path = self._dir_with_manifest(tmp_path, "openai")
+        problems = self._config(tmp_path, out_dir=out).validate()
+        assert problems, "a google run accepted a directory holding an openai record"
+        assert any("already holds a openai series record" in p for p in problems)
+        assert any("own output directory" in p for p in problems)
+
+    def test_the_refusal_names_the_collision_and_not_a_style_preference(self, tmp_path):
+        # the two series share the arm letter, so the file that collides is the point
+        out, _path = self._dir_with_manifest(tmp_path, "openai", arm=guard.ARM_A)
+        problems = self._config(tmp_path, out_dir=out, arm=guard.ARM_A).validate()
+        assert any("arm letters are shared" in p for p in problems)
+
+    def test_its_own_series_may_reuse_the_directory(self, tmp_path):
+        out, _path = self._dir_with_manifest(tmp_path, "google", arm=guard.ARM_A)
+        assert self._config(tmp_path, out_dir=out, arm=guard.ARM_B1).validate() == []
+
+    def test_an_unreadable_manifest_is_refused_rather_than_ignored(self, tmp_path):
+        out, _path = self._dir_with_manifest(tmp_path, None, payload="{not json")
+        problems = self._config(tmp_path, out_dir=out).validate()
+        assert any("cannot be read" in p for p in problems)
+
+    def test_a_manifest_without_a_provider_is_not_read_as_the_other_series(self, tmp_path):
+        out, _path = self._dir_with_manifest(tmp_path, None, payload={"arm": "A"})
+        assert self._config(tmp_path, out_dir=out).validate() == []
+
+    def test_each_arm_names_its_own_manifest(self):
+        # one manifest.json per directory would be overwritten by the next arm
+        a = guard.MANIFEST_PATTERN.format(arm=guard.ARM_A)
+        b = guard.MANIFEST_PATTERN.format(arm=guard.ARM_B1)
+        assert a != b
+        source = pathlib.Path(runner.__file__).read_text()
+        assert "MANIFEST_PATTERN.format(arm=args.arm)" in source
+        assert '"manifest.json"' not in source
+
     def test_the_openai_alias_is_still_refused_by_name(self, tmp_path):
         problems = self._config(
             tmp_path, provider="openai", model=guard.FORBIDDEN_MODEL_ALIAS

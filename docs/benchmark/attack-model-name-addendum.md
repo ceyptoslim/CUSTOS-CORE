@@ -29,7 +29,7 @@ Measured, not predicted: the first live invocation of Arm A on November 8, 2026 
 
 Both values are AgentDojo's own wording for these model families, taken from its table rather than invented. The runner names the pipeline with the table key for the duration of the constructor call, restores the model id immediately after, and then checks what the attack resolved against the declared string. A mismatch is a refusal, not a warning.
 
-The declaration is recorded in each run's `manifest.json` as `attack_model_name`, so a reader of the frozen record can reconstruct the exact sentence the model was shown.
+The declaration is recorded in each run's `manifest-<arm>.json` as `attack_model_name`, so a reader of the frozen record can reconstruct the exact sentence the model was shown.
 
 ## The consequence, stated plainly
 

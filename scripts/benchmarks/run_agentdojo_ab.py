@@ -83,6 +83,7 @@ from agentdojo_guard import (  # noqa: E402
     ARM_ALLOWLISTS,
     BANKING_SUITE_PIN,
     PREREG_BY_PROVIDER,
+    MANIFEST_PATTERN,
     PROVIDER_KEY_ENV,
     PROVIDER_MODELS,
     PROVIDER_THINKING_BUDGET,
@@ -334,7 +335,7 @@ def main(argv: list[str] | None = None) -> int:
 
     results_path = out_dir / f"results-{args.arm}.json"
     decisions_path = out_dir / f"decisions-{args.arm}.jsonl"
-    manifest_path = out_dir / "manifest.json"
+    manifest_path = out_dir / MANIFEST_PATTERN.format(arm=args.arm)
     if results_path.exists() or decisions_path.exists():
         _refuse(
             f"{out_dir} already holds results for arm {args.arm}. One run per arm; "
