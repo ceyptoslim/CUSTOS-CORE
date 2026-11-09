@@ -91,6 +91,11 @@ PROVIDER_THINKING_BUDGET: dict[str, int | None] = {
     "google": 0,
 }
 BANKING_SUITE_PIN = "a75aba7631d3ca5fb7ab938965c97ead2f9ff84b"
+# One manifest per arm, not one per directory: three arms of the same series may
+# share a directory, and a single manifest.json would be overwritten by each.
+MANIFEST_PATTERN = "manifest-{arm}.json"
+MANIFEST_GLOB = "manifest-*.json"
+
 
 # The eleven tools the banking suite exposes at the pinned commit. The partition
 # is the whole argument of the pre-registration, so it is written out rather than
@@ -352,4 +357,39 @@ class ArmConfig:
             )
         if not self.attack:
             problems.append("attack is not declared; it is not defaulted anywhere")
+        problems.extend(self._foreign_series_problems())
+        return problems
+
+    def _foreign_series_problems(self) -> list[str]:
+        """Refuse an output directory that already holds another series.
+
+        The record files are keyed by arm, so arm ``A`` of the OpenAI series and
+        arm ``A`` of the Gemini series want the same filename. The arm they
+        cannot share is what the pre-registration governs, so mixing the two
+        series in one directory would leave a reader unable to tell which
+        pre-registration a file answers to. It is a refusal rather than a
+        convention because the loss is silent: the second run writes its own
+        manifest beside the first and both look complete.
+        """
+        out = pathlib.Path(self.out_dir)
+        if not out.is_dir():
+            return []
+        problems: list[str] = []
+        for path in sorted(out.glob(MANIFEST_GLOB)):
+            try:
+                prior = json.loads(path.read_text())
+            except (OSError, ValueError):
+                problems.append(
+                    f"{path.name} in {out} cannot be read; a record that cannot be "
+                    "read is not a record, so this directory is not reused"
+                )
+                continue
+            recorded = prior.get("provider") if isinstance(prior, dict) else None
+            if recorded is not None and recorded != self.provider:
+                problems.append(
+                    f"{out} already holds a {recorded} series record ({path.name}); "
+                    f"the {self.provider} series needs its own output directory, "
+                    "because the arm letters are shared between the two "
+                    "pre-registrations"
+                )
         return problems
