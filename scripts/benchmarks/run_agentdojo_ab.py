@@ -78,6 +78,7 @@ from agentdojo_resilience import (  # noqa: E402
 )
 
 from agentdojo_guard import (  # noqa: E402
+    ATTACK_MODEL_NAME,
     ARM_A,
     ARM_ALLOWLISTS,
     BANKING_SUITE_PIN,
@@ -122,6 +123,45 @@ def suite_ids(case: str) -> tuple[str, str]:
     if len(parts) != 2:
         raise ValueError(f"not a case identifier: {case!r}")
     return parts[0], parts[1]
+
+
+# AgentDojo resolves the attack's ``{model}`` substitution by searching its own
+# MODEL_NAMES keys inside the pipeline name, and the friendly name it wants is the
+# VALUE of that entry. Neither frozen model id is a key, so each provider names one
+# key whose value is the string this series declared. A guard asserts each key
+# against AgentDojo's own table, so an upstream change fails a test instead of
+# silently changing the text the injected sentence carries.
+ATTACK_NAME_KEY: dict[str, str] = {
+    "openai": "gpt-4-0125-preview",
+    "google": "gemini-1.5-pro-002",
+}
+
+
+def build_attack(attack_name: str, suite, pipeline, provider: str):
+    """Construct the suite's attack with this series' declared model name.
+
+    The pipeline is renamed for the constructor's single lookup and renamed back
+    before a case runs, so the name a reader of the record sees is still the model
+    id. What the attack resolved is then compared with the declaration instead of
+    being assumed, because the declaration is what the series is scored on.
+    """
+    from agentdojo.attacks.attack_registry import load_attack
+
+    declared = ATTACK_MODEL_NAME[provider]
+    honest = pipeline.name
+    pipeline.name = f"{honest} [{ATTACK_NAME_KEY[provider]}]"
+    try:
+        attack = load_attack(attack_name, suite, pipeline)
+    finally:
+        pipeline.name = honest
+    resolved = getattr(attack, "model_name", None)
+    if resolved != declared:
+        _refuse(
+            f"the attack {attack_name!r} resolved the model name to {resolved!r} for "
+            f"{provider}, not the declared {declared!r}; the injected text would not "
+            "be the one this series recorded"
+        )
+    return attack
 
 
 def missing_tasks(suite, cases) -> list[tuple[str, str, str]]:
@@ -344,6 +384,7 @@ def main(argv: list[str] | None = None) -> int:
             "allowlist": sorted(ARM_ALLOWLISTS[args.arm]),
             "provider": args.provider,
             "model": args.model,
+            "attack_model_name": ATTACK_MODEL_NAME[args.provider],
             "thinking_budget": PROVIDER_THINKING_BUDGET[args.provider],
             "temperature": 0.0,
             "attack": args.attack,
@@ -360,8 +401,8 @@ def main(argv: list[str] | None = None) -> int:
         except JournalConflict as exc:
             _refuse(str(exc))
 
-    from agentdojo.attacks.attack_registry import load_attack
     from agentdojo.benchmark import run_task_with_injection_tasks
+    from agentdojo.logging import OutputLogger
     from agentdojo.task_suite.load_suites import get_suite
 
     suite = get_suite("v1", "banking")
@@ -374,7 +415,15 @@ def main(argv: list[str] | None = None) -> int:
             "do not resolve, so the installed AgentDojo version keys its tasks "
             "differently from the frozen list"
         )
-    logdir = pathlib.Path(args.logdir) if args.logdir else None
+    # AgentDojo's own logger reads .logdir, and its NullLogger only grows one
+    # inside a context manager, so a run handed logdir=None raises AttributeError
+    # on the first case. Measured: the first full Arm A attempt recorded 144 error
+    # rows of "'NullLogger' object has no attribute 'logdir'" and scored 0/144,
+    # which is an infrastructure failure wearing the shape of a measurement. The
+    # log directory therefore defaults into the frozen output directory, where it
+    # belongs anyway: the per-case logs are part of what the record has to carry.
+    logdir = pathlib.Path(args.logdir) if args.logdir else pathlib.Path(args.out) / "logs"
+    logdir.mkdir(parents=True, exist_ok=True)
     pending = [case for case in cases if case not in completed]
     # Only the Google path has a version to record. The recorder lives out here
     # rather than inside the pipeline because the void rule is a property of the
@@ -403,17 +452,23 @@ def main(argv: list[str] | None = None) -> int:
             provider=args.provider,
             recorder=recorder,
         )
-        attack = load_attack(args.attack, suite, pipeline)
+        attack = build_attack(args.attack, suite, pipeline, args.provider)
         try:
-            utility, security = run_task_with_injection_tasks(
-                suite,
-                pipeline,
-                user_task,
-                attack,
-                logdir=logdir,
-                force_rerun=False,
-                injection_tasks=[injection_id],
-            )
+            # AgentDojo's TraceLogger asks the ambient logger for its logdir, and
+            # the ambient logger is a NullLogger with no such attribute unless one
+            # is pushed. Its own CLI pushes an OutputLogger around the benchmark;
+            # without the same push every case dies on AttributeError before the
+            # model is called, which is what the first two Arm A attempts recorded.
+            with OutputLogger(str(logdir)):
+                utility, security = run_task_with_injection_tasks(
+                    suite,
+                    pipeline,
+                    user_task,
+                    attack,
+                    logdir=logdir,
+                    force_rerun=False,
+                    injection_tasks=[injection_id],
+                )
         except QuotaExhausted as exc:
             journal.append_abort(
                 "provider_quota_exhausted",

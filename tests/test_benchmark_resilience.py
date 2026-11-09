@@ -65,11 +65,31 @@ def runner(resilience, monkeypatch):
     monkeypatch.syspath_prepend(str(ROOT / "scripts" / "benchmarks"))
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     module = _load(RUNNER_PATH, "run_agentdojo_ab_under_test")
+    # The real build_pipeline always names the pipeline, and the runner now reads
+    # that name to declare the attack's model token, so the stub carries one too.
     module.build_pipeline = lambda model, arm, case_id="", sink=None, policy=None, **kwargs: (
-        types.SimpleNamespace(elements=[]),
+        types.SimpleNamespace(elements=[], name=f"{model}-stub"),
         None,
     )
     return module
+
+
+# Mirrors the runner's ATTACK_NAME_KEY to the guard's ATTACK_MODEL_NAME, because
+# build_attack checks that the attack resolved the declared name and a stub that
+# resolved something else would be refused. tests/test_benchmark_attack_name.py
+# pins both tables, so a divergence fails there first.
+_NAME_KEY_TO_DECLARED = {
+    "gpt-4-0125-preview": "GPT-4",
+    "gemini-1.5-pro-002": "AI model developed by Google",
+}
+
+
+def _stub_load_attack(attack, suite, pipeline):
+    name = getattr(pipeline, "name", "")
+    for key, declared in _NAME_KEY_TO_DECLARED.items():
+        if key in name:
+            return types.SimpleNamespace(name=attack, model_name=declared)
+    return types.SimpleNamespace(name=attack, model_name=None)
 
 
 def _stub_agentdojo(monkeypatch, behaviour):
@@ -104,11 +124,27 @@ def _stub_agentdojo(monkeypatch, behaviour):
         "agentdojo.attacks": types.ModuleType("agentdojo.attacks"),
         "agentdojo.attacks.attack_registry": types.ModuleType("agentdojo.attacks.attack_registry"),
         "agentdojo.benchmark": types.ModuleType("agentdojo.benchmark"),
+        "agentdojo.logging": types.ModuleType("agentdojo.logging"),
         "agentdojo.task_suite": types.ModuleType("agentdojo.task_suite"),
         "agentdojo.task_suite.load_suites": types.ModuleType("agentdojo.task_suite.load_suites"),
     }
-    modules["agentdojo.attacks.attack_registry"].load_attack = lambda attack, suite, pipeline: object()
+    modules["agentdojo.attacks.attack_registry"].load_attack = _stub_load_attack
     modules["agentdojo.benchmark"].run_task_with_injection_tasks = run_task_with_injection_tasks
+    # The runner pushes a logger around each case, the way AgentDojo's own CLI
+    # does, so the stub has to carry the same context manager.
+    import contextlib
+
+    class _StubLogger(contextlib.AbstractContextManager):
+        def __init__(self, logdir, live=None):
+            self.logdir = logdir
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    modules["agentdojo.logging"].OutputLogger = _StubLogger
     modules["agentdojo.task_suite.load_suites"].get_suite = get_suite
     for name, module in modules.items():
         monkeypatch.setitem(sys.modules, name, module)

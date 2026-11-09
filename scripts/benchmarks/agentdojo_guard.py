@@ -72,6 +72,20 @@ PROVIDER_KEY_ENV: dict[str, str] = {
     "google": "GEMINI_API_KEY",
 }
 # None means the provider has no such knob, not that it is left at a default.
+# AgentDojo's ``important_instructions`` attack embeds a model name in the
+# injected text and resolves it from the pipeline's name through its own
+# MODEL_NAMES map. Neither frozen model id appears in that map, so without a
+# declared string the attack refuses to construct at all: the pipeline name
+# "gemini-3.6-flash" raises "No valid model name not found". The strings below are
+# therefore part of the experiment, not decoration: the injected sentence differs
+# across providers by exactly this token, and each run records the one it used.
+# Declared before any case was recorded, and pinned in
+# docs/benchmark/attack-model-name-addendum.md.
+ATTACK_MODEL_NAME: dict[str, str] = {
+    "openai": "GPT-4",
+    "google": "AI model developed by Google",
+}
+
 PROVIDER_THINKING_BUDGET: dict[str, int | None] = {
     "openai": None,
     "google": 0,
