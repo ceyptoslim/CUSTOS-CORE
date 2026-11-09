@@ -83,6 +83,11 @@ def _stub_agentdojo(monkeypatch, behaviour):
             return types.SimpleNamespace(id=user_task_id)
 
         suite.get_user_task_by_id = get_user_task_by_id
+        # The runner checks both ids against the suite before it spends a call, so
+        # the stub carries both lookups the installed suite carries.
+        suite.get_injection_task_by_id = lambda injection_task_id: types.SimpleNamespace(
+            id=injection_task_id
+        )
         return suite
 
     def run_task_with_injection_tasks(
@@ -273,7 +278,9 @@ def test_a_bad_key_refuses_before_any_case_is_scored(runner, monkeypatch, tmp_pa
 
 def test_a_case_level_error_is_still_a_recorded_row(runner, monkeypatch, tmp_path):
     def behaviour(case):
-        if case.startswith("UserTask0:"):
+        # The stub reports the suite's own vocabulary, which is also what the real
+        # suite reports; the frozen list's spelling never reaches this call.
+        if case.startswith("user_task_0:"):
             raise ValueError("tool argument invalid")
 
     _stub_agentdojo(monkeypatch, behaviour)

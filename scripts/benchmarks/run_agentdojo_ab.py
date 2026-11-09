@@ -57,6 +57,7 @@ import hashlib
 import json
 import os
 import pathlib
+import re
 import sys
 from datetime import datetime, timezone
 
@@ -93,6 +94,52 @@ from agentdojo_guard import (  # noqa: E402
 
 EXIT_REFUSED = 2
 EXIT_VOID = 4
+
+
+_FROZEN_TASK_ID = re.compile(r"^(UserTask|InjectionTask)(\d+)$")
+_TASK_PREFIX = {"UserTask": "user_task", "InjectionTask": "injection_task"}
+
+
+def suite_ids(case: str) -> tuple[str, str]:
+    """Translate a frozen case identifier into the ids the suite itself keys on.
+
+    The frozen list enumerates cases the way the pre-registration does,
+    ``UserTask0:InjectionTask0``. AgentDojo 0.1.35 keys its banking tasks
+    ``user_task_0`` and ``injection_task_0``, so the two vocabularies do not meet
+    and a lookup by the frozen name raises ``KeyError``. The list is frozen, so
+    the translation belongs here rather than in the file: the hash still
+    verifies, the case set is unchanged, and every record keeps the frozen
+    identifier while only the lookup uses the suite's.
+
+    Measured rather than assumed: the first live invocation of Arm A died on
+    ``KeyError: 'UserTask0'``, which no offline guard could see because the tests
+    stub the suite.
+    """
+    parts = []
+    for part in case.split(":"):
+        match = _FROZEN_TASK_ID.match(part)
+        parts.append(f"{_TASK_PREFIX[match.group(1)]}_{match.group(2)}" if match else part)
+    if len(parts) != 2:
+        raise ValueError(f"not a case identifier: {case!r}")
+    return parts[0], parts[1]
+
+
+def missing_tasks(suite, cases) -> list[tuple[str, str, str]]:
+    """The cases whose suite-side ids the installed suite does not carry.
+
+    Kept separate from ``main`` so the refusal can be exercised by a test rather
+    than described by one. Returns the frozen identifier, the mapped pair and the
+    suite's own complaint, so the refusal can name all three.
+    """
+    absent = []
+    for case in cases:
+        user_id, injection_id = suite_ids(case)
+        try:
+            suite.get_user_task_by_id(user_id)
+            suite.get_injection_task_by_id(injection_id)
+        except KeyError as exc:
+            absent.append((case, f"{user_id} / {injection_id}", str(exc)))
+    return absent
 
 
 def _refuse(message: str) -> None:
@@ -318,6 +365,15 @@ def main(argv: list[str] | None = None) -> int:
     from agentdojo.task_suite.load_suites import get_suite
 
     suite = get_suite("v1", "banking")
+    absent = missing_tasks(suite, cases)
+    if absent:
+        case, mapped, detail = absent[0]
+        _refuse(
+            f"the frozen case list names {case}, which maps to {mapped}, and this "
+            f"suite has no such task ({detail}); {len(absent)} of {len(cases)} cases "
+            "do not resolve, so the installed AgentDojo version keys its tasks "
+            "differently from the frozen list"
+        )
     logdir = pathlib.Path(args.logdir) if args.logdir else None
     pending = [case for case in cases if case not in completed]
     # Only the Google path has a version to record. The recorder lives out here
@@ -331,7 +387,7 @@ def main(argv: list[str] | None = None) -> int:
         recorder = ModelVersionRecorder()
 
     for position, case in enumerate(pending, start=1):
-        user_id, injection_id = case.split(":")
+        user_id, injection_id = suite_ids(case)
         user_task = suite.get_user_task_by_id(user_id)
         policy = RetryPolicy(
             max_attempts=args.max_attempts,
