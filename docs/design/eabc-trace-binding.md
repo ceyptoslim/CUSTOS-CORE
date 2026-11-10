@@ -54,7 +54,7 @@ one.
   legacy record verifies; mixed chain verifies; SQLite round-trip preserves `policy_digest`,
   `tenant_id`, `trace_id`, `binding_version` and re-verifies after reload; an older database gains
   the columns in place without losing rows.
-* Full suite passed in the `CUSTOS CI` job for `8105343`, the commit this section was verified
+* Full suite passed in the `CUSTOS CI` job for `aa5d08b`, the commit this section was verified
   against. The count is stated once, in README, guarded by `tests/test_docs_truth.py`, and it is the
   CI figure rather than a local one because a local run collects a different total depending on
   optional packages. Tests that need the
