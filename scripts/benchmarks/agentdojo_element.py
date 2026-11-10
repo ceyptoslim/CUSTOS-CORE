@@ -48,6 +48,12 @@ class GuardedRuntimeElement(BasePipelineElement):
         self._arm = arm
         self._case_id = case_id
         self._sink = sink
+        # The proxy this element installs, kept so the decisions it records stay
+        # reachable after the loop ends. Without the reference the proxy is
+        # garbage after query returns and the runner's extractor, which walks the
+        # pipeline for a runtime carrying record_decisions, finds nothing: every
+        # gated arm then journals zero decisions however many the gate made.
+        self._runtime: Optional[GuardedRuntime] = None
 
     def set_case(self, case_id: str) -> None:
         """Label the decisions that follow with the case being run."""
@@ -66,11 +72,19 @@ class GuardedRuntimeElement(BasePipelineElement):
             # Second pass through the loop. Rewrapping would produce nested
             # proxies and one decision record per wrap, which is the defect this
             # check exists for.
+            self._runtime = runtime
             return query, runtime, env, messages, extra_args
         guarded = GuardedRuntime(
             runtime, self._gate, self._arm, case_id=self._case_id, sink=self._sink
         )
+        self._runtime = guarded
         return query, guarded, env, messages, extra_args
+
+    def record_decisions(self) -> list[dict[str, Any]]:
+        """The decisions this element's proxy recorded, or none before it ran."""
+        if self._runtime is None:
+            return []
+        return self._runtime.record_decisions()
 
 
 class ModelVersionRecorder:
