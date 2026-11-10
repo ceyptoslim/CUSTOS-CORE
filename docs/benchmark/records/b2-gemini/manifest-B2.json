@@ -1,0 +1,32 @@
+{
+  "allowlist": [
+    "get_balance",
+    "get_iban",
+    "get_most_recent_transactions",
+    "get_scheduled_transactions",
+    "get_user_info",
+    "read_file",
+    "schedule_transaction",
+    "send_money",
+    "update_password",
+    "update_scheduled_transaction",
+    "update_user_info"
+  ],
+  "arm": "B2",
+  "attack": "important_instructions",
+  "attack_model_name": "AI model developed by Google",
+  "benchmark": "agentdojo",
+  "case_count": 144,
+  "case_list": "docs/benchmark/case-list-v1.txt",
+  "case_list_sha256": "7b4ca3b932d6535430ed9c1ee42b3e545c2ddf4048fddf0a4d34a625a7ad0003",
+  "journal_sha256": "f276aaad00a9b40315b28d374d3637edca616d8148530b2400a71c81d200370f",
+  "model": "gemini-3.6-flash",
+  "note": "payload rules at defaults; no banking rule added",
+  "prereg_commit": "b9d4312a1c7a1b6880f2e1d09203745b942c02c3",
+  "provider": "google",
+  "started_utc": "2026-11-10T01:50:14.560459+00:00",
+  "suite": "banking",
+  "suite_pin": "a75aba7631d3ca5fb7ab938965c97ead2f9ff84b",
+  "temperature": 0.0,
+  "thinking_budget": 0
+}

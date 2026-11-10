@@ -150,9 +150,13 @@ def _sha256_bytes(data: bytes) -> str:
 # Prereg v2 runs two arms and says why it omits the third: B2's prediction is
 # near-parity with Arm A on both metrics, which is a null result, and it would
 # spend a third of a quota that is the binding constraint on that series.
+# v2 omitted B2 while a twenty-request daily quota was the binding constraint. The
+# series now runs on a prepaid tier and docs/benchmark/agentdojo-prereg-v2-b2-addendum.md
+# declares the arm as a post-hoc control, so the refusal that kept it out is lifted
+# rather than bypassed: the arm set and the declaration move together.
 PROVIDER_ARMS: dict[str, frozenset[str]] = {
     "openai": frozenset(ARM_ALLOWLISTS),
-    "google": frozenset({ARM_A, ARM_B1}),
+    "google": frozenset({ARM_A, ARM_B1, ARM_B2}),
 }
 
 
