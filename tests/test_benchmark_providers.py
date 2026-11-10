@@ -129,11 +129,19 @@ class TestWhatTheProviderRefusesBeforeItSpendsACall:
         assert problems and "not the frozen snapshot" in problems[0]
         assert guard.FROZEN_MODEL_ID in problems[0]
 
-    def test_the_gemini_series_runs_two_arms_and_refuses_the_third(self, tmp_path):
-        assert self._config(tmp_path, arm=guard.ARM_A).validate() == []
-        assert self._config(tmp_path, arm=guard.ARM_B1).validate() == []
-        problems = self._config(tmp_path, arm=guard.ARM_B2).validate()
-        assert problems and "is not part of the google series" in problems[0]
+    def test_the_gemini_series_runs_all_three_arms(self, tmp_path):
+        """B2 was refused while quota was the constraint; the addendum lifts it.
+
+        The refusal was a guard against an arm nobody had declared, not against the
+        arm itself. Once docs/benchmark/agentdojo-prereg-v2-b2-addendum.md declares
+        it as a post-hoc control, the arm set has to move with the declaration, and
+        an arm that is neither declared nor in the set must still be refused.
+        """
+        for arm in (guard.ARM_A, guard.ARM_B1, guard.ARM_B2):
+            assert self._config(tmp_path, arm=arm).validate() == []
+
+        problems = self._config(tmp_path, arm="B3").validate()
+        assert problems and "unknown arm" in problems[0]
 
     def test_the_openai_series_still_runs_all_three_arms(self, tmp_path):
         for arm in (guard.ARM_A, guard.ARM_B1, guard.ARM_B2):

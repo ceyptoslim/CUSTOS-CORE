@@ -40,8 +40,9 @@ Usage, once, per arm:
         --model gemini-3.6-flash --out runs/agentdojo-B1-gemini
 
 The provider decides which pre-registration the run is bound to, which model id is
-accepted, and which arms exist. The Gemini series runs A and B1 only; v2 omits B2
-as a cost decision made before any measurement.
+accepted, and which arms exist. The Gemini series ran A and B1 while a free tier
+capped at twenty requests a day was the binding constraint; B2 was added afterwards
+as a declared post-hoc control, per docs/benchmark/agentdojo-prereg-v2-b2-addendum.md.
 
 The attack name is recorded in the manifest and must be the same string for all
 three arms, since a different attack changes the injection, not just the scoring.

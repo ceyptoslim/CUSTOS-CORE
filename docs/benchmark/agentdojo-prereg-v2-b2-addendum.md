@@ -61,6 +61,16 @@ explanation that two arms could not distinguish. If B2 confirms the prediction, 
 series reads as one result with all three arms in the record. If it contradicts the
 prediction, the earlier numbers are not weakened; the mechanism behind them is.
 
+## The harness change this declares
+
+The runner refused arm B2 for the google provider, and the refusal was correct
+while the arm was undeclared: `PROVIDER_ARMS` kept the series to the two arms v2
+froze. This addendum is what makes the third arm legitimate, so the arm set moves
+with it in the same commit rather than being worked around, and an arm that is
+neither declared here nor in the set is still refused. The test that pinned the
+refusal now pins the wider set and the refusal of an undeclared arm, so the two
+cannot drift apart silently.
+
 ## Unchanged
 
 Arms A and B1 remain as scored and frozen in `records/arm-a-gemini/` and
