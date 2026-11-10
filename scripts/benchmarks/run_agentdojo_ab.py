@@ -79,7 +79,6 @@ from agentdojo_resilience import (  # noqa: E402
 )
 
 from agentdojo_guard import (  # noqa: E402
-    ATTACK_MODEL_NAME,
     DECLARED_ATTACK_MODEL_NAME,
     ARM_A,
     ARM_ALLOWLISTS,
