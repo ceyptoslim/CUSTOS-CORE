@@ -56,7 +56,10 @@ Not prevention, and the control makes that plainer rather than weaker. Injection
 success is 0 in all three arms, so the attack never landed in the ungated baseline
 either, and no arm had anything to prevent. B2 is the arm where a landing attack
 would have been most visible, since it permits every write an attacker wants, and
-nothing landed there. That floor belongs to the model within this harness.
+nothing landed there. That floor belongs to the model within this harness, and only for the declared
+attack: `records/attack-landing-probe.md` shows the plain-text `direct` attack landing
+on the same ungated model twice in eighteen probes, so the zero is a property of the
+attack class rather than of the model.
 
 Nor does it generalize beyond the banking suite, this case list, this attack or this
 model, and it says nothing about B1's cost on a different task distribution, where
