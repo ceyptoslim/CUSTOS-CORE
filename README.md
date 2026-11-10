@@ -202,7 +202,9 @@ Architecture targets that are NOT yet implemented. These should not be presented
 - Exchange API
 - Trust Registry (cross-platform, beyond LORL-9.1's Ed25519 identity)
 - SOC 2 / ISO 27001 / HIPAA compliance certification (currently "aligned to", not "certified")
-- WORM/immutable storage (currently tamper-evident hash-chained)
+- WORM media beyond the shipped custody anchoring (the audit chain is tamper-evident, the anchor log is external, and neither makes the storage medium immutable against its operator)
+
+Chain-head custody is **implemented, not a target**: internal-timestamped and RFC 3161 anchor sinks, an external re-walk with P1–P4 verdicts (`ESTABLISHED` / `CANNOT ESTABLISH` / `CONTRADICTION`), and an offline verifier a reader can run without trusting this repository: `python scripts/verify_custody.py --records store.json --anchors anchors.json`. The design and its honest limits are in docs/design/chain-head-custody.md.
 
 ---
 
