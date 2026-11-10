@@ -86,6 +86,17 @@ ATTACK_MODEL_NAME: dict[str, str] = {
     "google": "AI model developed by Google",
 }
 
+# The injected name belongs to the attack, not only to the provider: two attacks on the
+# same provider pin different strings. Keyed by (provider, attack) so a series cannot
+# inherit a name from an attack it is not running, and a pair that is absent is refused
+# rather than guessed. "the AI language model" is what `direct` writes, verified from a
+# live construction; it is declared in docs/benchmark/agentdojo-prereg-v3-gemini-direct.md.
+DECLARED_ATTACK_MODEL_NAME: dict[tuple[str, str], str] = {
+    ("openai", "important_instructions"): ATTACK_MODEL_NAME["openai"],
+    ("google", "important_instructions"): ATTACK_MODEL_NAME["google"],
+    ("google", "direct"): "the AI language model",
+}
+
 PROVIDER_THINKING_BUDGET: dict[str, int | None] = {
     "openai": None,
     "google": 0,
