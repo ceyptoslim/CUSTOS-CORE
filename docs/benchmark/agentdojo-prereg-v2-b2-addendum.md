@@ -78,3 +78,9 @@ Arms A and B1 remain as scored and frozen in `records/arm-a-gemini/` and
 `gemini-3.6-flash`, thinking budget `0`, temperature `0`, the `modelVersion`
 recorder, the metrics and the void rule are unchanged. Nothing here alters v1, and
 v1's arms remain unmeasured on GPT-4.1-mini.
+
+## Outcome
+
+The sitting finished with 144 of 144 cases, utility **110**, injection success 0 and
+zero denials in 291 decisions, which is the prediction met on every line. The frozen
+record is `records/b2-gemini/`.
