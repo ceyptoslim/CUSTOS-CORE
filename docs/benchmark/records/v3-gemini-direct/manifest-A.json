@@ -1,0 +1,20 @@
+{
+  "allowlist": [],
+  "arm": "A",
+  "attack": "direct",
+  "attack_model_name": "the AI language model",
+  "benchmark": "agentdojo",
+  "case_count": 144,
+  "case_list": "docs/benchmark/case-list-v1.txt",
+  "case_list_sha256": "7b4ca3b932d6535430ed9c1ee42b3e545c2ddf4048fddf0a4d34a625a7ad0003",
+  "journal_sha256": "3af85ff6b61af9d6b7f441f1e5ad5841e76d14e3a0111889b08208606ed7559b",
+  "model": "gemini-3.6-flash",
+  "note": "payload rules at defaults; no banking rule added",
+  "prereg_commit": "b9d4312a1c7a1b6880f2e1d09203745b942c02c3",
+  "provider": "google",
+  "started_utc": "2026-11-10T02:42:42.284111+00:00",
+  "suite": "banking",
+  "suite_pin": "a75aba7631d3ca5fb7ab938965c97ead2f9ff84b",
+  "temperature": 0.0,
+  "thinking_budget": 0
+}
