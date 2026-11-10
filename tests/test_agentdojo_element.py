@@ -134,6 +134,75 @@ class TestElementPlacement:
         assert isinstance(first, guard.GuardedRuntime)
         assert second is first
 
+    def test_element_keeps_the_proxy_so_the_run_can_journal_it(self, suite):
+        """The proxy must outlive query, or every gated arm journals nothing.
+
+        The runner reads decisions off the pipeline after the case loop ends, by
+        walking for a runtime that carries record_decisions. An element that
+        returns the proxy without keeping it hands the runner a probe it cannot
+        reach, and the decisions file is written empty while the gate did its
+        work, which is how an arm looks unmetered rather than failed.
+        """
+        gate, _manager = guard.build_gate(guard.ARM_B1)
+        element = element_module.GuardedRuntimeElement(gate, guard.ARM_B1, case_id="c1")
+        runtime = FunctionsRuntime(suite.tools)
+
+        assert element.record_decisions() == []
+
+        _, guarded, _, _, _ = element.query("q", runtime)
+
+        assert element._runtime is guarded
+
+        env = suite.load_and_inject_default_environment({})
+        guarded.run_function(
+            env,
+            "send_money",
+            {"recipient": "GB29NWBK60161331926819", "amount": 10.0,
+             "subject": "rent", "date": "2022-01-01"},
+        )
+
+        seen = element.record_decisions()
+        assert [r["decision"] for r in seen] == ["deny"]
+        assert seen == guarded.record_decisions()
+
+    def test_runner_extractor_finds_the_decisions_the_gate_recorded(self, suite):
+        pytest.importorskip("openai", reason="runner imports the provider client")
+        runner = _load("run_agentdojo_ab")
+        from types import SimpleNamespace
+
+        gate, _manager = guard.build_gate(guard.ARM_B1)
+        element = element_module.GuardedRuntimeElement(
+            gate, guard.ARM_B1, case_id="c1"
+        )
+        runtime = FunctionsRuntime(suite.tools)
+        env = suite.load_and_inject_default_environment({})
+        _, guarded, _, _, _ = element.query("q", runtime)
+
+        guarded.run_function(
+            env,
+            "send_money",
+            {"recipient": "GB29NWBK60161331926819", "amount": 10.0,
+             "subject": "rent", "date": "2022-01-01"},
+        )
+
+        pipeline = SimpleNamespace(elements=[SimpleNamespace(elements=[element])])
+        records = runner._loop_runtime_records(pipeline)
+
+        assert len(records) == 1, "the runner must see the deny it was party to"
+        assert records[0]["decision"] == "deny"
+        assert records[0]["case_id"] == "c1"
+
+    def test_ungated_pipeline_journals_nothing(self):
+        pytest.importorskip("openai", reason="runner imports the provider client")
+        runner = _load("run_agentdojo_ab")
+        from types import SimpleNamespace
+
+        class Plain:
+            name = "plain"
+
+        pipeline = SimpleNamespace(elements=[SimpleNamespace(elements=[Plain()])])
+        assert runner._loop_runtime_records(pipeline) == []
+
     def test_arm_a_may_not_install_the_element(self):
         gate, _manager = guard.build_gate(guard.ARM_B1)
         with pytest.raises(guard.RunRefused):
