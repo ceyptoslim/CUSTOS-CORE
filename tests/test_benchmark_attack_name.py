@@ -29,9 +29,28 @@ if str(SCRIPTS) not in sys.path:
     sys.path.insert(0, str(SCRIPTS))
 
 import run_agentdojo_ab as runner  # noqa: E402
-from agentdojo_guard import ATTACK_MODEL_NAME  # noqa: E402
+from agentdojo_guard import ATTACK_MODEL_NAME, DECLARED_ATTACK_MODEL_NAME  # noqa: E402
 
 DECLARED = {"openai": "GPT-4", "google": "AI model developed by Google"}
+
+
+def test_every_declared_attack_pair_names_a_string_agentdojo_accepts():
+    """A declared pair must be usable, and only declared pairs may be recorded.
+
+    Both land in the same test as the provider table because they are the same claim
+    at two resolutions: the series records a string, and the string depends on the
+    attack as well as the provider.
+    """
+    assert DECLARED_ATTACK_MODEL_NAME[("google", "direct")] == "the AI language model"
+    assert (
+        DECLARED_ATTACK_MODEL_NAME[("google", "important_instructions")]
+        == ATTACK_MODEL_NAME["google"]
+    )
+    assert set(DECLARED_ATTACK_MODEL_NAME) == {
+        ("openai", "important_instructions"),
+        ("google", "important_instructions"),
+        ("google", "direct"),
+    }
 
 
 def test_the_declared_strings_are_the_ones_the_series_records():

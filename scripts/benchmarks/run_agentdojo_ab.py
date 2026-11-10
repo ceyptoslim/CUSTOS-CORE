@@ -79,7 +79,7 @@ from agentdojo_resilience import (  # noqa: E402
 )
 
 from agentdojo_guard import (  # noqa: E402
-    ATTACK_MODEL_NAME,
+    DECLARED_ATTACK_MODEL_NAME,
     ARM_A,
     ARM_ALLOWLISTS,
     BANKING_SUITE_PIN,
@@ -149,7 +149,14 @@ def build_attack(attack_name: str, suite, pipeline, provider: str):
     """
     from agentdojo.attacks.attack_registry import load_attack
 
-    declared = ATTACK_MODEL_NAME[provider]
+    declared = DECLARED_ATTACK_MODEL_NAME.get((provider, attack_name))
+    if declared is None:
+        _refuse(
+            f"the attack {attack_name!r} has no declared injected model name for "
+            f"{provider}; the declared pairs are "
+            f"{sorted(DECLARED_ATTACK_MODEL_NAME)}. A series is scored on the string an "
+            "attack actually writes, so an undeclared attack cannot be recorded."
+        )
     honest = pipeline.name
     pipeline.name = f"{honest} [{ATTACK_NAME_KEY[provider]}]"
     try:
@@ -386,7 +393,7 @@ def main(argv: list[str] | None = None) -> int:
             "allowlist": sorted(ARM_ALLOWLISTS[args.arm]),
             "provider": args.provider,
             "model": args.model,
-            "attack_model_name": ATTACK_MODEL_NAME[args.provider],
+            "attack_model_name": DECLARED_ATTACK_MODEL_NAME[(args.provider, args.attack)],
             "thinking_budget": PROVIDER_THINKING_BUDGET[args.provider],
             "temperature": 0.0,
             "attack": args.attack,
