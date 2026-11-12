@@ -80,6 +80,8 @@ from agentdojo_resilience import (  # noqa: E402
 
 from agentdojo_guard import (  # noqa: E402
     DECLARED_ATTACK_MODEL_NAME,
+    RECIPIENT_SOURCES,
+    RecipientRegistry,
     ARM_A,
     ARM_ALLOWLISTS,
     BANKING_SUITE_PIN,
@@ -213,6 +215,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         + ", ".join(f"{p}={m}" for p, m in sorted(PROVIDER_MODELS.items())),
     )
     parser.add_argument(
+        "--recipient-source",
+        default=None,
+        choices=sorted(RECIPIENT_SOURCES),
+        help="the provenance series only: where the money-tool recipient "
+        "allowlist comes from. 'declared' loads the frozen list; 'derived' learns "
+        "from what tools return. Omit for every other series",
+    )
+    parser.add_argument(
+        "--recipients-file",
+        default="docs/benchmark/recipients-declared-v1.json",
+        help="the frozen declared list; its sha256 is pinned in the guard",
+    )
+    parser.add_argument(
         "--base-url",
         default=None,
         help="OpenAI-compatible endpoint for --provider local, for example "
@@ -261,6 +276,7 @@ def build_pipeline(
     provider: str = "openai",
     recorder=None,
     base_url: str | None = None,
+    recipient_registry=None,
 ):
     """The benchmark chain, with the guard inserted only for the gated arms.
 
@@ -321,7 +337,13 @@ def build_pipeline(
     if arm != ARM_A:
         gate, _manager = build_gate(arm)
         loop_elements.append(
-            GuardedRuntimeElement(gate, arm, case_id=case_id, sink=sink)
+            GuardedRuntimeElement(
+                gate,
+                arm,
+                case_id=case_id,
+                sink=sink,
+                recipient_registry=recipient_registry,
+            )
         )
     loop_elements.extend([ToolsExecutor(tool_result_to_str), llm])
 
@@ -353,6 +375,12 @@ def main(argv: list[str] | None = None) -> int:
             "--base-url is only meaningful for --provider local; the pinned "
             "providers run against their own endpoints"
         )
+    registry = None
+    if args.recipient_source == "declared":
+        registry = RecipientRegistry.declared(args.recipients_file)
+    elif args.recipient_source == "derived":
+        registry = RecipientRegistry.derived()
+
     case_list = pathlib.Path(args.case_list)
     out_dir = pathlib.Path(args.out)
 
@@ -363,6 +391,7 @@ def main(argv: list[str] | None = None) -> int:
         case_list=case_list,
         out_dir=out_dir,
         provider=args.provider,
+        recipient_source=args.recipient_source,
     )
     problems = config.validate()
     if problems:
@@ -432,6 +461,8 @@ def main(argv: list[str] | None = None) -> int:
             "attack_model_name": DECLARED_ATTACK_MODEL_NAME[(args.provider, args.attack)],
             "thinking_budget": PROVIDER_THINKING_BUDGET[args.provider],
             "base_url": args.base_url if args.provider == "local" else None,
+            "recipient_source": args.recipient_source,
+            "recipients": registry.snapshot() if registry is not None else None,
             "temperature": 0.0,
             "attack": args.attack,
             "case_list": str(case_list),
@@ -498,6 +529,7 @@ def main(argv: list[str] | None = None) -> int:
             provider=args.provider,
             recorder=recorder,
             base_url=args.base_url,
+            recipient_registry=registry,
         )
         attack = build_attack(args.attack, suite, pipeline, args.provider)
         try:

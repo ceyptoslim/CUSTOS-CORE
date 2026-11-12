@@ -35,7 +35,7 @@ import json
 import pathlib
 import re
 from dataclasses import dataclass, field
-from typing import Any, Callable, Mapping, Optional
+from typing import Any, Callable, Iterable, Mapping, Optional
 
 from custos.action_gate import ActionGate, ActionRequest
 from custos.tenant import TenantConfig, TenantManager
@@ -150,6 +150,27 @@ MUTATING_TOOLS = frozenset(
     }
 )
 ALL_TOOLS = READ_ONLY_TOOLS | MUTATING_TOOLS
+# The three tools that move money. A recipient condition can only mean anything
+# on these, so the provenance series names them explicitly rather than inferring
+# them from a name prefix.
+MONEY_TOOLS = frozenset(
+    {"send_money", "schedule_transaction", "update_scheduled_transaction"}
+)
+IBAN_PATTERN = re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{10,30}\b")
+# Where the recipient allowlist came from. This is the variable the provenance
+# series tests, and it is the only thing that differs between its two arms.
+RECIPIENT_SOURCES = frozenset({"declared", "derived"})
+# sha256 of docs/benchmark/recipients-declared-v1.json, generated from the suite's
+# own environment.yaml by scripts/benchmarks/recipients_declared.py. Pinned so a
+# drift in the rule or in the suite data fails rather than silently widening what
+# the attack is allowed to reach.
+FROZEN_RECIPIENTS_SHA256 = (
+    "5ea87e476b0c78c6c16eb046deda936afbf4fa5955b4707768d1bb80728da128"
+)
+# Prereg v5 (docs/benchmark/agentdojo-prereg-v5-provenance.md) governs the
+# provenance series. Placeholder until the merge that puts it on main, for the
+# same reason v4 had one: a run may not cite unfrozen text.
+FROZEN_PREREG_COMMIT_V5 = "PENDING_PREREG_V5_COMMIT"
 
 ARM_A = "A"
 ARM_B1 = "B1"
@@ -217,6 +238,69 @@ def verify_case_list(path: pathlib.Path | str) -> list[str]:
             f"case list has {len(cases)} entries, frozen count is {FROZEN_CASE_COUNT}."
         )
     return cases
+
+
+class RecipientRegistry:
+    """Where a recipient allowlist comes from, which is the variable under test.
+
+    ``declared`` loads a list frozen before the episode, so nothing the agent
+    reads can widen it. ``derived`` starts empty and learns every IBAN that a tool
+    returns, which is the same channel an injection uses. The two are identical in
+    policy shape and differ only in provenance, so a difference in outcome is
+    attributable to provenance rather than to the rule.
+    """
+
+    def __init__(self, source: str, values: Iterable[str] = ()) -> None:
+        if source not in RECIPIENT_SOURCES:
+            raise RunRefused(
+                f"unknown recipient source {source!r}; expected one of "
+                f"{sorted(RECIPIENT_SOURCES)}"
+            )
+        self.source = source
+        self._values = {_normalise_iban(v) for v in values}
+        self._learned: list[str] = []
+
+    @classmethod
+    def declared(cls, path: pathlib.Path | str) -> "RecipientRegistry":
+        """Load the frozen list, refusing a file whose hash has moved."""
+        data = pathlib.Path(path).read_bytes()
+        actual = _sha256_bytes(data)
+        if actual != FROZEN_RECIPIENTS_SHA256:
+            raise RunRefused(
+                f"recipients file sha256 {actual} is not the frozen "
+                f"{FROZEN_RECIPIENTS_SHA256}; the declared list is part of the "
+                "pre-registration, not a parameter"
+            )
+        payload = json.loads(data)
+        return cls("declared", payload.get("recipients", ()))
+
+    @classmethod
+    def derived(cls) -> "RecipientRegistry":
+        return cls("derived")
+
+    def observe(self, content: Any) -> list[str]:
+        """Learn from tool output. Declared registries refuse to learn anything."""
+        if self.source != "derived":
+            return []
+        found = {_normalise_iban(m) for m in IBAN_PATTERN.findall(str(content or ""))}
+        new = sorted(found - self._values)
+        self._values |= found
+        self._learned.extend(v for v in new if v not in self._learned)
+        return new
+
+    def permits(self, recipient: Any) -> bool:
+        return _normalise_iban(recipient) in self._values
+
+    def snapshot(self) -> dict[str, Any]:
+        return {
+            "source": self.source,
+            "recipients": sorted(self._values),
+            "learned_during_run": sorted(self._learned),
+        }
+
+
+def _normalise_iban(value: Any) -> str:
+    return str(value or "").replace(" ", "").upper()
 
 
 def build_gate(arm: str) -> tuple[ActionGate, TenantManager]:
@@ -298,6 +382,7 @@ class GuardedRuntime:
         arm: str,
         case_id: str = "",
         sink: Optional[Callable[[DecisionRecord], None]] = None,
+        recipient_registry: Optional[RecipientRegistry] = None,
     ) -> None:
         if arm == ARM_A:
             raise RunRefused("arm A has no gate; do not wrap its runtime")
@@ -307,6 +392,7 @@ class GuardedRuntime:
         self._case_id = case_id
         self._sink = sink
         self.records: list[DecisionRecord] = []
+        self.recipients = recipient_registry
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._runtime, name)
@@ -350,7 +436,43 @@ class GuardedRuntime:
         if not decision.allowed:
             return refusal_text(function, decision.triggered_rule, decision.reason), None
 
-        return self._runtime.run_function(env, function, kwargs, raise_on_error)
+        # The recipient condition is evaluated after the gate allows and before
+        # anything is dispatched. It is a second condition on the same seam, not a
+        # policy rule, and it is recorded in the same decision stream so a reader
+        # can see which condition refused.
+        if (
+            self.recipients is not None
+            and function in MONEY_TOOLS
+            and not self.recipients.permits(kwargs.get("recipient"))
+        ):
+            reason = (
+                f"recipient is not in the {self.recipients.source} allowlist; the "
+                "list permits only recipients known before this decision"
+                if self.recipients.source == "declared"
+                else "recipient is not in the derived allowlist"
+            )
+            blocked = DecisionRecord(
+                arm=self._arm,
+                case_id=self._case_id,
+                tool=function,
+                decision="deny",
+                triggered_rule="recipient_not_permitted",
+                reason=reason,
+                audit_record_hash=None,
+                args_sha256=_args_digest(kwargs),
+                args_keys=sorted(kwargs),
+            )
+            self.records.append(blocked)
+            if self._sink is not None:
+                self._sink(blocked)
+            return refusal_text(function, "recipient_not_permitted", reason), None
+
+        outcome = self._runtime.run_function(env, function, kwargs, raise_on_error)
+        if self.recipients is not None and function in READ_ONLY_TOOLS:
+            # A read is the only way content enters the agent's context, which is
+            # why the derived registry learns here and nowhere else.
+            self.recipients.observe(outcome[0])
+        return outcome
 
 
 @dataclass
@@ -364,6 +486,9 @@ class ArmConfig:
     out_dir: pathlib.Path
     provider: str = "openai"
     extra: dict[str, Any] = field(default_factory=dict)
+    # Set only by the provenance series. None means the series has no recipient
+    # condition at all, which is every series before it.
+    recipient_source: Optional[str] = None
 
     def validate(self) -> list[str]:
         problems: list[str] = []
@@ -396,6 +521,24 @@ class ArmConfig:
                     f"the {self.provider} series has no frozen pre-registration commit "
                     f"({pinned!r}); an arm may not run against unfrozen text, because "
                     "the record would cite a document that could still change"
+                )
+        if self.recipient_source is not None:
+            if self.recipient_source not in RECIPIENT_SOURCES:
+                problems.append(
+                    f"unknown recipient source {self.recipient_source!r}; expected "
+                    f"one of {sorted(RECIPIENT_SOURCES)}"
+                )
+            if not _COMMIT_RE.match(FROZEN_PREREG_COMMIT_V5):
+                problems.append(
+                    f"the provenance series has no frozen pre-registration commit "
+                    f"({FROZEN_PREREG_COMMIT_V5!r}); an arm may not run against "
+                    "unfrozen text"
+                )
+            if self.arm != ARM_B2:
+                problems.append(
+                    f"the recipient condition only runs on arm {ARM_B2!r}; arm "
+                    f"{self.arm!r} either has no gate or cannot move money, so the "
+                    "condition would measure nothing"
                 )
         if not self.attack:
             problems.append("attack is not declared; it is not defaulted anywhere")

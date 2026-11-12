@@ -41,6 +41,7 @@ class GuardedRuntimeElement(BasePipelineElement):
         arm: str,
         case_id: str = "",
         sink: Optional[Callable[[DecisionRecord], None]] = None,
+        recipient_registry: Any = None,
     ) -> None:
         if arm == ARM_A:
             raise RunRefused("arm A must not install the guard element")
@@ -48,6 +49,7 @@ class GuardedRuntimeElement(BasePipelineElement):
         self._arm = arm
         self._case_id = case_id
         self._sink = sink
+        self._recipient_registry = recipient_registry
         # The proxy this element installs, kept so the decisions it records stay
         # reachable after the loop ends. Without the reference the proxy is
         # garbage after query returns and the runner's extractor, which walks the
@@ -75,7 +77,12 @@ class GuardedRuntimeElement(BasePipelineElement):
             self._runtime = runtime
             return query, runtime, env, messages, extra_args
         guarded = GuardedRuntime(
-            runtime, self._gate, self._arm, case_id=self._case_id, sink=self._sink
+            runtime,
+            self._gate,
+            self._arm,
+            case_id=self._case_id,
+            sink=self._sink,
+            recipient_registry=self._recipient_registry,
         )
         self._runtime = guarded
         return query, guarded, env, messages, extra_args
