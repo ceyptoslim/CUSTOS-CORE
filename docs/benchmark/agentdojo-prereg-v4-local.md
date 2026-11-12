@@ -1,14 +1,19 @@
 # Pre-registration v4: the local series (Qwen3.8-27B)
 
 **Series:** CUSTOS-CORE AgentDojo banking, local provider
-**Status:** text frozen only by the merge that puts this file on `main`. Until that
-merge exists, `agentdojo_guard.FROZEN_PREREG_COMMIT_V4` holds the placeholder
-`PENDING_PREREG_V4_COMMIT`, and `ArmConfig.validate()` refuses to start any local
-arm. The placeholder is not a commit id on purpose: a record may not cite a
-document that could still change.
+**Status:** frozen. This text and the provider path it governs were merged
+together in PR 196, and `agentdojo_guard.FROZEN_PREREG_COMMIT_V4` cites that merge.
+Before the merge the constant held the placeholder `PENDING_PREREG_V4_COMMIT`, and
+`ArmConfig.validate()` refuses any series whose pin is not a 40-hex commit, so no
+arm could run against text that was still changeable.
 
-**Commit:** to be filled with the merge commit that lands this document, by the
-bookkeeping pull request that follows it, exactly as v1 and v2 were recorded.
+**Commit:** `2c11641f53df40827881ebc1ada6dbce3b3c9d1a` (merge of PR 196), recorded
+by the bookkeeping pull request that follows it, exactly as v1 and v2 were
+recorded. That this document was merged alongside the code it governs is a
+departure from v1 and v2, which froze text before any code existed; the reason is
+that the provider path and the text describe the same three constants, and splitting
+them would have left a window in which the text named a provider the runner did not
+have.
 
 ## Why a fourth series exists
 

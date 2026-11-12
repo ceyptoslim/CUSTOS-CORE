@@ -47,11 +47,11 @@ FROZEN_PREREG_COMMIT = "578a22fc6598b35e764093a3e9d0afbd14d4db81"
 # on main, recorded in the document's own Commit line.
 FROZEN_PREREG_COMMIT_V2 = "b9d4312a1c7a1b6880f2e1d09203745b942c02c3"
 # Prereg v4 (docs/benchmark/agentdojo-prereg-v4-local.md) governs the local
-# series. The constant below is a PLACEHOLDER on purpose: a run may not cite a
-# pre-registration that has not been frozen by a merge, so the placeholder is not
-# a commit id and ArmConfig.validate() refuses to start the local provider until
-# the merge replaces it with the 40-hex commit that put v4 on main.
-FROZEN_PREREG_COMMIT_V4 = "PENDING_PREREG_V4_COMMIT"
+# series. Its freeze is the merge of PR 196, which put both the text and the
+# provider path on main; this commit was a placeholder before that merge, and
+# ArmConfig.validate() refuses any series whose pin is not a 40-hex commit, so the
+# text could not be cited while it was still changeable.
+FROZEN_PREREG_COMMIT_V4 = "2c11641f53df40827881ebc1ada6dbce3b3c9d1a"
 FROZEN_LOCAL_MODEL_ID = "qwen3.8-27b-ud-q4_k_xl"
 PREREG_BY_PROVIDER: dict[str, str] = {
     "openai": FROZEN_PREREG_COMMIT,
