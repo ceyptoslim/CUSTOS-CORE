@@ -141,8 +141,31 @@ def test_an_unknown_recipient_source_is_refused(tmp_path):
     assert any("unknown recipient source" in p for p in problems), problems
 
 
-def test_the_series_cannot_validate_while_its_prereg_is_unfrozen(tmp_path):
-    """The freeze rule applies to this axis exactly as it does to a provider."""
+def test_the_axis_is_frozen_by_its_merge_commit(tmp_path):
+    """The pin is a real commit, and the guard outlives the state it was written for."""
+    assert guard.FROZEN_PREREG_COMMIT_V5 == (
+        "7e1e18a6cbd2f5f7b13c22d576a7629eb91d38ab"
+    )
+    assert guard._COMMIT_RE.match(guard.FROZEN_PREREG_COMMIT_V5)
+    config = guard.ArmConfig(
+        arm="B2",
+        model=guard.PROVIDER_MODELS["google"],
+        attack="important_instructions",
+        case_list="docs/benchmark/case-list-v1.txt",
+        out_dir=str(tmp_path / "B2"),
+        provider="google",
+        recipient_source="declared",
+    )
+    assert config.validate() == []
+
+
+def test_an_unfrozen_v5_pin_is_still_refused(tmp_path, monkeypatch):
+    """Put the placeholder back for one call: the refusal has to stay reachable.
+
+    The next axis starts in exactly this state, so the guard is tested in the state
+    that matters rather than only in the state that shipped.
+    """
+    monkeypatch.setattr(guard, "FROZEN_PREREG_COMMIT_V5", "PENDING_PREREG_V5_COMMIT")
     config = guard.ArmConfig(
         arm="B2",
         model=guard.PROVIDER_MODELS["google"],
@@ -156,10 +179,7 @@ def test_the_series_cannot_validate_while_its_prereg_is_unfrozen(tmp_path):
     assert any("no frozen pre-registration commit" in p for p in problems), problems
 
 
-def test_a_frozen_v5_pin_is_what_unblocks_the_axis(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        guard, "FROZEN_PREREG_COMMIT_V5", "a" * 40
-    )
+def test_arm_b2_with_a_declared_source_validates(tmp_path):
     config = guard.ArmConfig(
         arm="B2",
         model=guard.PROVIDER_MODELS["google"],
@@ -169,20 +189,6 @@ def test_a_frozen_v5_pin_is_what_unblocks_the_axis(tmp_path, monkeypatch):
         provider="google",
         recipient_source="declared",
     )
-    assert config.validate() == []
-
-
-def test_arm_b2_with_a_declared_source_validates(tmp_path, monkeypatch):
-    config = guard.ArmConfig(
-        arm="B2",
-        model=guard.PROVIDER_MODELS["google"],
-        attack="important_instructions",
-        case_list="docs/benchmark/case-list-v1.txt",
-        out_dir=str(tmp_path / "B2"),
-        provider="google",
-        recipient_source="declared",
-    )
-    monkeypatch.setattr(guard, "FROZEN_PREREG_COMMIT_V5", "a" * 40)
     assert config.validate() == []
 
 
