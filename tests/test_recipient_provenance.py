@@ -34,7 +34,17 @@ ATTACKER = "UK12345678901234567890"
 
 
 def test_the_declared_list_matches_its_generator():
-    """Drift in the suite data or in the rule must fail, not pass quietly."""
+    """Drift in the suite data or in the rule must fail, not pass quietly.
+
+    The comparison needs the benchmark package, because the suite's data files
+    live inside it. CI does not install that extra, so this skips there rather
+    than failing: the hash pin below is the guard that runs everywhere, and it is
+    the one that matters for a record, since a run consults the pinned file and
+    never regenerates it.
+    """
+    pytest.importorskip(
+        "agentdojo", reason="suite data lives in the benchmark extra; pin test covers CI"
+    )
     result = subprocess.run(
         [sys.executable, str(BENCH / "recipients_declared.py"), "--check"],
         capture_output=True,

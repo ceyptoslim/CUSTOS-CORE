@@ -22,6 +22,7 @@ import hashlib
 import json
 import pathlib
 import re
+import sys
 
 IBAN = re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{10,30}\b")
 OUT = pathlib.Path(__file__).resolve().parents[2] / "docs" / "benchmark" / "recipients-declared-v1.json"
@@ -62,8 +63,19 @@ def main(argv: list[str] | None = None) -> int:
     if args.agentdojo_root:
         root = pathlib.Path(args.agentdojo_root)
     else:
-        import agentdojo
-
+        try:
+            import agentdojo
+        except ImportError:
+            # The suite's data files live inside the package, so there is nothing
+            # to compare against without it. Said plainly and refused rather than
+            # raised, because a CI runner has no benchmark extra and a traceback
+            # there reads like a defect in this script.
+            print(
+                "agentdojo is not installed; install requirements-benchmark.txt or "
+                "pass --agentdojo-root to a checkout of the package",
+                file=sys.stderr,
+            )
+            return 2
         root = pathlib.Path(agentdojo.__file__).resolve().parent
     payload = build(root)
     text = json.dumps(payload, indent=2, sort_keys=True) + "\n"
