@@ -93,15 +93,19 @@ class TestTheProviderTables:
         assert guard.FROZEN_GOOGLE_MODEL_ID == guard.PROVIDER_MODELS["google"]
         assert guard.FROZEN_LOCAL_MODEL_ID == guard.PROVIDER_MODELS["local"]
 
-    def test_the_local_series_is_not_frozen_yet(self):
-        """A placeholder pin must fail closed rather than pass as a commit id.
+    def test_the_local_series_is_frozen_by_its_merge_commit(self):
+        """The pin must be a real commit, and one that put the text on main.
 
-        The local pre-registration is text until its merge lands. Recording an arm
-        against unfrozen text is the one error the series cannot recover from,
-        because the document it cites could change after the run.
+        While PR 196 was open the pin was the placeholder
+        ``PENDING_PREREG_V4_COMMIT`` and this test asserted the opposite. The
+        guard is unchanged by that transition: what makes a pin citable is that it
+        is a 40-hex commit, not that it is this particular one.
         """
         assert guard.PREREG_BY_PROVIDER["local"] == guard.FROZEN_PREREG_COMMIT_V4
-        assert not guard._COMMIT_RE.match(guard.FROZEN_PREREG_COMMIT_V4)
+        assert guard._COMMIT_RE.match(guard.FROZEN_PREREG_COMMIT_V4)
+        assert guard.FROZEN_PREREG_COMMIT_V4 == (
+            "2c11641f53df40827881ebc1ada6dbce3b3c9d1a"
+        )
 
     def test_each_provider_names_the_key_it_needs(self):
         assert guard.PROVIDER_KEY_ENV == {

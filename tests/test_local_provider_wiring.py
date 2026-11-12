@@ -156,9 +156,15 @@ def test_endpoint_is_refused_for_a_pinned_provider(tmp_path):
     assert "--base-url is only meaningful" in (result.stdout + result.stderr)
 
 
-def test_local_series_cannot_validate_while_its_prereg_is_unfrozen(tmp_path):
-    assert guard.PREREG_BY_PROVIDER["local"] == guard.FROZEN_PREREG_COMMIT_V4
-    assert guard.FROZEN_PREREG_COMMIT_V4 == "PENDING_PREREG_V4_COMMIT"
+def test_an_unfrozen_prereg_pin_is_refused_and_frozen_ones_are_not(tmp_path, monkeypatch):
+    """The freeze guard outlives the state it was written for.
+
+    While PR 196 was open the pin really was the placeholder, and this test
+    asserted that the real series refused. Now that the pin is a commit, the
+    guard is exercised by putting the placeholder back for one call: the refusal
+    has to stay reachable, because the next series will start in exactly that
+    state.
+    """
     config = guard.ArmConfig(
         arm="A",
         model=guard.PROVIDER_MODELS["local"],
@@ -166,6 +172,13 @@ def test_local_series_cannot_validate_while_its_prereg_is_unfrozen(tmp_path):
         case_list="docs/benchmark/case-list-v1.txt",
         out_dir=str(tmp_path / "out"),
         provider="local",
+    )
+    # Frozen: the real series validates.
+    assert config.validate() == []
+
+    # Unfrozen: the same configuration is refused.
+    monkeypatch.setitem(
+        guard.PREREG_BY_PROVIDER, "local", "PENDING_PREREG_V4_COMMIT"
     )
     problems = config.validate()
     assert any("no frozen pre-registration commit" in p for p in problems), problems
