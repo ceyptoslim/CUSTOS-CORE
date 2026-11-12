@@ -1,10 +1,14 @@
 # Pre-registration v5: the provenance series
 
 **Series:** CUSTOS-CORE AgentDojo banking, provenance axis on arm B2
-**Status:** unfrozen. `agentdojo_guard.FROZEN_PREREG_COMMIT_V5` holds the
-placeholder `PENDING_PREREG_V5_COMMIT`, and `ArmConfig.validate()` refuses any
-config that sets `--recipient-source` until the merge that lands this document
-replaces it with a 40-hex commit.
+**Status:** frozen. This text and the axis it governs were merged together in PR
+198, and `agentdojo_guard.FROZEN_PREREG_COMMIT_V5` cites that merge. Before the
+merge the constant held the placeholder `PENDING_PREREG_V5_COMMIT`, and
+`ArmConfig.validate()` refuses any config whose pin is not a 40-hex commit, so no
+arm could run against text that was still changeable.
+
+**Commit:** `7e1e18a6cbd2f5f7b13c22d576a7629eb91d38ab` (merge of PR 198), recorded by the bookkeeping change that
+follows it.
 
 ## The question
 

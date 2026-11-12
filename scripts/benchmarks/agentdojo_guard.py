@@ -168,9 +168,11 @@ FROZEN_RECIPIENTS_SHA256 = (
     "5ea87e476b0c78c6c16eb046deda936afbf4fa5955b4707768d1bb80728da128"
 )
 # Prereg v5 (docs/benchmark/agentdojo-prereg-v5-provenance.md) governs the
-# provenance series. Placeholder until the merge that puts it on main, for the
-# same reason v4 had one: a run may not cite unfrozen text.
-FROZEN_PREREG_COMMIT_V5 = "PENDING_PREREG_V5_COMMIT"
+# provenance series. Its freeze is the merge of PR 198, which put both the text and
+# the axis on main; the constant was a placeholder before that, and validate()
+# refuses any axis whose pin is not a 40-hex commit so the text could not be cited
+# while it was still changeable.
+FROZEN_PREREG_COMMIT_V5 = "7e1e18a6cbd2f5f7b13c22d576a7629eb91d38ab"
 
 ARM_A = "A"
 ARM_B1 = "B1"
