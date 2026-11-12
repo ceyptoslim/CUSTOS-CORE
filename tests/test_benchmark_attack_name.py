@@ -50,6 +50,11 @@ def test_every_declared_attack_pair_names_a_string_agentdojo_accepts():
         ("openai", "important_instructions"),
         ("google", "important_instructions"),
         ("google", "direct"),
+        # The local series declares the same neutral string for both attacks. It
+        # is a different model family, so the injected sentence must not claim to
+        # be either of the hosted ones.
+        ("local", "important_instructions"),
+        ("local", "direct"),
     }
 
 

@@ -88,18 +88,36 @@ class TestTheProviderTables:
     def test_each_provider_pins_one_model(self):
         assert guard.PROVIDER_MODELS["openai"] == "gpt-4.1-mini-2025-04-14"
         assert guard.PROVIDER_MODELS["google"] == "gemini-3.6-flash"
+        assert guard.PROVIDER_MODELS["local"] == "qwen3.8-27b-ud-q4_k_xl"
         assert guard.FROZEN_MODEL_ID == guard.PROVIDER_MODELS["openai"]
         assert guard.FROZEN_GOOGLE_MODEL_ID == guard.PROVIDER_MODELS["google"]
+        assert guard.FROZEN_LOCAL_MODEL_ID == guard.PROVIDER_MODELS["local"]
+
+    def test_the_local_series_is_not_frozen_yet(self):
+        """A placeholder pin must fail closed rather than pass as a commit id.
+
+        The local pre-registration is text until its merge lands. Recording an arm
+        against unfrozen text is the one error the series cannot recover from,
+        because the document it cites could change after the run.
+        """
+        assert guard.PREREG_BY_PROVIDER["local"] == guard.FROZEN_PREREG_COMMIT_V4
+        assert not guard._COMMIT_RE.match(guard.FROZEN_PREREG_COMMIT_V4)
 
     def test_each_provider_names_the_key_it_needs(self):
         assert guard.PROVIDER_KEY_ENV == {
             "openai": "OPENAI_API_KEY",
             "google": "GEMINI_API_KEY",
+            # A local server usually ignores the key; the client still requires a
+            # non-empty string, and an unattended run must not inherit one.
+            "local": "CUSTOS_LOCAL_API_KEY",
         }
 
     def test_the_thinking_budget_is_frozen_only_where_it_exists(self):
         assert guard.PROVIDER_THINKING_BUDGET["google"] == 0
         assert guard.PROVIDER_THINKING_BUDGET["openai"] is None
+        # A local server has no thinking-budget knob; None means "no such knob",
+        # not "left at a provider default".
+        assert guard.PROVIDER_THINKING_BUDGET["local"] is None
 
     def test_each_provider_is_bound_to_its_own_prereg(self):
         assert guard.PREREG_BY_PROVIDER["openai"] == guard.FROZEN_PREREG_COMMIT

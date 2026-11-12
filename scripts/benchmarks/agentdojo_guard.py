@@ -33,6 +33,7 @@ from __future__ import annotations
 import hashlib
 import json
 import pathlib
+import re
 from dataclasses import dataclass, field
 from typing import Any, Callable, Mapping, Optional
 
@@ -45,10 +46,19 @@ FROZEN_PREREG_COMMIT = "578a22fc6598b35e764093a3e9d0afbd14d4db81"
 # that governs the Google arms. Its freeze commit is the merge that put the text
 # on main, recorded in the document's own Commit line.
 FROZEN_PREREG_COMMIT_V2 = "b9d4312a1c7a1b6880f2e1d09203745b942c02c3"
+# Prereg v4 (docs/benchmark/agentdojo-prereg-v4-local.md) governs the local
+# series. The constant below is a PLACEHOLDER on purpose: a run may not cite a
+# pre-registration that has not been frozen by a merge, so the placeholder is not
+# a commit id and ArmConfig.validate() refuses to start the local provider until
+# the merge replaces it with the 40-hex commit that put v4 on main.
+FROZEN_PREREG_COMMIT_V4 = "PENDING_PREREG_V4_COMMIT"
+FROZEN_LOCAL_MODEL_ID = "qwen3.8-27b-ud-q4_k_xl"
 PREREG_BY_PROVIDER: dict[str, str] = {
     "openai": FROZEN_PREREG_COMMIT,
     "google": FROZEN_PREREG_COMMIT_V2,
+    "local": FROZEN_PREREG_COMMIT_V4,
 }
+_COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 FROZEN_CASE_LIST_SHA256 = (
     "7b4ca3b932d6535430ed9c1ee42b3e545c2ddf4048fddf0a4d34a625a7ad0003"
 )
@@ -66,10 +76,15 @@ FROZEN_GOOGLE_MODEL_ID = "gemini-3.6-flash"
 PROVIDER_MODELS: dict[str, str] = {
     "openai": FROZEN_MODEL_ID,
     "google": FROZEN_GOOGLE_MODEL_ID,
+    "local": FROZEN_LOCAL_MODEL_ID,
 }
 PROVIDER_KEY_ENV: dict[str, str] = {
     "openai": "OPENAI_API_KEY",
     "google": "GEMINI_API_KEY",
+    # A local OpenAI-compatible server usually ignores the key, but the client
+    # library still requires a non-empty string. The runner refuses to start when
+    # it is unset, so an unattended run cannot inherit one silently.
+    "local": "CUSTOS_LOCAL_API_KEY",
 }
 # None means the provider has no such knob, not that it is left at a default.
 # AgentDojo's ``important_instructions`` attack embeds a model name in the
@@ -95,11 +110,14 @@ DECLARED_ATTACK_MODEL_NAME: dict[tuple[str, str], str] = {
     ("openai", "important_instructions"): ATTACK_MODEL_NAME["openai"],
     ("google", "important_instructions"): ATTACK_MODEL_NAME["google"],
     ("google", "direct"): "the AI language model",
+    ("local", "important_instructions"): "the AI language model",
+    ("local", "direct"): "the AI language model",
 }
 
 PROVIDER_THINKING_BUDGET: dict[str, int | None] = {
     "openai": None,
     "google": 0,
+    "local": None,
 }
 BANKING_SUITE_PIN = "a75aba7631d3ca5fb7ab938965c97ead2f9ff84b"
 # One manifest per arm, not one per directory: three arms of the same series may
@@ -168,6 +186,7 @@ def _sha256_bytes(data: bytes) -> str:
 PROVIDER_ARMS: dict[str, frozenset[str]] = {
     "openai": frozenset(ARM_ALLOWLISTS),
     "google": frozenset({ARM_A, ARM_B1, ARM_B2}),
+    "local": frozenset({ARM_A, ARM_B1, ARM_B2}),
 }
 
 
@@ -370,6 +389,14 @@ class ArmConfig:
                 f"model {self.model!r} is not the frozen snapshot "
                 f"{PROVIDER_MODELS[self.provider]} for provider {self.provider!r}"
             )
+        if self.provider in PREREG_BY_PROVIDER:
+            pinned = PREREG_BY_PROVIDER[self.provider]
+            if not _COMMIT_RE.match(pinned):
+                problems.append(
+                    f"the {self.provider} series has no frozen pre-registration commit "
+                    f"({pinned!r}); an arm may not run against unfrozen text, because "
+                    "the record would cite a document that could still change"
+                )
         if not self.attack:
             problems.append("attack is not declared; it is not defaulted anywhere")
         problems.extend(self._foreign_series_problems())

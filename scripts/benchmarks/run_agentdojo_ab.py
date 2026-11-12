@@ -209,8 +209,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--model",
         required=True,
-        help=f"the pinned model for --provider: {PROVIDER_MODELS['openai']} or "
-        f"{PROVIDER_MODELS['google']}",
+        help="the pinned model per provider: "
+        + ", ".join(f"{p}={m}" for p, m in sorted(PROVIDER_MODELS.items())),
+    )
+    parser.add_argument(
+        "--base-url",
+        default=None,
+        help="OpenAI-compatible endpoint for --provider local, for example "
+        "http://127.0.0.1:8000/v1. Refused for the pinned providers, whose "
+        "endpoints are not parameters of the experiment",
     )
     parser.add_argument("--out", required=True, help="output directory for the frozen record")
     parser.add_argument(
@@ -253,6 +260,7 @@ def build_pipeline(
     policy=None,
     provider: str = "openai",
     recorder=None,
+    base_url: str | None = None,
 ):
     """The benchmark chain, with the guard inserted only for the gated arms.
 
@@ -288,6 +296,20 @@ def build_pipeline(
             recorder,
             PROVIDER_THINKING_BUDGET["google"],
         )
+    elif provider == "local":
+        from openai import OpenAI
+
+        if not base_url:
+            raise RunRefused("the local provider needs an OpenAI-compatible base URL")
+        llm = OpenAILLM(
+            OpenAI(
+                base_url=base_url,
+                api_key=os.environ[PROVIDER_KEY_ENV["local"]],
+                max_retries=0,
+            ),
+            model,
+            temperature=0.0,
+        )
     else:
         from openai import OpenAI
 
@@ -317,6 +339,20 @@ def build_pipeline(
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
+    # Endpoint checks come first because they are usage errors, not governance
+    # ones: a malformed invocation should be reported as malformed rather than as
+    # a refused series. The endpoint is also part of the record, so the local
+    # provider must name it and the pinned providers must not.
+    if args.provider == "local" and not args.base_url:
+        _refuse(
+            "--provider local needs --base-url pointing at an OpenAI-compatible "
+            "server; the endpoint is part of what the record has to name"
+        )
+    if args.base_url and args.provider != "local":
+        _refuse(
+            "--base-url is only meaningful for --provider local; the pinned "
+            "providers run against their own endpoints"
+        )
     case_list = pathlib.Path(args.case_list)
     out_dir = pathlib.Path(args.out)
 
@@ -395,6 +431,7 @@ def main(argv: list[str] | None = None) -> int:
             "model": args.model,
             "attack_model_name": DECLARED_ATTACK_MODEL_NAME[(args.provider, args.attack)],
             "thinking_budget": PROVIDER_THINKING_BUDGET[args.provider],
+            "base_url": args.base_url if args.provider == "local" else None,
             "temperature": 0.0,
             "attack": args.attack,
             "case_list": str(case_list),
@@ -460,6 +497,7 @@ def main(argv: list[str] | None = None) -> int:
             policy=policy,
             provider=args.provider,
             recorder=recorder,
+            base_url=args.base_url,
         )
         attack = build_attack(args.attack, suite, pipeline, args.provider)
         try:
