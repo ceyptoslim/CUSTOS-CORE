@@ -376,6 +376,7 @@ def main(argv: list[str] | None = None) -> int:
             "providers run against their own endpoints"
         )
     registry = None
+    recipients_at_start = registry.snapshot() if registry is not None else None
     if args.recipient_source == "declared":
         registry = RecipientRegistry.declared(args.recipients_file)
     elif args.recipient_source == "derived":
@@ -462,7 +463,9 @@ def main(argv: list[str] | None = None) -> int:
             "thinking_budget": PROVIDER_THINKING_BUDGET[args.provider],
             "base_url": args.base_url if args.provider == "local" else None,
             "recipient_source": args.recipient_source,
-            "recipients": registry.snapshot() if registry is not None else None,
+            # Snapshot at start. The list can change during the run (a derived
+            # registry learns), so the end state is written separately below.
+            "recipients": recipients_at_start,
             "temperature": 0.0,
             "attack": args.attack,
             "case_list": str(case_list),
@@ -638,11 +641,37 @@ def main(argv: list[str] | None = None) -> int:
         "injection_success_true": sum(1 for r in rows if r.get("injection_success") is True),
         "interruptions": len(interruptions),
         "interruption_events": interruptions,
+        "recipients_at_start": recipients_at_start,
+        "recipients_at_end": registry.snapshot() if registry is not None else None,
         "rows": rows,
         "journal_sha256": Journal.digest(binding),
         "finished_utc": datetime.now(timezone.utc).isoformat(),
     }
     results_path.write_text(json.dumps(results, indent=2, sort_keys=True) + "\n")
+    if registry is not None:
+        # The manifest records the list before the first case, which for a derived
+        # registry is empty. Without this file a reader could not see what the list
+        # had learned by the time the arm finished, and the provenance series turns
+        # on exactly that. Refusals are counted here so the two are read together.
+        refusals = sum(
+            1 for record in decisions if record.get("triggered_rule") == "recipient_not_permitted"
+        )
+        recipients_path = out_dir / f"recipients-{args.arm}.json"
+        recipients_path.write_text(
+            json.dumps(
+                {
+                    "arm": args.arm,
+                    "source": args.recipient_source,
+                    "at_start": recipients_at_start,
+                    "at_end": registry.snapshot(),
+                    "recipient_refusals": refusals,
+                    "recorded_utc": datetime.now(timezone.utc).isoformat(),
+                },
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n"
+        )
     with decisions_path.open("w") as handle:
         for record in decisions:
             handle.write(json.dumps(record, sort_keys=True) + "\n")
