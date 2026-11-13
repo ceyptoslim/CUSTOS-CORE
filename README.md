@@ -21,7 +21,7 @@ CUSTOS-CORE and LORL-9.1 provide the open-core governance and agent infrastructu
 
 [github.com/ceyptoslim/CUSTOS-CORE](https://github.com/ceyptoslim/CUSTOS-CORE)
 
-**Verified:** 2026-11-12 CI run on `main` (`7e1e18a`) | **Tests:** 1145 passed, 50 skipped | **Coverage:** 90%
+**Verified:** 2026-11-12 CI run on `main` (`f6d4192`) | **Tests:** 1150 passed, 50 skipped | **Coverage:** 90%
 
 *Count basis:* the `CUSTOS CI` job for that commit (Python 3.11), so every figure in the line above is
 reproducible from the workflow run rather than from a laptop. A local run collects a different total
