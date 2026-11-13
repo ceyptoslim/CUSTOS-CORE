@@ -1,9 +1,24 @@
 # Pre-registration v6: declared plus a recorded escalation
 
 **Series:** CUSTOS-CORE AgentDojo banking, arm B2, escalation axis
-**Status:** unfrozen. The axis does not exist in code yet, and
-`ArmConfig.validate()` must refuse it until this text is frozen and its pin cites a
-40-hex commit.
+**Status:** unfrozen, code landed, pin still a placeholder. The axis exists in
+`agentdojo_guard.py` and `run_agentdojo_ab.py` as `--escalation`, and
+`ArmConfig.validate()` refuses every escalation arm because the pin reads
+`PENDING_PREREG_V6_COMMIT`. Replacing that constant with a 40-hex commit is the
+freeze, and it may only happen after this text stops changing.
+
+## What landed before the freeze
+
+The deferral path, the two scripted policies, and the refusal that keeps them
+unrunnable. What did not land: any run. The approver is blind by construction, which
+is checked in the tests rather than asserted here: it is handed the tool name and the
+argument digest and never the recipient or the command text, so P6.3 is a prediction
+about an approver that cannot discriminate, not about people.
+
+An unlisted recipient produces two records rather than one, so the refusal count stays
+comparable to v5 while the deferral stays visible: verdict `escalate` with the original
+rule, then either `deny` under the same rule or `allow` under
+`escalation_approved` naming the approver identity.
 
 ## The question
 

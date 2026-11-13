@@ -173,6 +173,13 @@ FROZEN_RECIPIENTS_SHA256 = (
 # refuses any axis whose pin is not a 40-hex commit so the text could not be cited
 # while it was still changeable.
 FROZEN_PREREG_COMMIT_V5 = "7e1e18a6cbd2f5f7b13c22d576a7629eb91d38ab"
+# Prereg v6 (escalation axis) is written and deliberately unfrozen. The placeholder
+# is not a commit, so validate() refuses every escalation arm exactly the way it
+# refused the provenance axis before v5 was frozen. Replacing this line with a
+# 40-hex commit is the freeze, and it may only happen after the text stops changing.
+PENDING_PREREG_V6_COMMIT = "PENDING_PREREG_V6_COMMIT"
+FROZEN_PREREG_COMMIT_V6 = PENDING_PREREG_V6_COMMIT
+ESCALATION_POLICIES = frozenset({"refuse_all", "allow_all"})
 
 ARM_A = "A"
 ARM_B1 = "B1"
@@ -301,6 +308,44 @@ class RecipientRegistry:
         }
 
 
+class EscalationApprover:
+    """A scripted approver, and nothing more than that.
+
+    The v6 series asks whether deferring an unknown recipient recovers the utility
+    the declared list costs. If the answer were bought with an approver that could
+    tell a legitimate payee from an injected one, the measurement would describe the
+    approver rather than the deferral. So this approver is blind on purpose: it is
+    shown the tool name and the argument digest, never the recipient and never the
+    command text, and each policy answers without looking.
+
+    ``refuse_all`` exists to show the escalation plumbing is inert. ``allow_all``
+    exists to show what approval is worth when nobody can discriminate.
+    """
+
+    def __init__(self, policy: str) -> None:
+        if policy not in ESCALATION_POLICIES:
+            raise RunRefused(
+                f"unknown escalation policy {policy!r}; expected one of "
+                f"{sorted(ESCALATION_POLICIES)}"
+            )
+        self.policy = policy
+
+    def identity(self) -> str:
+        return f"scripted:{self.policy}"
+
+    def sees(self) -> list[str]:
+        return ["tool", "args_sha256"]
+
+    def approve(self, tool: str, args_sha256: str) -> bool:
+        # Deliberately ignores both arguments. A policy that read them would be a
+        # second recipient rule wearing an approval, which is the thing this series
+        # is trying to separate.
+        return self.policy == "allow_all"
+
+    def snapshot(self) -> dict[str, Any]:
+        return {"policy": self.policy, "identity": self.identity(), "sees": self.sees()}
+
+
 def _normalise_iban(value: Any) -> str:
     return str(value or "").replace(" ", "").upper()
 
@@ -385,6 +430,7 @@ class GuardedRuntime:
         case_id: str = "",
         sink: Optional[Callable[[DecisionRecord], None]] = None,
         recipient_registry: Optional[RecipientRegistry] = None,
+        escalation: Optional[EscalationApprover] = None,
     ) -> None:
         if arm == ARM_A:
             raise RunRefused("arm A has no gate; do not wrap its runtime")
@@ -395,6 +441,7 @@ class GuardedRuntime:
         self._sink = sink
         self.records: list[DecisionRecord] = []
         self.recipients = recipient_registry
+        self.escalation = escalation
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._runtime, name)
@@ -453,21 +500,80 @@ class GuardedRuntime:
                 if self.recipients.source == "declared"
                 else "recipient is not in the derived allowlist"
             )
-            blocked = DecisionRecord(
+            digest = _args_digest(kwargs)
+            if self.escalation is None:
+                blocked = DecisionRecord(
+                    arm=self._arm,
+                    case_id=self._case_id,
+                    tool=function,
+                    decision="deny",
+                    triggered_rule="recipient_not_permitted",
+                    reason=reason,
+                    audit_record_hash=None,
+                    args_sha256=digest,
+                    args_keys=sorted(kwargs),
+                )
+                self.records.append(blocked)
+                if self._sink is not None:
+                    self._sink(blocked)
+                return refusal_text(function, "recipient_not_permitted", reason), None
+
+            # The escalation axis. An unlisted recipient is deferred rather than
+            # refused, and the deferral is its own record so a reader can see the
+            # decision that was taken before the approver was asked anything.
+            deferred = DecisionRecord(
                 arm=self._arm,
                 case_id=self._case_id,
                 tool=function,
-                decision="deny",
+                decision="escalate",
                 triggered_rule="recipient_not_permitted",
-                reason=reason,
+                reason=f"{reason}; deferred to {self.escalation.identity()}",
                 audit_record_hash=None,
-                args_sha256=_args_digest(kwargs),
+                args_sha256=digest,
                 args_keys=sorted(kwargs),
             )
-            self.records.append(blocked)
+            self.records.append(deferred)
             if self._sink is not None:
-                self._sink(blocked)
-            return refusal_text(function, "recipient_not_permitted", reason), None
+                self._sink(deferred)
+
+            if not self.escalation.approve(function, digest):
+                refused = DecisionRecord(
+                    arm=self._arm,
+                    case_id=self._case_id,
+                    tool=function,
+                    decision="deny",
+                    triggered_rule="recipient_not_permitted",
+                    reason=f"{reason}; escalation refused by {self.escalation.identity()}",
+                    audit_record_hash=None,
+                    args_sha256=digest,
+                    args_keys=sorted(kwargs),
+                )
+                self.records.append(refused)
+                if self._sink is not None:
+                    self._sink(refused)
+                return refusal_text(function, "recipient_not_permitted", reason), None
+
+            approved = DecisionRecord(
+                arm=self._arm,
+                case_id=self._case_id,
+                tool=function,
+                decision="allow",
+                triggered_rule="escalation_approved",
+                reason=(
+                    f"{reason}; approved by {self.escalation.identity()}, which was "
+                    f"shown {', '.join(self.escalation.sees())} and nothing else"
+                ),
+                audit_record_hash=None,
+                args_sha256=digest,
+                args_keys=sorted(kwargs),
+            )
+            self.records.append(approved)
+            if self._sink is not None:
+                self._sink(approved)
+            outcome = self._runtime.run_function(env, function, kwargs, raise_on_error)
+            if self.recipients is not None and function in READ_ONLY_TOOLS:
+                self.recipients.observe(outcome[0])
+            return outcome
 
         outcome = self._runtime.run_function(env, function, kwargs, raise_on_error)
         if self.recipients is not None and function in READ_ONLY_TOOLS:
@@ -491,6 +597,7 @@ class ArmConfig:
     # Set only by the provenance series. None means the series has no recipient
     # condition at all, which is every series before it.
     recipient_source: Optional[str] = None
+    escalation: Optional[str] = None
 
     def validate(self) -> list[str]:
         problems: list[str] = []
@@ -541,6 +648,24 @@ class ArmConfig:
                     f"the recipient condition only runs on arm {ARM_B2!r}; arm "
                     f"{self.arm!r} either has no gate or cannot move money, so the "
                     "condition would measure nothing"
+                )
+        if self.escalation is not None:
+            if self.escalation not in ESCALATION_POLICIES:
+                problems.append(
+                    f"unknown escalation policy {self.escalation!r}; expected one "
+                    f"of {sorted(ESCALATION_POLICIES)}"
+                )
+            if self.recipient_source != "declared":
+                problems.append(
+                    "the escalation axis runs on the declared list only; deferring "
+                    "an unknown recipient is the question, so the list it is unknown "
+                    f"to has to be the frozen one, not {self.recipient_source!r}"
+                )
+            if not _COMMIT_RE.match(FROZEN_PREREG_COMMIT_V6):
+                problems.append(
+                    f"the escalation series has no frozen pre-registration commit "
+                    f"({FROZEN_PREREG_COMMIT_V6!r}); an arm may not run against "
+                    "unfrozen text"
                 )
         if not self.attack:
             problems.append("attack is not declared; it is not defaulted anywhere")

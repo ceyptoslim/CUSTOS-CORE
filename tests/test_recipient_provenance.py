@@ -20,6 +20,8 @@ import pathlib
 import subprocess
 import sys
 
+import re
+
 import pytest
 
 REPO = pathlib.Path(__file__).resolve().parents[1]
@@ -28,6 +30,15 @@ sys.path.insert(0, str(REPO))
 sys.path.insert(0, str(BENCH))
 
 import agentdojo_guard as guard  # noqa: E402
+from agentdojo_guard import (  # noqa: E402
+    _COMMIT_RE,
+    ArmConfig,
+    EscalationApprover,
+    FROZEN_PREREG_COMMIT_V6,
+    PENDING_PREREG_V6_COMMIT,
+    PROVIDER_MODELS,
+    RunRefused,
+)
 
 RECIPIENTS = REPO / "docs" / "benchmark" / "recipients-declared-v1.json"
 ATTACKER = "UK12345678901234567890"
@@ -203,3 +214,58 @@ def test_a_series_without_the_axis_is_unaffected(tmp_path):
     )
     assert config.validate() == []
     assert config.recipient_source is None
+
+
+# --- the escalation axis (prereg v6, unfrozen) -------------------------------
+
+
+def _escalation_config(**kwargs):
+    base = dict(
+        arm="B2",
+        model=PROVIDER_MODELS["google"],
+        attack="direct",
+        case_list="docs/benchmark/case-list-v1.txt",
+        out_dir="/tmp/never-written",
+        provider="google",
+        recipient_source="declared",
+        escalation="allow_all",
+    )
+    base.update(kwargs)
+    return ArmConfig(**base)
+
+
+def test_the_escalation_axis_is_refused_while_v6_is_unfrozen():
+    """The pin is a placeholder, so the axis cannot run. This is the gate."""
+    assert not _COMMIT_RE.match(FROZEN_PREREG_COMMIT_V6)
+    problems = _escalation_config().validate()
+    assert any("escalation series has no frozen pre-registration commit" in p for p in problems)
+
+
+def test_an_unfrozen_v6_pin_still_names_the_commit_it_needs():
+    """Replacing the placeholder with a real commit is the only thing that opens it."""
+    assert FROZEN_PREREG_COMMIT_V6 == PENDING_PREREG_V6_COMMIT
+    monkeypatch_free = re.compile(r"^[0-9a-f]{40}$")
+    assert not monkeypatch_free.match(FROZEN_PREREG_COMMIT_V6)
+
+
+def test_the_escalation_axis_runs_on_the_declared_list_only():
+    """Deferring an unknown recipient is the question, so the list must be frozen."""
+    problems = _escalation_config(recipient_source="derived").validate()
+    assert any("declared list only" in p for p in problems)
+
+
+def test_an_unknown_escalation_policy_is_refused():
+    problems = _escalation_config(escalation="ask_a_human_sometimes").validate()
+    assert any("unknown escalation policy" in p for p in problems)
+    with pytest.raises(RunRefused):
+        EscalationApprover("ask_a_human_sometimes")
+
+
+def test_the_scripted_approver_cannot_see_the_recipient():
+    """If the approver could discriminate, the run would measure the approver."""
+    approver = EscalationApprover("allow_all")
+    assert approver.sees() == ["tool", "args_sha256"]
+    assert "recipient" not in approver.sees()
+    assert approver.approve("send_money", "0" * 64) is True
+    assert EscalationApprover("refuse_all").approve("send_money", "0" * 64) is False
+    assert EscalationApprover("allow_all").identity() == "scripted:allow_all"

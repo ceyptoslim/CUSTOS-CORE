@@ -91,6 +91,7 @@ from agentdojo_guard import (  # noqa: E402
     PROVIDER_MODELS,
     PROVIDER_THINKING_BUDGET,
     ArmConfig,
+    EscalationApprover,
     CaseListDrift,
     RunRefused,
     build_gate,
@@ -223,6 +224,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "from what tools return. Omit for every other series",
     )
     parser.add_argument(
+        "--escalation",
+        default="none",
+        choices=["none", "refuse_all", "allow_all"],
+        help="the escalation series only: what a scripted, blind approver answers "
+        "when a money tool names a recipient outside the declared list. 'none' "
+        "keeps the v5 behaviour of refusing outright",
+    )
+    parser.add_argument(
         "--recipients-file",
         default="docs/benchmark/recipients-declared-v1.json",
         help="the frozen declared list; its sha256 is pinned in the guard",
@@ -277,6 +286,7 @@ def build_pipeline(
     recorder=None,
     base_url: str | None = None,
     recipient_registry=None,
+    escalation=None,
 ):
     """The benchmark chain, with the guard inserted only for the gated arms.
 
@@ -343,6 +353,7 @@ def build_pipeline(
                 case_id=case_id,
                 sink=sink,
                 recipient_registry=recipient_registry,
+                escalation=escalation,
             )
         )
     loop_elements.extend([ToolsExecutor(tool_result_to_str), llm])
@@ -376,11 +387,17 @@ def main(argv: list[str] | None = None) -> int:
             "providers run against their own endpoints"
         )
     registry = None
-    recipients_at_start = registry.snapshot() if registry is not None else None
     if args.recipient_source == "declared":
         registry = RecipientRegistry.declared(args.recipients_file)
     elif args.recipient_source == "derived":
         registry = RecipientRegistry.derived()
+    # Taken here, after construction. An earlier version of this line sat above the
+    # branch, so the "start" snapshot was always None and the v5 runs record the
+    # list only because the manifest fell back to nothing useful. Fixed here.
+    recipients_at_start = registry.snapshot() if registry is not None else None
+    escalation = (
+        None if args.escalation == "none" else EscalationApprover(args.escalation)
+    )
 
     case_list = pathlib.Path(args.case_list)
     out_dir = pathlib.Path(args.out)
@@ -393,6 +410,7 @@ def main(argv: list[str] | None = None) -> int:
         out_dir=out_dir,
         provider=args.provider,
         recipient_source=args.recipient_source,
+        escalation=None if args.escalation == "none" else args.escalation,
     )
     problems = config.validate()
     if problems:
@@ -466,6 +484,7 @@ def main(argv: list[str] | None = None) -> int:
             # Snapshot at start. The list can change during the run (a derived
             # registry learns), so the end state is written separately below.
             "recipients": recipients_at_start,
+            "escalation": escalation.snapshot() if escalation is not None else None,
             "temperature": 0.0,
             "attack": args.attack,
             "case_list": str(case_list),
@@ -533,6 +552,7 @@ def main(argv: list[str] | None = None) -> int:
             recorder=recorder,
             base_url=args.base_url,
             recipient_registry=registry,
+            escalation=escalation,
         )
         attack = build_attack(args.attack, suite, pipeline, args.provider)
         try:
@@ -641,6 +661,7 @@ def main(argv: list[str] | None = None) -> int:
         "injection_success_true": sum(1 for r in rows if r.get("injection_success") is True),
         "interruptions": len(interruptions),
         "interruption_events": interruptions,
+        "escalation": escalation.snapshot() if escalation is not None else None,
         "recipients_at_start": recipients_at_start,
         "recipients_at_end": registry.snapshot() if registry is not None else None,
         "rows": rows,
@@ -664,6 +685,10 @@ def main(argv: list[str] | None = None) -> int:
                     "source": args.recipient_source,
                     "at_start": recipients_at_start,
                     "at_end": registry.snapshot(),
+                    "escalation": escalation.snapshot() if escalation is not None else None,
+                    "escalations": sum(
+                        1 for record in decisions if record.get("decision") == "escalate"
+                    ),
                     "recipient_refusals": refusals,
                     "recorded_utc": datetime.now(timezone.utc).isoformat(),
                 },
