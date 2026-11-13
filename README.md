@@ -222,7 +222,7 @@ Chain-head custody is **implemented, not a target**: internal-timestamped and RF
 | "Google OAuth in Base44 apps" | ✅ | |
 | "Google OAuth in CUSTOS-CORE" | | ❌ — not in the codebase |
 | "Solana/Ethereum/ZK implemented" | | ❌ — architecture target |
-| "1145 tests, 90% coverage" (CUSTOS-CORE) | ✅ | |
+| "1150 tests, 90% coverage" (CUSTOS-CORE) | ✅ | |
 | "129 tests, 93% coverage" (LORL-9.1) | ✅ | |
 
 For formal audit: authoritative evidence should be commit SHA + CI run + test output + coverage artifact, not a document stating test counts.
