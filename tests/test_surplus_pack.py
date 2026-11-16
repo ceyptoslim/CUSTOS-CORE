@@ -240,3 +240,74 @@ class TestCourtCitationGateFailClosed:
     def test_find_unverified_case_citations_reports_cite(self):
         text = "Smith v. Jones, 123 So. 3d 456 and Smith v. Jones, 123 So. 3d 456"
         assert find_unverified_case_citations(text, registry={}) == ["Smith v. Jones, 123 So. 3d 456"]
+
+
+class TestCitationGatesOnTheApiRoute:
+    """The gates must hold on /v1/evaluate, not only in evaluate_outreach.
+
+    Issue 205: the endpoint consulted the policy engine and never the
+    registries, so a draft citing a hallucinated statute was ALLOWED there while
+    the same draft was denied in-process. These tests pin the route, because the
+    helper was already tested and the defect survived 38 of those tests.
+    """
+
+    @staticmethod
+    def _client_with_pack():
+        from fastapi.testclient import TestClient
+        import main as app_main
+        load_pack(app_main.tenant_manager)
+        return TestClient(app_main.app)
+
+    def _evaluate(self, content):
+        client = self._client_with_pack()
+        r = client.post("/v1/evaluate", json={
+            "client_id": "pack-route-test",
+            "tenant_id": DEFAULT_TENANT_ID,
+            "content": content,
+            "token_count": 50,
+        })
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    def test_invented_statute_is_denied_through_the_endpoint(self):
+        body = self._evaluate(
+            "Under F.S. 197.99999 you are entitled to the full surplus."
+        )
+        assert body["allowed"] is False
+        assert body["triggered_rule"] == "surplus_statute_gate"
+
+    def test_real_but_unverified_statute_is_denied_through_the_endpoint(self):
+        body = self._evaluate(
+            "Under s. 197.582 the clerk must disburse the surplus within 60 days."
+        )
+        assert body["allowed"] is False
+        assert body["triggered_rule"] == "surplus_statute_gate"
+
+    def test_fabricated_case_citation_is_denied_through_the_endpoint(self):
+        body = self._evaluate(
+            "As held in Smith v. Jones, 123 So. 3d 456, the surplus belongs to the owner."
+        )
+        assert body["allowed"] is False
+        assert body["triggered_rule"] == "surplus_court_citation_gate"
+
+    def test_clean_draft_is_allowed_through_the_endpoint(self):
+        body = self._evaluate(
+            "Dear homeowner, our records show a surplus from the tax deed sale of your "
+            "former property may be available. We can prepare the claim on your behalf."
+        )
+        assert body["allowed"] is True
+        assert body["triggered_rule"] is None
+
+    def test_the_precheck_does_not_change_a_tenant_that_installs_none(self):
+        """The hook must be inert by default, or every other tenant changes."""
+        from fastapi.testclient import TestClient
+        import main as app_main
+        client = TestClient(app_main.app)
+        r = client.post("/v1/evaluate", json={
+            "client_id": "no-precheck-tenant",
+            "tenant_id": "default",
+            "content": "Under F.S. 197.99999 you are entitled to the full surplus.",
+            "token_count": 20,
+        })
+        assert r.status_code == 200, r.text
+        assert r.json()["allowed"] is True
