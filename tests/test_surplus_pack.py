@@ -311,3 +311,66 @@ class TestCitationGatesOnTheApiRoute:
         })
         assert r.status_code == 200, r.text
         assert r.json()["allowed"] is True
+
+
+class TestOwnerRegistryOutsideTheRepository:
+    """The shipped registry stays empty; the owner's verifications live beside it.
+
+    Two tests above pin the repository file as empty, and that is deliberate: a
+    commit must not be able to make a citation pass. The owner still needs a
+    working registry, so the path is named by an environment variable and the
+    file sits outside version control.
+    """
+
+    def test_env_var_points_the_gate_at_the_owner_file(self, tmp_path, monkeypatch, tm):
+        reg = tmp_path / "verified_statutes.json"
+        reg.write_text(json.dumps({"florida": {"197.582": {
+            "title": "Disbursement of proceeds of sale",
+            "verified_date": "2026-11-16",
+            "verified_by": "owner",
+        }}}), encoding="utf-8")
+        monkeypatch.setenv("CUSTOS_VERIFIED_STATUTES_PATH", str(reg))
+        result = evaluate_outreach(tm, CLEAN_LETTER + " Under s. 197.582 the funds are held.")
+        assert result.allowed is True, result.reason
+        assert result.triggered_rule != "surplus_statute_gate"
+
+    def test_an_invented_statute_still_denies_with_the_owner_file(self, tmp_path, monkeypatch, tm):
+        reg = tmp_path / "verified_statutes.json"
+        reg.write_text(json.dumps({"florida": {"197.582": {"title": "x"}}}), encoding="utf-8")
+        monkeypatch.setenv("CUSTOS_VERIFIED_STATUTES_PATH", str(reg))
+        result = evaluate_outreach(tm, CLEAN_LETTER + " Under F.S. 197.99999 the funds are held.")
+        assert result.allowed is False
+        assert result.triggered_rule == "surplus_statute_gate"
+
+    def test_env_var_pointing_at_a_missing_file_fails_closed(self, tmp_path, monkeypatch, tm):
+        monkeypatch.setenv("CUSTOS_VERIFIED_STATUTES_PATH", str(tmp_path / "absent.json"))
+        result = evaluate_outreach(tm, CLEAN_LETTER + " Under s. 197.582 the funds are held.")
+        assert result.allowed is False
+        assert result.triggered_rule == "surplus_statute_gate"
+
+    def test_the_owner_file_reaches_the_endpoint_not_only_the_helper(
+            self, tmp_path, monkeypatch):
+        from fastapi.testclient import TestClient
+        import main as app_main
+        reg = tmp_path / "verified_statutes.json"
+        reg.write_text(json.dumps({"florida": {"197.582": {
+            "title": "Disbursement of proceeds of sale",
+            "verified_date": "2026-11-16",
+            "verified_by": "owner",
+        }}}), encoding="utf-8")
+        monkeypatch.setenv("CUSTOS_VERIFIED_STATUTES_PATH", str(reg))
+        load_pack(app_main.tenant_manager)
+        client = TestClient(app_main.app)
+        real = client.post("/v1/evaluate", json={
+            "client_id": "owner-registry-http", "tenant_id": DEFAULT_TENANT_ID,
+            "content": CLEAN_LETTER + " Under s. 197.582 the funds are held.",
+            "token_count": 50,
+        }).json()
+        invented = client.post("/v1/evaluate", json={
+            "client_id": "owner-registry-http", "tenant_id": DEFAULT_TENANT_ID,
+            "content": CLEAN_LETTER + " Under F.S. 197.99999 the funds are held.",
+            "token_count": 50,
+        }).json()
+        assert real["allowed"] is True, real
+        assert invented["allowed"] is False
+        assert invented["triggered_rule"] == "surplus_statute_gate"

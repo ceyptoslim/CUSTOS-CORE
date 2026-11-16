@@ -34,3 +34,7 @@ Thumbs.db
 htmlcov/
 coverage.xml
 opa_job.log
+
+# Owner verification data: deliberately outside version control.
+# The shipped registries stay empty so no commit can make a citation pass.
+packs/local/
