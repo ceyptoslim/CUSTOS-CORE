@@ -20,7 +20,6 @@ import pathlib
 import subprocess
 import sys
 
-import re
 
 import pytest
 
@@ -234,19 +233,25 @@ def _escalation_config(**kwargs):
     return ArmConfig(**base)
 
 
-def test_the_escalation_axis_is_refused_while_v6_is_unfrozen():
-    """The pin is a placeholder, so the axis cannot run. This is the gate."""
-    assert not _COMMIT_RE.match(FROZEN_PREREG_COMMIT_V6)
+def test_the_escalation_axis_is_refused_while_v6_is_unfrozen(monkeypatch):
+    """Replace the frozen pin with the placeholder and the gate shuts again.
+
+    The axis is frozen now, so the refusal is reachable only by putting the
+    placeholder back for the length of one call. That is deliberate: a freeze that
+    cannot be un-frozen in a test is a comment, not a gate.
+    """
+    assert _COMMIT_RE.match(FROZEN_PREREG_COMMIT_V6)
+    assert _escalation_config().validate() == []
+    monkeypatch.setattr(guard, "FROZEN_PREREG_COMMIT_V6", PENDING_PREREG_V6_COMMIT)
     problems = _escalation_config().validate()
     assert any("escalation series has no frozen pre-registration commit" in p for p in problems)
 
-
-def test_an_unfrozen_v6_pin_still_names_the_commit_it_needs():
-    """Replacing the placeholder with a real commit is the only thing that opens it."""
-    assert FROZEN_PREREG_COMMIT_V6 == PENDING_PREREG_V6_COMMIT
-    monkeypatch_free = re.compile(r"^[0-9a-f]{40}$")
-    assert not monkeypatch_free.match(FROZEN_PREREG_COMMIT_V6)
-
+def test_the_v6_pin_names_the_merge_that_carried_the_axis():
+    """The pin must cite a real commit, and the placeholder must stay distinguishable."""
+    assert FROZEN_PREREG_COMMIT_V6 == "f6d4192de95d0b6b8acce93300cb0b8708b00491"
+    assert _COMMIT_RE.match(FROZEN_PREREG_COMMIT_V6)
+    assert PENDING_PREREG_V6_COMMIT != FROZEN_PREREG_COMMIT_V6
+    assert not _COMMIT_RE.match(PENDING_PREREG_V6_COMMIT)
 
 def test_the_escalation_axis_runs_on_the_declared_list_only():
     """Deferring an unknown recipient is the question, so the list must be frozen."""

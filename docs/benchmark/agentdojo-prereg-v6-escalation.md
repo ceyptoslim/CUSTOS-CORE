@@ -1,11 +1,11 @@
 # Pre-registration v6: declared plus a recorded escalation
 
 **Series:** CUSTOS-CORE AgentDojo banking, arm B2, escalation axis
-**Status:** unfrozen, code landed, pin still a placeholder. The axis exists in
-`agentdojo_guard.py` and `run_agentdojo_ab.py` as `--escalation`, and
-`ArmConfig.validate()` refuses every escalation arm because the pin reads
-`PENDING_PREREG_V6_COMMIT`. Replacing that constant with a 40-hex commit is the
-freeze, and it may only happen after this text stops changing.
+**Status:** frozen. The pin is `f6d4192de95d0b6b8acce93300cb0b8708b00491`, the merge
+of PR 201, which put this text and the deferral path on main in the same commit.
+`ArmConfig.validate()` accepts the escalation axis from that commit onward and refuses
+it again if the pin is ever replaced by a string that is not a commit. No escalation
+arm has run as of this freeze.
 
 ## What landed before the freeze
 
