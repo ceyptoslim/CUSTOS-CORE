@@ -53,6 +53,13 @@ Pipeline integration target: the deployed CUSTOS-CORE service (`/v1/evaluate`,
 tenant `surplus_recovery`) on the one-command VPS deployment — no local Docker
 Desktop required.
 
+The citation gates run on that route. `load_pack()` installs them as the tenant's
+`precheck`, which `/v1/evaluate` consults before the policy engine, so the endpoint
+and `evaluate_outreach()` cannot diverge in ordering. Before that hook existed the
+endpoint consulted the engine only: a draft citing a hallucinated statute was ALLOWED
+there while the same draft was denied in-process (issue 205, evidenced by the
+single-host demo transcript of 16 November 2026).
+
 ## Does not claim (frozen)
 
 - Not legal advice and not a law-practice tool; this is a content-compliance

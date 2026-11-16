@@ -208,7 +208,63 @@ def load_pack(tenant_manager: "TenantManager", tenant_id: str = DEFAULT_TENANT_I
         tenant_manager.register(tenant_id, TenantConfig(tenant_id=tenant_id))
     for rule in pack_rules():
         tenant_manager.add_policy_rule(tenant_id, rule)
-    return tenant_manager.get(tenant_id)  # type: ignore[return-value]
+    ctx = tenant_manager.get(tenant_id)
+    if ctx is not None:
+        # Same gates, now on the HTTP route as well. load_pack is idempotent for
+        # the tenant and the rules, and setting the precheck twice is the same as
+        # setting it once.
+        ctx.precheck = citation_precheck()
+    return ctx  # type: ignore[return-value]
+
+
+def citation_precheck(
+    registry: Optional[dict] = None,
+    case_registry: Optional[dict] = None,
+):
+    """Return a precheck that runs the citation gates for a tenant.
+
+    The gates exist as a callable rather than a PolicyRule because they compare
+    citations against owner-populated registries, and a regex cannot read a
+    registry. Installing this on the tenant context is what puts the gates on
+    /v1/evaluate; before that the endpoint consulted the engine only, so a draft
+    citing a hallucinated statute was ALLOWED there while the same draft was
+    denied here.
+
+    Fail-closed: an unreadable or empty registry denies every citation, because
+    ``load_verified_statutes`` and ``load_verified_cases`` return {} on error and
+    nothing matches an empty registry.
+    """
+
+    def precheck(content: str):
+        unverified = find_unverified_citations(content, registry)
+        if unverified:
+            return PolicyResult(
+                allowed=False,
+                action=PolicyAction.DENY,
+                triggered_rule="surplus_statute_gate",
+                reason=(
+                    "Unverified statute citation(s): " + ", ".join(unverified)
+                    + ". Only statutes the owner has verified against official Florida "
+                    "sources and entered into packs/verified_statutes.json may appear "
+                    "in outreach drafts."
+                ),
+            )
+        unverified_cases = find_unverified_case_citations(content, case_registry)
+        if unverified_cases:
+            return PolicyResult(
+                allowed=False,
+                action=PolicyAction.DENY,
+                triggered_rule="surplus_court_citation_gate",
+                reason=(
+                    "Unverified court citation(s): " + "; ".join(unverified_cases)
+                    + ". Only citations the owner has verified against official sources "
+                    "and entered into packs/verified_cases.json may appear in "
+                    "outreach drafts (the Nippon v. OpenAI fabricated-citation class)."
+                ),
+            )
+        return None
+
+    return precheck
 
 
 def evaluate_outreach(

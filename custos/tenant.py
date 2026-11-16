@@ -28,7 +28,7 @@ With the default in-memory backend, behavior is unchanged (ephemeral).
 
 import threading
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Any, Callable
 
 from custos.audit import AuditChain
 from custos.policy_engine import PolicyEngine, PolicyRule
@@ -60,6 +60,14 @@ class TenantContext:
     policy_engine: PolicyEngine
     rate_limiter: RateLimiter
     audit_chain: AuditChain
+    # Optional gate that runs BEFORE the policy engine on every evaluation route.
+    # It exists because some checks cannot be expressed as a regex rule: the
+    # surplus pack's citation gates need a registry lookup, so as rules they
+    # would have had to be re-implemented per route. A tenant that installs one
+    # is checked on /v1/evaluate and through the pack's own helper alike, which
+    # is the point: a decision that only exists on one route is not a decision.
+    # Returns a PolicyResult to decide, or None to fall through to the engine.
+    precheck: Optional[Callable[[str], Any]] = None
 
 
 class TenantManager:

@@ -753,7 +753,13 @@ async def evaluate(
             headers={"Retry-After": str(wait)} if wait is not None else None,
         )
 
-    result: PolicyResult = ctx.policy_engine.evaluate(req.content)
+    # A tenant may install a precheck for decisions the policy engine cannot
+    # express, such as a registry lookup. It runs first, on this route, so a
+    # tenant's gate cannot exist on one evaluation path and be missing on
+    # another. None falls through to the engine, which is the old behaviour for
+    # every tenant that installs nothing.
+    pre = ctx.precheck(req.content) if getattr(ctx, "precheck", None) else None
+    result: PolicyResult = pre if pre is not None else ctx.policy_engine.evaluate(req.content)
 
     if result.allowed:
         if result.action.value == "audit":
