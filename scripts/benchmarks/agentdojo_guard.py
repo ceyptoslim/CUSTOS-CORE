@@ -173,12 +173,12 @@ FROZEN_RECIPIENTS_SHA256 = (
 # refuses any axis whose pin is not a 40-hex commit so the text could not be cited
 # while it was still changeable.
 FROZEN_PREREG_COMMIT_V5 = "7e1e18a6cbd2f5f7b13c22d576a7629eb91d38ab"
-# Prereg v6 (escalation axis) is written and deliberately unfrozen. The placeholder
-# is not a commit, so validate() refuses every escalation arm exactly the way it
-# refused the provenance axis before v5 was frozen. Replacing this line with a
-# 40-hex commit is the freeze, and it may only happen after the text stops changing.
+# Prereg v6 (escalation axis) is frozen at the merge of PR 201, which put this
+# document and the deferral path on main together. The placeholder below is kept so
+# the refusal stays testable: monkeypatch the pin back to it and validate() must
+# refuse the axis again, which is what makes the freeze a gate rather than a comment.
 PENDING_PREREG_V6_COMMIT = "PENDING_PREREG_V6_COMMIT"
-FROZEN_PREREG_COMMIT_V6 = PENDING_PREREG_V6_COMMIT
+FROZEN_PREREG_COMMIT_V6 = "f6d4192de95d0b6b8acce93300cb0b8708b00491"
 ESCALATION_POLICIES = frozenset({"refuse_all", "allow_all"})
 
 ARM_A = "A"
