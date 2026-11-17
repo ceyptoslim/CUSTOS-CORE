@@ -14,6 +14,11 @@ open" format — no claims beyond what the code and tests demonstrate.
   not preserved. Re-fetched from the run's own artifact store while still live; all five
   digests match those recorded independently in that reconstruction (JUnit `5ffa02dc…`,
   pytest output `d8b9e12d…`, injection diff `29d73e8f…`, exit code `4355a46b…`).
+- Artifact-to-manifest check recorded in `docs/red-proof-records/ARTIFACT-CHECK-2026-11-17.md`:
+  all 50 uploaded artifact files across runs 9, 10, 11 and 12 are byte-identical, by path and
+  digest, to their frozen manifest entries. Project check only; `custody_verified` stays False.
+  The same note labels the two figures that share the digits 506 and names the twelve-test
+  difference between runs 10 and 11.
 
 
 ### Added — MCP proxy (first integration)

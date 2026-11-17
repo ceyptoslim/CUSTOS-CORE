@@ -34,6 +34,13 @@ Two classes executed in the same run, each with its own artifact:
 | `001-weaken-admin-auth` | 3 | 506 collected, 35 skipped | 6 failed, 465 passed | RED-CONFIRMED |
 | `002-invert-opa-deny` | 3 | 506 collected, 35 skipped | 18 failed, 453 passed | RED-CONFIRMED |
 
+**Reading the 506.** Here 506 is the number of tests **collected** at `925f96e` (465 + 6 + 35
+for class 001, 453 + 18 + 35 for class 002). The same digits appear in
+`run-38610363998/README.md` as 518 collected, where 506 is the number **passed** and 12 were
+skipped. The two runs differ by twelve tests because PR 52 (merged `b31c978`) added twelve
+PostgreSQL policy-store tests to `tests/test_policy_store.py`, not because anything changed in
+the sabotage classes. The coincidence of the number is arithmetic, not agreement.
+
 `001-weaken-admin-auth` is the class the third-party reconstruction `FN-CUSTOS-REDPROOF-002`
 reconstructs. Its six failures are exactly the assertions that reconstruction names:
 
