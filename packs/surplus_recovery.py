@@ -55,6 +55,7 @@ from __future__ import annotations
 
 import json
 import re
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
 
@@ -118,13 +119,26 @@ def pack_rules() -> list[PolicyRule]:
     ]
 
 
+def _registry_path(env_var: str, default: Path) -> Path:
+    """Where an owner's registry actually lives.
+
+    The shipped file stays empty and two tests pin that, because a repository an
+    AI or a contributor can push to must not be able to make a citation pass by
+    default. The owner's own verifications are deployment data, so they live
+    outside version control and are named by CUSTOS_VERIFIED_STATUTES_PATH (or
+    CUSTOS_VERIFIED_CASES_PATH). Unset means the shipped empty file.
+    """
+    override = os.getenv(env_var)
+    return Path(override) if override else default
+
+
 def load_verified_statutes(path: Optional[Path] = None) -> dict:
     """Load the owner-verified Florida statute registry.
 
     Returns {} if the registry file is missing or malformed — fail-closed:
     an unreadable registry denies every citation, never allows.
     """
-    p = path or DEFAULT_REGISTRY_PATH
+    p = path or _registry_path("CUSTOS_VERIFIED_STATUTES_PATH", DEFAULT_REGISTRY_PATH)
     try:
         with open(p, encoding="utf-8") as f:
             data = json.load(f)
@@ -151,7 +165,7 @@ def find_unverified_citations(content: str, registry: Optional[dict] = None) -> 
 def load_verified_cases(path: Optional[Path] = None) -> dict:
     """Load the owner-verified court-case registry (same fail-closed design
     as the statute registry: missing/malformed file -> {} -> all denied)."""
-    p = path or DEFAULT_CASE_REGISTRY_PATH
+    p = path or _registry_path("CUSTOS_VERIFIED_CASES_PATH", DEFAULT_CASE_REGISTRY_PATH)
     try:
         with open(p, encoding="utf-8") as f:
             data = json.load(f)

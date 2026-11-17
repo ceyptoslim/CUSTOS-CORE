@@ -53,6 +53,13 @@ Pipeline integration target: the deployed CUSTOS-CORE service (`/v1/evaluate`,
 tenant `surplus_recovery`) on the one-command VPS deployment — no local Docker
 Desktop required.
 
+**Where the owner's registry lives.** The shipped `packs/verified_statutes.json` stays
+empty, and two tests pin that, because a commit must not be able to make a citation pass.
+An owner's verifications are deployment data: point `CUSTOS_VERIFIED_STATUTES_PATH` and
+`CUSTOS_VERIFIED_CASES_PATH` at files outside version control. Unset means the empty
+shipped file, which denies every citation. A path that points at a missing or malformed
+file also denies, never allows.
+
 The citation gates run on that route. `load_pack()` installs them as the tenant's
 `precheck`, which `/v1/evaluate` consults before the policy engine, so the endpoint
 and `evaluate_outreach()` cannot diverge in ordering. Before that hook existed the
@@ -61,6 +68,13 @@ there while the same draft was denied in-process (issue 205, evidenced by the
 single-host demo transcript of 16 November 2026).
 
 ## Does not claim (frozen)
+- Citation identity, not the proposition asserted about the citation. Measured 16 November
+  2026: with `s. 197.582` owner-verified, a draft reading "Under s. 197.582 the clerk must
+  disburse within 60 days" is ALLOWED, because the section exists and is verified. The
+  section requires no such thing; the claim period is 120 days and the clerk acts within 90
+  days after it. Verifying a citation therefore clears the citation, not what the sentence
+  says it means. A pack that checks propositions is a different and larger build.
+
 
 - Not legal advice and not a law-practice tool; this is a content-compliance
   gate. "Consult your own attorney" is allowed (and encouraged) in letters.
