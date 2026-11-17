@@ -69,6 +69,16 @@ fails the safe way.
    was the OpenAI escape vector, and it is the one path every deployment
    still needs.
 
+## Capturing the record
+
+The recipe below proves the pattern is configured; it does not produce a dated record
+of having done so. `scripts/out-of-band-capture/` is the companion kit: `capture.sh`
+runs on each host and writes a self-hashing transcript, and `verify.py` recomputes that
+hash so a reader need not trust the file's own verdict. The transcript lands outside
+this repository; the short record that cites it belongs under
+`docs/out-of-band-deployments/`, because a deployment claim needs a date and two
+hosts, not a paragraph.
+
 ## Recipe (phone-manageable, copy-paste)
 
 All commands run over SSH from the VPS provider's console (Termux, provider
