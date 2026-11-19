@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "custos-core"
+dynamic = ["version"]
+description = "Policy-governed execution for AI agents, with a hash-chained audit trail"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "AGPL-3.0-only" }
+authors = [{ name = "Tavares Heath Sr. (FroLife Productions)" }]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: GNU Affero General Public License v3",
+]
+
+# The core is dependency-free on purpose: the gate, the policy engine and the
+# audit chain are standard library only. Everything optional lives in an extra,
+# so `pip install custos-core` cannot fail on a dependency the trial never uses.
+dependencies = []
+
+[project.optional-dependencies]
+# Pinned, not a floor: the usability trial is pre-registered against 1.30.0, and
+# a resolver picking 2.x on the day would change what the trial measures.
+mcp = ["mcp==1.30.0"]
+
+[project.scripts]
+custos-core = "custos.cli:main"
+
+[tool.setuptools]
+packages = ["custos"]
+
+[tool.setuptools.dynamic]
+version = { attr = "custos.__version__" }
