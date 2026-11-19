@@ -8,6 +8,10 @@ open" format — no claims beyond what the code and tests demonstrate.
 ---
 
 ## [Unreleased]
+- `docs/red-proof-records/PIN-GAPS.md` records the one file inside a frozen directory that its
+  manifest never pinned: run 40937305618's README, digest `ee369a89…`. The digest is recorded
+  beside the frozen set rather than added to the manifest, so the file stays checkable without
+  rewriting a document that exists to show what was frozen.
 - Frozen observation sets are now guarded by tests (`tests/test_frozen_manifests.py`). Every file
   inside `docs/red-proof-records/run-*/` must be pinned by that run's manifest and match it by
   SHA-256, so a pull request that edits, adds or deletes a frozen file fails CI instead of passing

@@ -47,9 +47,10 @@ RECORDS = ROOT / "docs" / "red-proof-records"
 KNOWN_UNPINNED = {
     # Run 40937305618's manifest never mentions its README.md. The README is
     # prose describing the set, so nothing downstream depends on its bytes,
-    # but a re-walk cannot detect an edit to it. Closing the gap means adding
-    # the pin to that manifest, which is a deliberate change to a frozen
-    # document and therefore the owner's call, not a drive-by edit.
+    # but a re-walk cannot detect an edit to it. The digest is recorded in
+    # docs/red-proof-records/PIN-GAPS.md so the file stays checkable, and
+    # closing the gap in the manifest itself is a deliberate change to a
+    # frozen document, therefore the owner's call, not a drive-by edit.
     ("run-40937305618", "README.md"),
 }
 
