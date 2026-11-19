@@ -1,0 +1,55 @@
+name: anchor-check
+
+# Reads the anchor chain from custos-anchors and fails when a frozen run digest
+# has moved. The records live outside this repository, so this job is the first
+# check that an edit here cannot satisfy by editing its own evidence.
+#
+# No secret is used. The anchor repository is public and a read needs no token,
+# which is the point: anyone can run the same check.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch the anchor chain
+        id: fetch
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/anchors"
+          base="https://raw.githubusercontent.com/ceyptoslim/custos-anchors/main/anchors"
+          ok=""
+          for attempt in 1 2 3; do
+            if curl -fsSL "$base/epoch-0.json" -o "$RUNNER_TEMP/anchors/epoch-0.json"; then ok="yes"; break; fi
+            echo "attempt $attempt could not reach $base, retrying in $((attempt * 5))s"
+            sleep $((attempt * 5))
+          done
+          if [ -z "$ok" ]; then
+            echo "::error::the anchor chain is unreachable. A check that cannot see the anchor is not a pass."
+            exit 1
+          fi
+          # Pull every record the chain declares, following epoch numbers up.
+          epoch=1
+          while curl -fsSL "$base/epoch-$epoch.json" -o "$RUNNER_TEMP/anchors/epoch-$epoch.json" 2>/dev/null; do
+            epoch=$((epoch + 1))
+          done
+          echo "fetched $epoch record(s)"
+          ls -1 "$RUNNER_TEMP/anchors"
+
+      - name: Compare the tree against the newest record
+        run: |
+          set -euo pipefail
+          newest="$(ls -1 "$RUNNER_TEMP"/anchors/epoch-*.json | sort -V | tail -1)"
+          bash scripts/check_anchors.sh "$newest" docs/red-proof-records \
+            --origin external \
+            --chain "$RUNNER_TEMP/anchors" \
+            --chain-source "https://github.com/ceyptoslim/custos-anchors"
