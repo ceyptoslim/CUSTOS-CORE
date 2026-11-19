@@ -44,15 +44,12 @@ RECORDS = ROOT / "docs" / "red-proof-records"
 # Files that exist inside a frozen directory but are not pinned by its
 # manifest. Each entry is a known gap in that set, not a parser limitation.
 # Removing a name from this set is the test for whether the gap was closed.
-KNOWN_UNPINNED = {
-    # Run 40937305618's manifest never mentions its README.md. The README is
-    # prose describing the set, so nothing downstream depends on its bytes,
-    # but a re-walk cannot detect an edit to it. The digest is recorded in
-    # docs/red-proof-records/PIN-GAPS.md so the file stays checkable, and
-    # closing the gap in the manifest itself is a deliberate change to a
-    # frozen document, therefore the owner's call, not a drive-by edit.
-    ("run-40937305618", "README.md"),
-}
+KNOWN_UNPINNED = set()
+# Empty, and it should stay empty. Run 40937305618's README was the only entry
+# here; its pin was appended to that manifest on 2026-11-19 and this entry was
+# removed in the same commit, which is the test for whether a gap was closed.
+# docs/red-proof-records/PIN-GAPS.md carries the record, including that
+# manifest's before and after digest.
 
 _DIGEST = re.compile(r"[0-9a-f]{64}")
 _SHA256SUM_LINE = re.compile(r"^([0-9a-f]{64})\s+(.+)$")
