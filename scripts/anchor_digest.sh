@@ -22,7 +22,40 @@
 #
 # Paths containing newlines are not supported; no frozen record has one, and the
 # guard fails loudly rather than silently hashing something else.
+#
+# sha256 is taken from sha256sum when it exists and from shasum -a 256 otherwise,
+# because macOS ships the second and not the first. Both produce the same digest
+# for the same bytes; the canonical form is what is pinned, not the tool. With
+# neither available the script exits 4 and prints nothing, so a reader on a
+# machine it cannot run on gets an error rather than a number they might quote.
 set -euo pipefail
+
+# Resolved once, before any work, so a machine without either tool gets one
+# error and no digest rather than one error per file.
+if command -v sha256sum >/dev/null 2>&1; then
+    SHA_TOOL="sha256sum"
+elif command -v shasum >/dev/null 2>&1; then
+    SHA_TOOL="shasum"
+else
+    echo "no sha256 implementation found (need sha256sum or shasum)" >&2
+    exit 4
+fi
+
+hash_file() {
+    if [ "$SHA_TOOL" = "sha256sum" ]; then
+        sha256sum -- "$1" | cut -d' ' -f1
+    else
+        shasum -a 256 -- "$1" | cut -d' ' -f1
+    fi
+}
+
+hash_stream() {
+    if [ "$SHA_TOOL" = "sha256sum" ]; then
+        sha256sum | cut -d' ' -f1
+    else
+        shasum -a 256 | cut -d' ' -f1
+    fi
+}
 
 refuse_symlinks() {
     local dir="$1" links
@@ -41,7 +74,7 @@ refuse_symlinks() {
 canonical_lines() {
     local dir="$1"
     ( cd "$dir" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do
-        printf '%s  %s\n' "$(sha256sum -- "$f" | cut -d' ' -f1)" "${f#./}"
+        printf '%s  %s\n' "$(hash_file "$f")" "${f#./}"
     done ) | LC_ALL=C sort
 }
 
@@ -56,7 +89,7 @@ PYEOF
 
 per_run() {
     refuse_symlinks "$1"
-    canonical_lines "$1" | sha256sum | cut -d' ' -f1
+    canonical_lines "$1" | hash_stream
 }
 
 listing() {
@@ -69,12 +102,12 @@ listing() {
 }
 
 aggregate() {
-    listing "$1" | sha256sum | cut -d' ' -f1
+    listing "$1" | hash_stream
 }
 
 record() {
     local root="$1" commit="$2" epoch="$3" prev="$4" script_sha
-    script_sha="$(sha256sum -- "$0" | cut -d' ' -f1)"
+    script_sha="$(hash_file "$0")"
     printf '{\n'
     printf '  "epoch": %s,\n' "$epoch"
     printf '  "prev_anchor_hash": %s,\n' "$(printf '%s' "$prev" | python3 -c 'import json,sys;print(json.dumps(sys.stdin.read()))')"
