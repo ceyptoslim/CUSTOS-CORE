@@ -299,3 +299,43 @@ trial tests the install path, not the client.
 **What this does not change.** The claim, the pass and failure definitions, the pool, the five-minute
 threshold and the artifact all stand as written above. These five items constrain the author, not the
 participant.
+
+## Amendment 7 — 2026-11-19: the client precondition, and two controls now exercised
+
+Appended after `28212a8e2e86`. The text above is unchanged.
+
+**1. What must already be true when the clock starts.** Amendment 6 fixed the start at the moment the
+participant opens the quickstart section. This fixes the state at that moment: Claude Desktop is
+installed, signed in, and fully closed. Time spent installing or signing into the client is excluded
+from the five minutes and recorded separately, because the claim is the CUSTOS install path and not
+Anthropic's installer. Amendment 2's list already scoped the five minutes to creating the environment,
+installing, editing the config, restarting the client, one prompt and a verify; this amendment makes
+that boundary explicit instead of leaving it to be inferred.
+
+The invitation a participant receives contains the link to this repository at `usability-001`, the
+clock rule, and nothing else. It carries no command, no config snippet and no hint, so the README is
+read on the clock rather than before it.
+
+**2. The pool, said plainly.** Three strangers who already use Claude Desktop on macOS or Windows is a
+narrower pool than three strangers with a terminal, and the README says so: there is no official Linux
+build of the client. If three such strangers cannot be found, the result is reported as inconclusive,
+as the original text already requires. Changing the client is a dated amendment before the first
+stranger, never a substitution during the trial.
+
+**3. The tag control, exercised rather than asserted.** A protection that has never been tested is a
+claim. Checked against the live API on 2026-11-19: ruleset 27633926 covers `refs/tags/usability-*` with
+the `deletion`, `non_fast_forward` and `update` rules and has **no bypass actors**, and ruleset 27634417
+covers all branches with `non_fast_forward` and **no bypass actors**. There is therefore no actor,
+including the owner, who can move or delete the trial tag.
+
+**4. The digest, enforceable by a participant.** The recorded wheel digest can be appended to the
+install command as a fragment, and pip enforces it. Tested against the published asset on 2026-11-19:
+with the correct fragment the install exits 0 and `custos-core 1.4.0` is importable; with a deliberately
+wrong fragment it exits 1 with `THESE PACKAGES DO NOT MATCH THE HASHES FROM THE REQUIREMENTS FILE` and
+nothing is installed. The README at the tag does not carry the fragment, because the tag is frozen and
+the README a stranger reads is the one at that tag. A participant who wants the binding can append
+`#sha256=b58f32075e2e68f2945f5e61f5576bc69203fd1d442a93e066b18c4a9c17bd1d`, and a changed asset then
+fails to install instead of installing silently.
+
+**What is unchanged.** The claim, the pass and failure definitions, the pool requirement, the
+five-minute threshold and the artifact all stand as written above.
