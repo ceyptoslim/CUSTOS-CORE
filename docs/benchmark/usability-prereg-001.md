@@ -163,3 +163,26 @@ force-pushed to the branch of its own pull request, PR 228, which had already me
 affected, the branch was deleted, and the orphaned commit `38e984124d41` is not on main.
 Non-fast-forward pushes are now blocked on all branches by ruleset 27634417, so the rule is enforced
 rather than remembered.
+
+## Amendment 3 — 2026-11-19: the wheel filename, corrected
+
+Appended after `cea1e729e917`. The text above is unchanged, and this amendment supersedes it on one
+point only: the wheel filename.
+
+Amendment 1 froze `custos_core-0.1.0-py3-none-any.whl`. That was wrong when I wrote it. The package
+reports `custos.__version__ = "1.4.0"`, and `/v1/info` reports the same, so a `0.1.0` distribution
+would carry `1.4.0` code and put two version numbers on one artifact. The distribution version is
+read from `custos.__version__` rather than chosen, so the frozen filename becomes:
+
+`custos_core-1.4.0-py3-none-any.whl`
+
+and the frozen command becomes:
+
+`python3 -m pip install "custos-core[mcp] @ https://github.com/ceyptoslim/CUSTOS-CORE/releases/download/usability-001/custos_core-1.4.0-py3-none-any.whl"`
+
+The filename is derived, not decided. If `custos.__version__` moves before the tag, the filename
+moves with it and a further dated amendment records the final name. A reader should not treat this
+amendment as fixing the number for all time; it records that the number follows the code.
+
+Still deferred: the tag commit, the wheel's SHA-256 and the final filename, because none of them
+exist yet. They are recorded in the amendment that follows the tag, as Amendment 2 established.
