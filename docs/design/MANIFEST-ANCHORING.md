@@ -84,6 +84,14 @@ tree no longer matches a record the repository cannot alter. It does not show th
 anchored is what executed on a runner, it is not third-party corroboration of the observation
 sets, and it does not move `custody_verified` off False.
 
+**Until the external repository exists, nothing here is external anchoring.** The check reads
+`docs/design/anchor-epoch-0.json`, a reference copy that a pull request can edit along with
+everything else, so what CI enforces today is the append-only rule against accidents. Every run
+prints the record it compared against and labels it `in-tree reference copy, not independent`, so
+a green run cannot be read as an external verification. When the anchor repository is live the
+check is given `--origin external`, and an unreadable or missing anchor then exits 2 rather than
+falling back to the copy, because an unreachable anchor is not a pass.
+
 ## Superseded values
 
 Two aggregates were published before this form was pinned and are withdrawn: `81d4308d…`, computed
