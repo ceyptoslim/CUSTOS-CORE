@@ -132,7 +132,7 @@ Verified implementation:
 
 [github.com/ceyptoslim/LORL-9.1](https://github.com/ceyptoslim/LORL-9.1)
 
-**Verified:** 2026-10-13 live run on `main` | **Tests:** 129 passed, 1 skipped
+**Verified:** 2026-11-17 live run on `main` (`1dc9926e`) | **Version:** 0.3.1 | **Tests:** 133 passed, 1 skipped | **Coverage:** 91%
 
 Verified implementation:
 
@@ -293,6 +293,6 @@ Chain-head custody is **implemented, not a target**: internal-timestamped and RF
 | "Google OAuth in CUSTOS-CORE" | | ❌ — not in the codebase |
 | "Solana/Ethereum/ZK implemented" | | ❌ — architecture target |
 | "1210 tests, 90% coverage" (CUSTOS-CORE) | ✅ | |
-| "129 tests, 93% coverage" (LORL-9.1) | ✅ | |
+| "133 tests, 91% coverage" (LORL-9.1) | ✅ | |
 
 For formal audit: authoritative evidence should be commit SHA + CI run + test output + coverage artifact, not a document stating test counts.
