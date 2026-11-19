@@ -8,17 +8,19 @@ open" format — no claims beyond what the code and tests demonstrate.
 ---
 
 ## [Unreleased]
-- `docs/red-proof-records/PIN-GAPS.md` records the one file inside a frozen directory that its
-  manifest never pinned: run 40937305618's README, digest `ee369a89…`. The digest is recorded
-  beside the frozen set rather than added to the manifest, so the file stays checkable without
-  rewriting a document that exists to show what was frozen.
+- Run 40937305618's `README.md` is now pinned. The manifest never listed it, so the file could
+  change without a re-walk noticing. The pin was added on 2026-11-19 as one appended row, with no
+  existing line altered, and the guard's `KNOWN_UNPINNED` entry removed in the same commit.
+  `docs/red-proof-records/PIN-GAPS.md` keeps the record: the file, its digest, the day the gap was
+  found, the day it closed, and the manifest's own digest before (`fee4c27a…`) and after
+  (`74c8aeb9…`), because a manifest edited afterwards no longer demonstrates what was frozen.
 - Frozen observation sets are now guarded by tests (`tests/test_frozen_manifests.py`). Every file
   inside `docs/red-proof-records/run-*/` must be pinned by that run's manifest and match it by
   SHA-256, so a pull request that edits, adds or deletes a frozen file fails CI instead of passing
   green. Written after a documentation PR edited run 38610363998's README, which that run's own
   manifest pins at `fc9d18d8`, and only a hand re-hash caught it before merge. One known gap is
-  named explicitly in the test rather than hidden: run 40937305618's manifest never pins its
-  `README.md`.
+  named explicitly in the test rather than hidden. That named gap was closed on 2026-11-19, so
+  `KNOWN_UNPINNED` is now empty and should stay empty.
 - Run 38495005061 frozen in-repo (`docs/red-proof-records/run-38495005061/`) with a
   SHA-256 manifest, closing the one re-walkability gap in the series: the v3 record that
   `FN-CUSTOS-REDPROOF-002` reconstructs had been retrieved through a proxy link and was
