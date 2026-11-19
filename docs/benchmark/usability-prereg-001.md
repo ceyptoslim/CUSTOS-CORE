@@ -370,8 +370,9 @@ to the tag; the tag form is equivalent while the tag exists.
 **The recruitment post is not the invitation.** Amendment 7 fixed that the invitation carries the link,
 the clock rule and nothing else. A public recruitment post may also carry the reporting template
 (operating system, client version, `pip freeze` output, elapsed time, transcript), because those are the
-evidence requirements this document already imposes and they disclose no command, no config snippet and
-no installation hint. Whoever volunteers then receives the invitation: the pinned link and the clock
+evidence requirements this document already imposes. Such a post discloses no install command, no config
+snippet, and no hint about what the result should look like; the only tool it names is `pip freeze`,
+which Amendment 5 already requires in every transcript. Whoever volunteers then receives the invitation: the pinned link and the clock
 rule.
 
 **One wheel, not two.** The rehearsal and the trial were served the same bytes from the same commit, so
