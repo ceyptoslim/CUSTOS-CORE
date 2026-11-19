@@ -41,3 +41,4 @@ Every file was re-hashed after download; digests are of the bytes in this direct
 | run-40937305618/red-proof-006-weaken-trace-binding/red-proof-pytest-output.txt | `e433578da5165975f61a30ae1b6a39395d5f94b475454360174096c8f67d11bd` | 7853 |
 | run-40937305618/red-proof-probe-003-weaken-action-gate/red-proof-probe-clean.json | `d2e2e01f80097dec036c46a9752401e9c2eb32a38505541897e13d9fca3334c8` | 868 |
 | run-40937305618/red-proof-probe-003-weaken-action-gate/red-proof-probe-injected.json | `2aa5bf54b0e189c457ae638e859d6ee911bd6841544bc27baff595773431eb43` | 879 |
+| run-40937305618/README.md | `ee369a89efd3b7ae6c0c15112477eb1546773195a3b649c4f546d72b9e92fdd7` | 3234 |
