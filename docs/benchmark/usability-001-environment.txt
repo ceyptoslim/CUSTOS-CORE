@@ -1,0 +1,52 @@
+# Environment recorded for trial 001
+
+Recorded 2026-11-19 on the author's machine, by installing the wheel a stranger installs, from the
+published asset at the trial tag. This is the resolved set, not a requirement: it is what pip chose
+from the wheel's own constraints, on this date, on this Python.
+
+    wheel     custos_core-1.4.0-py3-none-any.whl
+    asset     https://github.com/ceyptoslim/CUSTOS-CORE/releases/download/usability-001/custos_core-1.4.0-py3-none-any.whl
+    sha256    b58f32075e2e68f2945f5e61f5576bc69203fd1d442a93e066b18c4a9c17bd1d
+    python    3.11.15
+    pip       26.3
+    platform  linux
+    command   python -m venv env && env/bin/python -m pip install "custos-core[mcp] @ <asset>"
+
+pip writes the digest it installed into the freeze output below, so this record and the artifact check
+each other without anyone having to trust the header above.
+
+What is pinned and what is not: the wheel pins `mcp==1.30.0` and nothing else. Every other line is a
+transitive dependency pip resolved on this date. A run whose list differs from this one is a different
+environment, and the difference should be visible in that run's transcript rather than inferred after
+the fact.
+
+    annotated-types==0.8.0
+    anyio==4.16.0
+    attrs==26.1.0
+    certifi==2026.10.23
+    cffi==2.1.1
+    click==8.5.1
+    cryptography==50.0.2
+    custos-core @ https://github.com/ceyptoslim/CUSTOS-CORE/releases/download/usability-001/custos_core-1.4.0-py3-none-any.whl#sha256=b58f32075e2e68f2945f5e61f5576bc69203fd1d442a93e066b18c4a9c17bd1d
+    h11==0.16.0
+    httpcore==1.0.9
+    httpx==0.28.1
+    httpx-sse==0.4.3
+    idna==3.20
+    jsonschema==4.26.0
+    jsonschema-specifications==2025.9.1
+    mcp==1.30.0
+    pycparser==3.12
+    pydantic==2.14.4
+    pydantic-settings==2.16.3
+    pydantic_core==2.50.5
+    PyJWT==2.15.1
+    python-dotenv==1.2.4
+    python-multipart==0.0.34
+    referencing==0.37.0
+    rpds-py==2026.9.1
+    sse-starlette==3.7.0
+    starlette==1.10.0
+    typing-inspection==0.4.5
+    typing_extensions==4.16.0
+    uvicorn==0.54.0

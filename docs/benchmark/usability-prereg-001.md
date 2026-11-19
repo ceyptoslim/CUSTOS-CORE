@@ -227,3 +227,31 @@ document is unchanged.
 that the artifact it fetches is the one digested above, and that the quickstart produces a CUSTOS
 denial and a verified chain on all three operating systems. It does not establish that a stranger can
 do it in five minutes, and it is not a trial result. No stranger has run this yet.
+
+## Amendment 5 — 2026-11-19: the resolved environment, and `pip freeze` in every transcript
+
+Appended after `fcd3723b3620`. The text above is unchanged.
+
+**The gap.** The wheel pins `mcp==1.30.0` and nothing else. Installing it resolves twenty-nine further
+packages by pip's own rules, so two runs a month apart may not be the same environment. Without a
+record, a stranger's failure could not be attributed between the wheel and a dependency difference, and
+the FAIL verdict this document pre-registers would be ambiguous exactly when it matters.
+
+**The author's environment, recorded.** `docs/benchmark/usability-001-environment.txt`, file digest
+`44501ff1659c34e0692319b999fd3e48fa7607c4181b448ac7623c9ae8d71bb2`, produced by installing the published
+asset at `usability-001` into a fresh virtual environment on Python 3.11.15 with pip 26.3. It is the
+resolved set, not a requirement. pip writes the wheel's own digest into that output, so the record and
+the artifact verify each other rather than resting on a header.
+
+**What every participant run now records.** Alongside the OS and Python versions already required,
+the transcript includes the output of `python -m pip freeze` from the environment the quickstart
+created. It is one command in a terminal the participant is already using, measured here at 0.19
+seconds, and it converts a bare failure into an attributable one.
+
+**Clock disclosure.** This adds one command and roughly a fifth of a second to the participant's work.
+The five-minute threshold is unchanged, and the clock rule stands: any change to it needs a dated
+amendment before the first stranger.
+
+**What this does not establish.** It does not make runs reproducible and it does not pin transitive
+dependencies. It makes differences between runs visible, which is all a first-run usability trial can
+honestly claim from an environment it does not control.
