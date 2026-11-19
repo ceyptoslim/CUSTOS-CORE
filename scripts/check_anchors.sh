@@ -2,6 +2,8 @@
 # Append-only check against an anchor record.
 #
 # Rule: every run digest named in the anchor must still be present and identical.
+# Across a chain, every digest anchored at an earlier epoch must survive unchanged
+# into every later epoch, so a correctly linked append cannot carry a tampered one.
 # A run that is not in the anchor is allowed, because new observation sets are
 # added over time and are anchored at the next epoch. Nothing else is allowed to
 # move.
@@ -83,6 +85,17 @@ if recs[0]["prev_anchor_hash"] != "":
 for i in range(1, len(recs)):
     if recs[i]["prev_anchor_hash"] != h(recs[i - 1]):
         sys.exit(f"epoch {recs[i]['epoch']} does not link to epoch {recs[i-1]['epoch']}")
+    # Containment: a link alone is not enough. Whoever holds the write token can
+    # append an epoch that links correctly and still carries a tampered run
+    # digest, which would make the tip agree with a rewritten tree. Every digest
+    # anchored earlier must therefore survive unchanged into every later epoch.
+    prev, cur = recs[i - 1]["run_digests"], recs[i]["run_digests"]
+    for name, digest in prev.items():
+        if name not in cur:
+            sys.exit(f"epoch {recs[i]['epoch']} drops anchored run {name}")
+        if cur[name] != digest:
+            sys.exit(f"epoch {recs[i]['epoch']} changes anchored run {name}: "
+                     f"{digest[:12]} became {cur[name][:12]}")
 print(f"{recs[-1]['epoch']} {h(recs[-1])} {len(recs)}")
 PYEOF
 )"; then

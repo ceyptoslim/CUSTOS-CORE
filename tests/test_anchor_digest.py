@@ -76,11 +76,25 @@ class TestCanonicalForm:
         second = run(["bash", str(DIGEST), "aggregate", str(RECORDS)]).stdout
         assert first == second != ""
 
-    def test_a_byte_change_moves_the_digest(self, fixture_run):
+    def test_what_moves_the_digest_and_what_is_refused(self, fixture_run):
         before = run(["bash", str(DIGEST), "per-run", str(fixture_run)]).stdout
+
+        # Content moves it.
         (fixture_run / "a.txt").write_bytes(b"alpha\n\n")
         after = run(["bash", str(DIGEST), "per-run", str(fixture_run)]).stdout
         assert before != after
+
+        # File mode does not: only bytes are hashed.
+        (fixture_run / "a.txt").chmod(0o600)
+        assert run(["bash", str(DIGEST), "per-run", str(fixture_run)]).stdout == after
+
+        # A symlink is refused before anything is printed, because `find -type f`
+        # skips it while a path resolver follows it, and the two answers differ.
+        (fixture_run / "link.txt").symlink_to("a.txt")
+        out = run(["bash", str(DIGEST), "per-run", str(fixture_run)])
+        assert out.returncode == 3, out.stdout + out.stderr
+        assert out.stdout.strip() == "", "a refusal must not emit a digest"
+        assert "symlink inside a frozen directory" in out.stderr
 
 
 class TestEpochRecord:
@@ -179,6 +193,16 @@ class TestAppendOnlyRule:
         # Chain verified but no source stated: still not an external anchor.
         out = run(base + ["--chain", str(chain)])
         assert "external path, chain not verified" in out.stdout, out.stdout
+
+        # A correctly linked epoch that carries a tampered digest must still fail.
+        # This is the attack the link alone cannot see: the write token appends a
+        # plausible epoch whose digest matches a rewritten tree.
+        rec = json.loads(rec1)
+        rec["run_digests"]["run-40937305618"] = "0" * 64
+        (chain / "epoch-1.json").write_text(json.dumps(rec, indent=2))
+        out = run(base + ["--chain", str(chain), "--chain-source", "custos-anchors@test"])
+        assert out.returncode == 2, out.stdout + out.stderr
+        assert "changes anchored run run-40937305618" in out.stdout + out.stderr
 
         # A broken link fails rather than degrading quietly.
         rec = json.loads(rec1)

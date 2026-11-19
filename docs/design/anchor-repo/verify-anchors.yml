@@ -1,0 +1,59 @@
+# Template for the anchor repository (custos-anchors), not for this repository.
+#
+# Copy to .github/workflows/verify-anchors.yml in the anchor repo. It runs on
+# every push, so a bad append is flagged where it lands rather than only by
+# whoever reads the main repository later. It needs no secret: it checks records
+# already in this repository against nothing but themselves.
+#
+# The containment rule is the point. A link alone proves only that the writer
+# chained to the previous record; it does not prove the new record kept the old
+# digests. This workflow fails when an epoch drops or changes a digest anchored
+# at an earlier epoch.
+name: verify-anchors
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Walk the chain and enforce containment
+        run: |
+          python3 - <<'PY'
+          import glob, hashlib, json, os, sys
+
+          def h(rec):
+              return hashlib.sha256(
+                  (json.dumps(rec, sort_keys=True, separators=(",", ":")) + "\n").encode()
+              ).hexdigest()
+
+          files = sorted(glob.glob(os.path.join("anchors", "*.json")))
+          if not files:
+              sys.exit("no anchor records found")
+
+          recs = sorted((json.load(open(f)) for f in files), key=lambda r: r["epoch"])
+          epochs = [r["epoch"] for r in recs]
+          if epochs != list(range(len(recs))):
+              sys.exit(f"epochs are not contiguous from 0: {epochs}")
+          if recs[0]["prev_anchor_hash"] != "":
+              sys.exit("epoch 0 carries a prev_anchor_hash")
+
+          for i in range(1, len(recs)):
+              if recs[i]["prev_anchor_hash"] != h(recs[i - 1]):
+                  sys.exit(f"epoch {recs[i]['epoch']} does not link to epoch {recs[i-1]['epoch']}")
+              prev, cur = recs[i - 1]["run_digests"], recs[i]["run_digests"]
+              for name, digest in prev.items():
+                  if name not in cur:
+                      sys.exit(f"epoch {recs[i]['epoch']} drops anchored run {name}")
+                  if cur[name] != digest:
+                      sys.exit(f"epoch {recs[i]['epoch']} changes anchored run {name}")
+
+          print(f"ok: {len(recs)} record(s), tip epoch {recs[-1]['epoch']}, {h(recs[-1])}")
+          PY
