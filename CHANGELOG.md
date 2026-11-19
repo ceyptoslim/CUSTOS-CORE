@@ -14,6 +14,15 @@ open" format — no claims beyond what the code and tests demonstrate.
   not preserved. Re-fetched from the run's own artifact store while still live; all five
   digests match those recorded independently in that reconstruction (JUnit `5ffa02dc…`,
   pytest output `d8b9e12d…`, injection diff `29d73e8f…`, exit code `4355a46b…`).
+- Artifact-to-manifest check recorded in `docs/red-proof-records/ARTIFACT-CHECK-2026-11-17.md`:
+  all 50 uploaded artifact files across runs 9, 10, 11 and 12 are byte-identical, by path and
+  digest, to their frozen manifest entries, and the two run-9 sabotage scripts recorded in that
+  manifest also match the repository at `6ed3cff`. Project check only; `custody_verified` stays
+  False.
+- `docs/red-proof-records/COUNT-BASIS-506.md` separates the two figures that share the digits
+  506 (506 collected at `925f96eabe`, 506 passed of 518 at `f5d48c929e`) and names the twelve
+  mock-based PostgreSQL tests from PR 52 as the difference. It sits outside the frozen sets
+  because run 11's manifest pins its own `README.md` by digest.
 
 
 ### Added — MCP proxy (first integration)
