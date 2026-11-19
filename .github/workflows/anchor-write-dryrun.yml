@@ -1,0 +1,57 @@
+name: anchor-write-dryrun
+
+# Proves the write token can actually write, without publishing a record.
+#
+# The first real epoch would otherwise be the first time the token is used for a
+# write, so a permissions mistake would surface at the worst moment: mid-append,
+# on a commit that changed a frozen set. This runs on demand, creates a throwaway
+# branch in custos-anchors, pushes to it, and deletes it again. main is never
+# touched, so the chain cannot be altered by running it.
+#
+# Manual only. It is not triggered by pushes or pull requests.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dryrun:
+    runs-on: ubuntu-latest
+    environment: anchor-write
+    steps:
+      - name: Check the write token is present
+        env:
+          TOKEN: ${{ secrets.ANCHOR_WRITE_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::ANCHOR_WRITE_TOKEN is empty. Add it to the anchor-write environment before running this."
+            exit 1
+          fi
+          echo "write token present"
+
+      - name: Clone, push a throwaway branch, delete it
+        env:
+          ANCHOR_WRITE_TOKEN: ${{ secrets.ANCHOR_WRITE_TOKEN }}
+        run: |
+          set -euo pipefail
+          branch="token-dryrun-$(date -u +%Y%m%dT%H%M%SZ)"
+          git clone --depth 1 "https://x-access-token:${ANCHOR_WRITE_TOKEN}@github.com/ceyptoslim/custos-anchors.git" "$RUNNER_TEMP/anchor-repo"
+          cd "$RUNNER_TEMP/anchor-repo"
+          git config user.name "custos-anchor-writer"
+          git config user.email "actions@users.noreply.github.com"
+
+          # The cheap check first: authenticate and negotiate a ref update without
+          # sending anything. A token without contents:write fails here.
+          git push --dry-run origin "HEAD:refs/heads/$branch"
+
+          # Then the real thing, on a branch nobody reads, because a dry run alone
+          # does not prove the server would accept the write.
+          git checkout -b "$branch"
+          git commit --allow-empty -m "token dry run, deleted immediately"
+          git push origin "$branch"
+          echo "pushed $branch, deleting it"
+
+          git push origin --delete "$branch"
+          echo "dry run complete: the token can write to custos-anchors and main was not touched"
