@@ -55,3 +55,37 @@ transport with the pinned mcp version `mcp==1.30.0`. It is not a certification.
 ## Reporting
 Results are published whether they pass or fail, with the README tag, commit hash, and raw
 transcripts.
+
+## Amendment 1 — 2026-11-19: the install command, its preconditions, and tag discipline
+
+Appended after commit `de5f551b037d`. The text above is unchanged, as the status line requires. No
+stranger has run this trial and tag `usability-001` does not exist, so no result is affected; this
+amendment defines what the trial measures.
+
+**1. The install command is replaced.** The Install line above fetches a `git+https` URL, which needs
+git on the machine. On a fresh Mac the first `git` invocation can trigger a developer-tools download
+that takes minutes, and that download would spend the five-minute budget on something the install
+path does not control. The command is now:
+
+`python3 -m pip install "custos-core[mcp] @ https://github.com/ceyptoslim/CUSTOS-CORE/releases/download/usability-001/custos_core-0.1.0-py3-none-any.whl"`
+
+This fetches a wheel attached to the release at the tag, over HTTPS, and needs no git. It freezes two
+further implementation obligations: a `custos-core` wheel at version `0.1.0` attached to the release
+at `usability-001`, and an `mcp` extra pinning `mcp==1.30.0`.
+
+**2. Install preconditions.** Python 3.10 or newer with a working `pip`, and no `mcp` 2.x already
+installed. An environment carrying 2.x meets the pin as a conflict: it is recorded and reported as an
+exclusion, not counted as a pass or as a fail, and three completed participants are still required for
+any result.
+
+**3. Tag discipline.** `usability-001` is created only at a commit whose README carries the command
+above verbatim, with the CI quickstart run green on that exact commit. The commit it points at is
+recorded in Amendment 2 before any stranger runs. Tags matching `usability-*` are protected against
+moving and deletion in the repository settings, and the tag is never moved; a correction after it
+starts trial 002, not a retry of this one.
+
+**4. Scope of the pin.** Nothing here shows anything about `mcp` 2.x. The pin is the 1.x line, which
+PyPI still publishes as a maintenance line while 2.x is the current stable release and
+`pip install mcp` installs 2.x. Whether the core supports 2.x is undecided by this trial and is a
+decision to take after it, since new agent builders will mostly be on 2.x. A 2.x trial would be trial
+002 or later, with its own pre-registration.
