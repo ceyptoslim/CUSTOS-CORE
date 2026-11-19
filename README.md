@@ -21,7 +21,7 @@ CUSTOS-CORE and LORL-9.1 provide the open-core governance and agent infrastructu
 
 [github.com/ceyptoslim/CUSTOS-CORE](https://github.com/ceyptoslim/CUSTOS-CORE)
 
-**Verified:** 2026-11-19 CI run on `main` (`7fe9e89`) | **Tests:** 1206 passed, 50 skipped | **Coverage:** 90%
+**Verified:** 2026-11-19 CI run on `main` (`3c9d59e`) | **Tests:** 1207 passed, 50 skipped | **Coverage:** 90%
 
 *Count basis:* the `CUSTOS CI` job for that commit (Python 3.11), so every figure in the line above is
 reproducible from the workflow run rather than from a laptop. A local run collects a different total
@@ -222,7 +222,7 @@ Chain-head custody is **implemented, not a target**: internal-timestamped and RF
 | "Google OAuth in Base44 apps" | ✅ | |
 | "Google OAuth in CUSTOS-CORE" | | ❌ — not in the codebase |
 | "Solana/Ethereum/ZK implemented" | | ❌ — architecture target |
-| "1206 tests, 90% coverage" (CUSTOS-CORE) | ✅ | |
+| "1207 tests, 90% coverage" (CUSTOS-CORE) | ✅ | |
 | "129 tests, 93% coverage" (LORL-9.1) | ✅ | |
 
 For formal audit: authoritative evidence should be commit SHA + CI run + test output + coverage artifact, not a document stating test counts.
