@@ -38,16 +38,22 @@ def _cli(venv: Path) -> Path:
 
 
 def main() -> int:
-    wheel = sys.argv[1] if len(sys.argv) > 1 else None
-    if not wheel:
+    source = sys.argv[1] if len(sys.argv) > 1 else None
+    if not source:
         candidates = glob.glob(str(HERE.parent / "dist" / "custos_core-*.whl"))
         if not candidates:
             print("no wheel given and none found in dist/", file=sys.stderr)
             return 2
-        wheel = candidates[0]
-    # as_uri(), not an f-string: on Windows the path is D:\\... with backslashes,
-    # and "file://" + that is not a URI, which pip reads as a directory and refuses.
-    wheel_uri = Path(wheel).resolve().as_uri()
+        source = candidates[0]
+    if source.startswith(("http://", "https://")):
+        # A published release asset is already exactly what a stranger pastes.
+        wheel_uri = source
+    else:
+        # as_uri(), not an f-string: on Windows the path is D:\\... with
+        # backslashes, and "file://" + that is not a URI, which pip reads as a
+        # directory and refuses.
+        wheel_uri = Path(source).resolve().as_uri()
+    print(f"installing from {wheel_uri}")
 
     root = Path(tempfile.mkdtemp(prefix="custos-quickstart-"))
     venv = root / "venv"

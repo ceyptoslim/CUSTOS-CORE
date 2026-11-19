@@ -1,0 +1,68 @@
+name: Release Quickstart
+
+# A pre-registered trial needs the install path to work from the artifact a
+# stranger downloads, not from the source tree. This runs on the release itself:
+# it checks that the README names the asset the release carries, then installs
+# that URL on three operating systems and rehearses the quickstart against it.
+#
+# The rehearsal release is tagged under an unprotected name first, so a mistake
+# costs nothing and the tag the trial names is applied to a commit that has
+# already been through this job.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  quickstart:
+    name: Quickstart from the published asset (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Check out the tagged commit
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.release.tag_name }}
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+
+      - name: Resolve the published wheel
+        id: asset
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          name=$(gh release view "$TAG" --repo "$REPO" --json assets \
+                   --jq '[.assets[].name | select(startswith("custos_core-"))] | first')
+          if [ -z "$name" ] || [ "$name" = "null" ]; then
+            echo "::error::the release at $TAG carries no custos_core wheel"
+            exit 1
+          fi
+          url="https://github.com/$REPO/releases/download/$TAG/$name"
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+          echo "published asset: $url"
+
+      - name: The README names the asset this release carries
+        shell: bash
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          URL: ${{ steps.asset.outputs.url }}
+        run: python scripts/check_release_asset.py README.md "$TAG" "$URL"
+
+      - name: Rehearse the quickstart from the published URL
+        shell: bash
+        env:
+          URL: ${{ steps.asset.outputs.url }}
+        run: python scripts/quickstart_smoke.py "$URL"
