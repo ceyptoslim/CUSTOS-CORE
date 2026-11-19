@@ -60,6 +60,15 @@ Every run digest named in the current anchor must still be present and identical
 not in the anchor is allowed, because new observation sets are added over time and are anchored at
 the next epoch. Nothing else may move.
 
+**Containment, not only linkage.** Walking `prev_anchor_hash` back to epoch 0 proves the records
+were chained in order. It does not prove what each one says: whoever holds the write token can
+append an epoch that links correctly and carries a tampered run digest, and then the tip agrees
+with the rewritten tree and every check passes. So each epoch must also contain every digest
+anchored at every earlier epoch, unchanged. A dropped or altered digest fails the walk with the
+epoch and the run named, and the same rule runs in the anchor repository's own workflow, template
+at `docs/design/anchor-repo/verify-anchors.yml`, so a bad append is flagged where it lands rather
+than only by a later reader.
+
 ```
 scripts/check_anchors.sh docs/design/anchor-epoch-0.json docs/red-proof-records
 ```
@@ -111,15 +120,45 @@ a green run cannot be read as an external verification. When the anchor reposito
 check is given `--origin external`, and an unreadable or missing anchor then exits 2 rather than
 falling back to the copy, because an unreachable anchor is not a pass.
 
+## Scheme stability
+
+A digest is only citable if two people on different machines get the same number, so each thing
+that could vary was checked rather than assumed:
+
+| Source of variance | Behaviour |
+|---|---|
+| Locale | Every sort runs under `LC_ALL=C`. Measured: `C`, `C.UTF-8` and `en_US.UTF-8` all produce `96219e94…`. |
+| `find` ordering | Irrelevant, output is sorted before hashing. |
+| Symlinks | Refused, exit 3, before any digest reaches stdout. `find -type f` skips a symlink while a path resolver follows it, so the two answers differ by exactly that file. |
+| File modes | Not hashed. Measured: `chmod 600` leaves the digest unchanged. |
+| Line endings | `.gitattributes` sets `-text` on the frozen paths, so no checkout converts bytes. |
+| Filenames containing newlines | Unsupported, and no frozen record has one. |
+| Tool versions | `sha256sum`, `sort`, `cut`, `sed` from coreutils, plus `python3` for `anchor-hash` and `record`. The record must contain no floats, because float formatting can differ between Python versions; epoch is an integer and every other field is a string. |
+| Empty run directory | Degenerate, yields the empty-stream digest. The manifest guard fails such a directory first, since every file present must be pinned. |
+
+## Changing the scheme
+
+After the first anchor, a change to `anchor_digest.sh` costs a new epoch. The rule: write the new
+epoch, and in its commit message put one line naming the script digest it replaces, so the change
+is visible to anyone holding the previous tip without them having to diff the script. Before the
+first anchor the same information goes in the amendment table below, and epoch 0 is simply
+rewritten.
+
 ## Amended before publication
 
-`docs/design/anchor-epoch-0.json` was amended on 2026-11-19, before any record was published
-anywhere, when the script gained the `anchor-hash` mode and the chain labels. The recorded script
-digest moved from `0ac9b319…` to `6b7dd37f…` and the record's own anchor hash moved from
-`7c6a991e…` to `cf1661db…`. Every run digest and the aggregate are unchanged, because the
-canonical form itself did not change: the aggregate is still `96219e94…`. Once a record is
-published, the same edit would be visible as a broken chain and a changed anchor hash, which is
-the point.
+`docs/design/anchor-epoch-0.json` was amended twice on 2026-11-19, before any record was published
+anywhere. Every run digest and the aggregate are unchanged throughout, because the canonical form
+did not change: the aggregate stayed `96219e94…`. Only the recorded script digest and therefore the
+record's own anchor hash moved.
+
+| Amendment | Script digest | Anchor hash of epoch 0 |
+|---|---|---|
+| as first written | `0ac9b319…` | `7c6a991e…` |
+| gained `anchor-hash` and the chain labels | `6b7dd37f…` | `cf1661db…` |
+| refused symlinks and moved the check ahead of hashing | `1257fc26…` | `1c650575…` |
+
+After the first anchor the same edit would appear as a broken chain and a changed anchor hash,
+which is the point.
 
 ## Superseded values
 

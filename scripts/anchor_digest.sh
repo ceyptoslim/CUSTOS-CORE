@@ -24,6 +24,20 @@
 # guard fails loudly rather than silently hashing something else.
 set -euo pipefail
 
+refuse_symlinks() {
+    local dir="$1" links
+    # A symlink inside a frozen directory is ambiguous: `find -type f` skips it,
+    # while a reader resolving paths would hash the target. Refuse rather than
+    # pick one silently, because the two answers differ by exactly the file.
+    # Checked before any hashing so a refusal never emits a digest to stdout.
+    links="$(cd "$dir" && find . -type l | LC_ALL=C sort)"
+    if [ -n "$links" ]; then
+        echo "symlink inside a frozen directory is not supported: $dir" >&2
+        echo "$links" | sed 's/^/  /' >&2
+        exit 3
+    fi
+}
+
 canonical_lines() {
     local dir="$1"
     ( cd "$dir" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do
@@ -41,6 +55,7 @@ PYEOF
 }
 
 per_run() {
+    refuse_symlinks "$1"
     canonical_lines "$1" | sha256sum | cut -d' ' -f1
 }
 
