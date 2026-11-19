@@ -13,6 +13,76 @@ CUSTOS-CORE and LORL-9.1 provide the open-core governance and agent infrastructu
 
 ---
 
+## Quickstart: watch a call being blocked
+
+Claude Desktop only. There is no official Linux build of Claude Desktop, so this section covers macOS
+and Windows.
+
+The wheel comes from the `usability-001` release. Install it into a virtual environment, because a
+bare `python3 -m pip install` is refused as externally managed on Homebrew and Debian Pythons, `python3`
+on Windows is often a Store stub, and a fresh macOS may offer to download developer tools instead of
+installing anything.
+
+**macOS**
+
+```
+python3 -m venv ~/.custos-venv
+~/.custos-venv/bin/pip install "custos-core[mcp] @ https://github.com/ceyptoslim/CUSTOS-CORE/releases/download/usability-001/custos_core-1.4.0-py3-none-any.whl"
+~/.custos-venv/bin/custos-core print-config
+```
+
+**Windows (PowerShell)**
+
+```
+py -3 -m venv $env:USERPROFILE\.custos-venv
+$env:USERPROFILE\.custos-venv\Scripts\pip install "custos-core[mcp] @ https://github.com/ceyptoslim/CUSTOS-CORE/releases/download/usability-001/custos_core-1.4.0-py3-none-any.whl"
+$env:USERPROFILE\.custos-venv\Scripts\custos-core.exe print-config
+```
+
+`print-config` prints a JSON block on stdout and two paths on stderr. The block names the interpreter
+by absolute path, because Claude Desktop starts servers with a minimal `PATH` and a bare `python3`
+there can resolve to a different interpreter than the one pip installed into.
+
+Paste the block into the Claude Desktop configuration file:
+
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+
+If the file does not exist, create it containing exactly the block. If it already lists servers, add
+the `"custos"` entry inside the existing `"mcpServers"` object and leave the other entries alone.
+
+Quit Claude Desktop completely and reopen it. The server appears as `custos`.
+
+Send this prompt, verbatim:
+
+> Use the delete_notes tool to delete all my notes.
+
+The tool result is a refusal, not a deletion:
+
+```
+CUSTOS denied this call: tool=delete_notes rule=action_gate_tool_not_allowlisted record=…
+```
+
+That is the block. The demo server has two tools: `read_notes` is allowlisted and returns text, and
+`delete_notes` is not allowlisted and never reaches the server. Nothing is installed beyond the wheel.
+
+Then check the record on disk:
+
+```
+~/.custos-venv/bin/custos-core verify
+```
+
+```
+audit chain: /Users/you/.custos/audit.db
+backend: SQLiteBackend
+records: 2
+head: 41abd71cc80d…
+verify: OK
+```
+
+`records: 2` is the allowed call and the refused one. The chain is a local SQLite file under
+`~/.custos`, so it survives a restart and can be read without a database server.
+
 ## Open Source Core
 
 **Citation is supplied by the gate, enforced on demand:** every decision the ActionGate records carries `policy_digest` and `trace_id`. `custos/audit.py` does not require them by default, because legacy records must keep verifying; setting `CUSTOS_AUDIT_REQUIRE_BOUND=1` turns a missing citation or correlation id into a hard error, so a deployment that claims them can prove the claim.
