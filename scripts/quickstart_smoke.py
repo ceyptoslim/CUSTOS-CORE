@@ -45,7 +45,9 @@ def main() -> int:
             print("no wheel given and none found in dist/", file=sys.stderr)
             return 2
         wheel = candidates[0]
-    wheel = str(Path(wheel).resolve())
+    # as_uri(), not an f-string: on Windows the path is D:\\... with backslashes,
+    # and "file://" + that is not a URI, which pip reads as a directory and refuses.
+    wheel_uri = Path(wheel).resolve().as_uri()
 
     root = Path(tempfile.mkdtemp(prefix="custos-quickstart-"))
     venv = root / "venv"
@@ -56,7 +58,7 @@ def main() -> int:
     steps.append(("create the environment", _run([sys.executable, "-m", "venv", str(venv)])))
     python = str(_venv_python(venv))
     steps.append(("install the wheel", _run(
-        [python, "-m", "pip", "install", "--quiet", f"custos-core[mcp] @ file://{wheel}"])))
+        [python, "-m", "pip", "install", "--quiet", f"custos-core[mcp] @ {wheel_uri}"])))
 
     for label, done in steps:
         if done.returncode != 0:
