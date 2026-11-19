@@ -161,6 +161,34 @@ class TestAppendOnlyRule:
         assert "refusing to fall back" in out.stdout + out.stderr
 
 
+    def test_chain_label_is_earned_not_inferred(self, tmp_path):
+        """An external path is not an external anchor until its chain walks to epoch 0."""
+        chain = tmp_path / "chain"
+        chain.mkdir()
+        shutil.copy(EPOCH0, chain / "epoch-0.json")
+        h0 = run(["bash", str(DIGEST), "anchor-hash", str(chain / "epoch-0.json")]).stdout.strip()
+        rec1 = run(["bash", str(DIGEST), "record", str(RECORDS), "4a24cdb", "1", h0]).stdout
+        (chain / "epoch-1.json").write_text(rec1)
+        base = ["bash", str(CHECK), str(chain / "epoch-1.json"), str(RECORDS), "--origin", "external"]
+
+        # Chain verified and the source stated: the label may be claimed.
+        out = run(base + ["--chain", str(chain), "--chain-source", "custos-anchors@test"])
+        assert out.returncode == 0, out.stdout + out.stderr
+        assert "external anchor, chain verified to epoch 0" in out.stdout, out.stdout
+
+        # Chain verified but no source stated: still not an external anchor.
+        out = run(base + ["--chain", str(chain)])
+        assert "external path, chain not verified" in out.stdout, out.stdout
+
+        # A broken link fails rather than degrading quietly.
+        rec = json.loads(rec1)
+        rec["prev_anchor_hash"] = "0" * 64
+        (chain / "epoch-1.json").write_text(json.dumps(rec, indent=2))
+        out = run(base + ["--chain", str(chain), "--chain-source", "custos-anchors@test"])
+        assert out.returncode == 2, out.stdout + out.stderr
+        assert "does not link to epoch" in out.stdout + out.stderr
+
+
 class TestLineEndingGuard:
     def test_frozen_paths_have_no_text_conversion(self):
         out = run(

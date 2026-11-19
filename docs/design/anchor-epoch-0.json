@@ -4,7 +4,7 @@
   "source_commit": "f06571b0f2ac",
   "scheme": {
     "script": "scripts/anchor_digest.sh",
-    "script_sha256": "0ac9b319e7631d87a2706c761b45eb5234eef3c37a88beab098a04fad9ead074",
+    "script_sha256": "6b7dd37fcfacce225206ec30a38e9ba78c669125b78383a86e105e5945057449",
     "canonical_form": "sha256 over sorted \"<sha256>  <relpath>\" lines, LC_ALL=C, LF, two spaces, trailing newline"
   },
   "run_digests": {
@@ -21,5 +21,5 @@
     "run-41946858235": "7d7aa20b6a3d14483a90f860e474bf4bc965768aef1ca41244f38699850afcc6"
   },
   "aggregate": "96219e9491556295df407a42a1ea9ad219d6bb18aa8a283e4ebf39527d107419",
-  "note": "Reference copy. The authoritative record lives in the custos-anchors repository, outside any account or token that can write here. This copy exists so CI can enforce the append-only rule without network access."
+  "note": "Reference copy. The authoritative record lives in the custos-anchors repository, outside any account or token that can write here. This copy exists so CI can enforce the append-only rule without network access. Amended 2026-11-19 before publication, when the script gained the anchor-hash mode and chain labels; the script hash moved 0ac9b319 to 6b7dd37f and every digest in this record is unchanged."
 }

@@ -7,6 +7,7 @@
 # move.
 #
 # Usage: check_anchors.sh <anchor-record.json> <root> [--origin in-tree|external]
+#                                 [--chain <dir-of-records>] [--chain-source <where>]
 # Exit:  0 unchanged, 1 drift or a missing anchored run, 2 usage/parse error or an
 #        external anchor that could not be read (fail closed).
 #
@@ -17,14 +18,17 @@ set -euo pipefail
 
 [ $# -ge 2 ] || { echo "usage: $0 <anchor-record.json> <root> [--origin in-tree|external]" >&2; exit 2; }
 record="$1"; root="$2"; shift 2
-origin=""
+origin=""; chain_dir=""; chain_source=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --origin) origin="${2:-}"; shift 2 ;;
+        --chain) chain_dir="${2:-}"; shift 2 ;;
+        --chain-source) chain_source="${2:-}"; shift 2 ;;
         *) echo "unknown argument: $1" >&2; exit 2 ;;
     esac
 done
-repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+here="$(cd "$(dirname "$0")" && pwd)"
+repo_root="$(cd "$here/.." && pwd)"
 # Canonicalise so a relative path and an absolute path to the same file are
 # classified the same way. A record that does not exist keeps its raw path.
 if [ -f "$record" ]; then
@@ -51,13 +55,55 @@ if [ ! -f "$record" ]; then
     fi
     exit 2
 fi
-if [ "$origin" = "in-tree" ]; then
-    echo "source   $record (in-tree reference copy, not independent)"
-else
-    echo "source   $record (external anchor)"
+# The label is earned, not inferred from where the file happens to sit. An
+# external path alone proves nothing about who published it, so it reads as an
+# unverified external path until the record's own chain is walked back to epoch 0
+# and the caller states where the records came from.
+label="in-tree reference copy, not independent"
+if [ "$origin" = "external" ]; then
+    label="external path, chain not verified"
 fi
+chain_tip=""
+if [ -n "$chain_dir" ]; then
+    [ -d "$chain_dir" ] || { echo "FAIL     chain directory not found: $chain_dir" >&2; exit 2; }
+    if ! chain_tip="$(python3 - "$chain_dir" <<'PYEOF'
+import glob, hashlib, json, os, sys
+def h(rec):
+    return hashlib.sha256((json.dumps(rec, sort_keys=True, separators=(",", ":")) + "\n").encode()).hexdigest()
+files = sorted(glob.glob(os.path.join(sys.argv[1], "*.json")))
+if not files:
+    sys.exit("no records in the chain directory")
+recs = [json.load(open(f)) for f in files]
+recs.sort(key=lambda r: r["epoch"])
+epochs = [r["epoch"] for r in recs]
+if epochs != list(range(len(recs))):
+    sys.exit(f"epochs are not contiguous from 0: {epochs}")
+if recs[0]["prev_anchor_hash"] != "":
+    sys.exit("epoch 0 carries a prev_anchor_hash, so the chain does not start here")
+for i in range(1, len(recs)):
+    if recs[i]["prev_anchor_hash"] != h(recs[i - 1]):
+        sys.exit(f"epoch {recs[i]['epoch']} does not link to epoch {recs[i-1]['epoch']}")
+print(f"{recs[-1]['epoch']} {h(recs[-1])} {len(recs)}")
+PYEOF
+)"; then
+        echo "FAIL     anchor chain does not verify" >&2
+        exit 2
+    fi
+    tip_epoch="${chain_tip%% *}"; rest="${chain_tip#* }"
+    tip_hash="${rest%% *}"; tip_count="${rest##* }"
+    record_hash="$("$here/anchor_digest.sh" anchor-hash "$record")"
+    if [ "$record_hash" != "$tip_hash" ]; then
+        echo "FAIL     the record checked is not the chain tip (tip is epoch $tip_epoch)" >&2
+        exit 2
+    fi
+    if [ -n "$chain_source" ] && [ "$origin" = "external" ]; then
+        label="external anchor, chain verified to epoch 0"
+    fi
+    echo "chain    $tip_count record(s), epochs 0 to $tip_epoch linked, tip $tip_hash"
+    echo "chain-source ${chain_source:-not stated}"
+fi
+echo "source   $record ($label)"
 
-here="$(cd "$(dirname "$0")" && pwd)"
 status=0
 
 while IFS=$'\t' read -r name expected; do
