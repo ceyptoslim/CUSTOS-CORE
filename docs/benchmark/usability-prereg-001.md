@@ -186,3 +186,44 @@ amendment as fixing the number for all time; it records that the number follows 
 
 Still deferred: the tag commit, the wheel's SHA-256 and the final filename, because none of them
 exist yet. They are recorded in the amendment that follows the tag, as Amendment 2 established.
+
+## Amendment 4 — 2026-11-19: the tag commit, the wheel digest, and the rehearsal
+
+Appended after `453b7fc0371b`. The text above is unchanged. This amendment records the facts
+Amendment 2 deferred: the tag commit, the wheel's digest, and the evidence that the frozen command
+resolves and the quickstart runs.
+
+**Tag.** `usability-001` is an annotated tag (object `c124bf516ef813adb2cf5360e7f2540b7284a7c1`)
+pointing at commit `fc2f7b1ca2e67e82f75e550c725a8ebef3f44228`, the merge commit of PR 235 on `main`,
+which passed all eleven checks. The tag is protected by ruleset 27633926, which blocks deletion and
+any update, so this commit cannot be moved under the trial.
+
+**Wheel.** `custos_core-1.4.0-py3-none-any.whl`, built from a fresh clone of that commit, attached to
+the release at `usability-001`:
+
+    sha256 b58f32075e2e68f2945f5e61f5576bc69203fd1d442a93e066b18c4a9c17bd1d
+
+Downloaded without any credential, the published asset returns HTTP 302 to storage and the bytes hash
+to that same value, so the digest above describes what a stranger actually receives.
+
+**Rehearsal, before the trial tag was applied.** Tag `rehearsal-001` was placed on the same commit and
+published as a prerelease with the same wheel bytes. The release-triggered job (run `44612942915`)
+resolved the asset through the API, confirmed that this document's command names the asset the release
+carries, installed from the published URL, observed the denial, and verified the chain on Ubuntu, macOS
+and Windows. All three passed.
+
+**The trial tag's own run.** Publishing `usability-001` (release `451918830`) triggered run
+`44613595624` on the same three systems. All three passed, installing from
+`https://github.com/ceyptoslim/CUSTOS-CORE/releases/download/usability-001/custos_core-1.4.0-py3-none-any.whl`,
+with `records: 2` and `verify: OK`.
+
+**Rehearsal time, disclosed as the clock rule requires.** The mechanical part of the quickstart took
+10.0 seconds on the rehearsal run and 13.6 seconds on the trial tag's run, measured from environment
+creation to a verified chain. The remainder of the five-minute budget is the human part: reading,
+editing a configuration file, restarting Claude Desktop and sending the prompt. The threshold in this
+document is unchanged.
+
+**What this does and does not establish.** It establishes that the frozen command resolves for anyone,
+that the artifact it fetches is the one digested above, and that the quickstart produces a CUSTOS
+denial and a verified chain on all three operating systems. It does not establish that a stranger can
+do it in five minutes, and it is not a trial result. No stranger has run this yet.
