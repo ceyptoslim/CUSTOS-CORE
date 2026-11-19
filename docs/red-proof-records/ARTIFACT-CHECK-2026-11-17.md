@@ -28,9 +28,14 @@ also matching. No file was matched on digest alone where the filename or class d
    one request per artifact, then extract locally.
 3. `sha256` over each extracted file's bytes.
 4. Compare against the manifest lines for the same run. Runs 11 and 12 record `sha256sum`
-   format lines; runs 9 and 10 record markdown tables, including two rows for sabotage scripts
-   held in the repository rather than uploaded, which are outside this comparison and were not
-   counted.
+   format lines; runs 9 and 10 record markdown tables.
+
+Two further rows were checked by hand because they are repository files rather than uploaded
+artifacts. Run 9's manifest pins the two sabotage scripts at `6ed3cff`; both match the
+repository at that commit (`82a0329d…` and `32a650c3…`). Run 12's manifest pins its own
+`README.md`, which matches at `168f53f4…`. Run 11's manifest pins its `README.md` at
+`fc9d18d8…`, so that file is deliberately left unedited; notes about it belong in
+`COUNT-BASIS-506.md`, not inside the frozen set.
 
 Artifact names as uploaded: `red-proof-records-001-weaken-admin-auth`,
 `red-proof-records-002-invert-opa-deny`, `red-proof-records-003-weaken-action-gate`, and

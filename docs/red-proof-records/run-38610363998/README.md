@@ -9,14 +9,6 @@ test cases failed (the fail-closed unit assertion and the API endpoint
 assertion), with the clean/injected control-probe delta recorded as
 separate hashed observation artifacts.
 
-**Reading the 518.** 518 is the suite **collected** at `f5d48c9` (506 passed,
-12 skipped). Run 10 at `925f96e` collected 506, and the twelve-test difference is
-`tests/test_policy_store.py`, which PR 52 (merged `b31c978`) extended with twelve
-PostgreSQL policy-store tests; the 003 experiment added no test functions. So 506 in
-`run-38495005061/MANIFEST.md` (collected, with 465 passed and 6 failed) and 506 here
-(passed) are different quantities that share digits. See
-`docs/red-proof-records/ARTIFACT-CHECK-2026-11-17.md`.
-
 ## Contents
 
 - `001-weaken-admin-auth/`, `002-invert-opa-deny/`,
