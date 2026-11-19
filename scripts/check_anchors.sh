@@ -110,7 +110,14 @@ PYEOF
         exit 2
     fi
     if [ -n "$chain_source" ] && [ "$origin" = "external" ]; then
-        label="external anchor, chain verified to epoch 0"
+        # Name the tip as well as the root. "verified to epoch 0" was read as
+        # "only the first record was checked" when the tip was a later epoch, so
+        # the count and the tip epoch carry the claim instead of a fixed word.
+        if [ "$tip_count" -eq 1 ]; then
+            label="external anchor, chain verified: 1 record, tip epoch $tip_epoch"
+        else
+            label="external anchor, chain verified: $tip_count records, tip epoch $tip_epoch"
+        fi
     fi
     echo "chain    $tip_count record(s), epochs 0 to $tip_epoch linked, tip $tip_hash"
     echo "chain-source ${chain_source:-not stated}"

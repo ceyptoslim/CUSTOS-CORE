@@ -105,8 +105,14 @@ The label is earned by two conditions, not by where a file happens to sit and no
 Three labels, and no fourth. `in-tree reference copy, not independent` when the record is inside
 this checkout. `external path, chain not verified` when the record sits outside the checkout but
 either condition is missing, which includes a path supplied by hand and a chain whose source was
-not stated. `external anchor, chain verified to epoch 0` only when both hold. A path chosen by an
-operator proves nothing about who published it, so it cannot earn the claim on its own.
+not stated. `external anchor, chain verified: <count> record(s), tip epoch <n>` only when both
+hold. A path chosen by an operator proves nothing about who published it, so it cannot earn the
+claim on its own.
+
+The label names the tip, not only the root. An earlier wording, `chain verified to epoch 0`, was
+accurate about where the walk ended and easy to misread as "only epoch 0 was checked" once the
+chain had more than one record. The count and the tip epoch are read from the verified chain, so
+the label cannot claim more than the walk established.
 
 A chain that does not verify exits 2 rather than degrading to a weaker label, and a record that is
 not the tip exits 2 as well, because checking an old record against a newer chain would report

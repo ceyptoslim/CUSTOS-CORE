@@ -226,11 +226,22 @@ class TestAppendOnlyRule:
         # Chain verified and the source stated: the label may be claimed.
         out = run(base + ["--chain", str(chain), "--chain-source", "custos-anchors@test"])
         assert out.returncode == 0, out.stdout + out.stderr
-        assert "external anchor, chain verified to epoch 0" in out.stdout, out.stdout
+        # The claim names how far the chain reached. A fixed "to epoch 0" read
+        # as though only the root had been checked once the tip moved past it.
+        assert "external anchor, chain verified: 2 records, tip epoch 1" in out.stdout, out.stdout
 
         # Chain verified but no source stated: still not an external anchor.
         out = run(base + ["--chain", str(chain)])
         assert "external path, chain not verified" in out.stdout, out.stdout
+
+        # A chain of one names the tip it actually verified, without a plural.
+        solo = tmp_path / "solo"
+        solo.mkdir()
+        shutil.copy(EPOCH0, solo / "epoch-0.json")
+        out = run(["bash", str(CHECK), str(solo / "epoch-0.json"), str(RECORDS), "--origin",
+                   "external", "--chain", str(solo), "--chain-source", "custos-anchors@test"])
+        assert out.returncode == 0, out.stdout + out.stderr
+        assert "external anchor, chain verified: 1 record, tip epoch 0" in out.stdout, out.stdout
 
         # A correctly linked epoch that carries a tampered digest must still fail.
         # This is the attack the link alone cannot see: the write token appends a
