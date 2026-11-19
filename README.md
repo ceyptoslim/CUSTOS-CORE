@@ -118,7 +118,7 @@ Verified implementation:
 | Kubernetes/Helm deployment | 🔒 Enterprise | Moved to `custos-enterprise` (private). Public repo ships Docker/Docker Compose. |
 | Prometheus metrics | ✅ Implemented | `main.py:306` — `/metrics` endpoint |
 
-**Policy engine (v1.3.0+):** Three modes selectable via `CUSTOS_POLICY_ENGINE`: `regex` (default — pattern matching + Luhn validation, zero dependencies), `opa` (Rego enforcement via `policies/custos_governance.rego` and an OPA server — fails CLOSED if OPA is unavailable), and `hybrid` (regex first, then OPA, graceful fallback to regex). OPA and hybrid modes are CI-gated against a real OPA 1.0.0 server (`opa-integration` job). LORL-9.1 additionally runs its OWN separate OPA client for agent/treaty governance, which fails OPEN (best-effort).
+**Policy engine (v1.3.0+):** Three modes selectable via `CUSTOS_POLICY_ENGINE`: `regex` (default — pattern matching + Luhn validation, zero dependencies), `opa` (Rego enforcement via `policies/custos_governance.rego` and an OPA server — fails CLOSED if OPA is unavailable), and `hybrid` (regex first, then OPA, graceful fallback to regex). OPA and hybrid modes are CI-gated against a real OPA 1.0.0 server (`opa-integration` job). LORL-9.1 runs its own separate OPA client for agent/treaty governance, and that client fails CLOSED as of LORL-9.1 v0.2.0: an unreachable OPA returns a DENY rather than an allow.
 
 **Audit trail:** Tamper-evident hash-chained. NOT WORM/immutable storage. Events are append-only with SHA-256 content hashes and chained record hashes, but the storage backend (SQLite/PostgreSQL) is not write-once-read-many.
 
@@ -153,11 +153,11 @@ Verified implementation:
 
 **API endpoints:** `/health`, `/ready`, `/api/v1/labs` (register + list), `/api/v1/treaties` (propose, accept, reject, list), `/api/v1/audit`, `/api/v1/agents/execute`, `/api/v1/agents/governed-execute`
 
-**OPA fail mode:** OPA client fails OPEN — if OPA server is unavailable, returns `(True, [])` with a warning log. This is a permissive best-effort layer.
+**OPA fail mode:** the OPA client fails CLOSED as of LORL-9.1 v0.2.0. If the OPA server is unavailable it returns `(False, ["OPA policy server unavailable"])` with a warning log, `PolicyEnforcer` passes that through without a bypass, and `governed_executor.py` refuses execution when CUSTOS itself is unavailable. Verified against LORL-9.1 0.3.1 on 2026-11-19 in `lorl/governance/opa_client.py`, `policy_enforcer.py` and `governed_executor.py`.
 
-**CUSTOS fail mode:** CUSTOS client fails CLOSED — if CUSTOS server is unavailable, returns `{"allowed": False}`. The GovernedExecutor flags the result as `ungoverned: True` and logs to the event ledger, but does NOT block the agent's response from being returned.
+**CUSTOS fail mode:** the CUSTOS client fails CLOSED, and as of LORL-9.1 v0.2.0 the executor denies before dispatch. If the CUSTOS server is unavailable the client returns `{"allowed": False}`, and `GovernedExecutor.execute()` returns a refusal with `decision_stage: pre_execution`, `agent_executed: False`, `agent_output_withheld: True` and `fail_closed: True`, so the agent does not run at all. The post-execution check still exists and is recorded as an observation, because it cannot prevent an action that already happened, and the record says so. Known boundary: this gate sits on the agent's `execute()`, not on each tool call, so a side-effectful agent still needs the tool-level gate that CUSTOS-CORE's MCP proxy provides. Verified against LORL-9.1 0.3.1 on 2026-11-19 in `lorl/governance/governed_executor.py`.
 
-**Key distinction:** CUSTOS-CORE ships its own OPA/Rego enforcement (v1.3.0+, fail-closed). LORL-9.1 runs a separate OPA client for agent/treaty policy (fail-open, best-effort). Both are true — they are different layers:
+**Key distinction:** CUSTOS-CORE ships its own OPA/Rego enforcement (v1.3.0+, fail-closed). LORL-9.1 runs a separate OPA client for agent/treaty policy (fail-closed since LORL-9.1 v0.2.0). Both are true — they are different layers:
 
 - CUSTOS-CORE: policy engine with regex (default), OPA (fail-closed), and hybrid modes
 - LORL-9.1: separate OPA-backed agent governance layer on top of CUSTOS
@@ -254,7 +254,7 @@ External service integrations live in the application layer (Base44 apps), NOT i
 | YouTube Data API | InsightFlow, Media Bridge | Google OAuth 2.0 (youtube.upload, youtube.readonly, yt-analytics.readonly) |
 | Google OAuth | InsightFlow, Media Bridge | OAuth 2.0 (userinfo.email) |
 | CUSTOS-CORE API | LORL-9.1 (CustosClient) | JWT HS256 |
-| OPA policy server | CUSTOS-CORE (`opa`/`hybrid` modes, fail-closed) + LORL-9.1 (OPAClient, fail-open) | HTTP (localhost:8181) |
+| OPA policy server | CUSTOS-CORE (`opa` mode fails closed; `hybrid` falls back to regex) + LORL-9.1 (OPAClient, fail-closed since v0.2.0) | HTTP (localhost:8181) |
 | Ollama inference | LORL-9.1 (OllamaClient) | HTTP (localhost:11434) |
 
 Google OAuth credentials do NOT exist in the CUSTOS-CORE GitHub repository. The credentials belong to the Base44 application layer, which is a separate authentication domain from CUSTOS-CORE's JWT-based API security.
