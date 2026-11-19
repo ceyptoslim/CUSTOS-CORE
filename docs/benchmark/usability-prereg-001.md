@@ -89,3 +89,77 @@ PyPI still publishes as a maintenance line while 2.x is the current stable relea
 `pip install mcp` installs 2.x. Whether the core supports 2.x is undecided by this trial and is a
 decision to take after it, since new agent builders will mostly be on 2.x. A 2.x trial would be trial
 002 or later, with its own pre-registration.
+
+## Amendment 2 — 2026-11-19: the claim, the pool, the client step, and the clock
+
+Appended after commit `c1d4cb6e805e`. The text above is unchanged. This amendment records decisions
+only. The tag commit and the wheel hashes are not decisions and do not exist yet, so they go in
+Amendment 3; a document that named them now would be asserting facts it does not have.
+
+**1. The claim is amended: "one command" becomes the quickstart block.** The original claim says a
+stranger installs "with one command". A virtual environment is required, because a bare
+`python3 -m pip install` is not reliable for a stranger: on Windows `python3` is often a Store stub,
+on a fresh Mac it can trigger a developer-tools download, and Homebrew and Debian Pythons refuse it as
+an externally managed environment. Creating the environment and installing into it is two commands at
+minimum, and a per-OS one-liner would make the trial measure shell quoting. The amended claim is:
+
+> A stranger on macOS or Windows with Python and Claude Desktop can copy the README quickstart
+> verbatim (create a virtual environment, install the wheel, print the client config, paste it into
+> Claude Desktop), send one prompt, and see a CUSTOS denial, in under five minutes, without reading
+> source code.
+
+This loosens the claim and is recorded as a loosening. It is permitted only because no stranger has
+run and tag `usability-001` does not exist.
+
+**2. The pool is macOS and Windows.** Claude Desktop is Anthropic's native application for macOS and
+Windows, with no official Linux build, so "at least two of Linux, macOS, Windows (WSL)" is replaced.
+Participants must cover both operating systems, minimum three participants.
+
+**3. "Blocked call" is defined so that a participant can check it.** The original definition required
+the audit record to show the decision and the chain to verify. With only an in-memory chain nothing
+survives the call for a stranger to inspect, so zero-config mode must satisfy all three:
+
+- The audit chain persists to a SQLite file at a fixed location under the participant's home
+  directory, used when no database is configured, and its path is printed by the config command and
+  named in the quickstart.
+- The wheel ships a `verify` command that checks the persisted chain and reports its record count and
+  head, and the quickstart includes it.
+- A block counts only when both hold: the participant sees a CUSTOS denial in the tool result, and
+  `verify` succeeds over a chain that contains the denial.
+
+Both are inside the clock.
+
+**4. "Block observed" is defined, with a fixed prompt.** The model may paraphrase a denial. A block
+counts when the participant sees a CUSTOS denial in the tool result, or the reply states the call was
+blocked; a paraphrase that names no denial does not count. The quickstart supplies the exact prompt to
+send, so no part of the clock goes to deciding what to ask.
+
+**5. The config step is emitted, not hand-merged.** Hand-merging JSON into an existing
+`claude_desktop_config.json` is a common failure. The config command prints a complete block produced
+by `json.dumps`, so Windows backslashes survive escaping, together with the config file path for the
+participant's operating system. The README gives both cases: a new empty file, and an existing file
+that already lists servers.
+
+**6. The clock rule is fixed before the rehearsal.** Five minutes must cover creating the environment,
+installing, editing the config, restarting Claude Desktop, one prompt and a verify. That is tight, and
+adjusting the threshold after seeing a rehearsal time would be a degree of freedom. So the rule is
+fixed here: the threshold may change only by dated amendment, before the first stranger runs, and the
+amendment must disclose the rehearsal time that prompted it. Author runs are smoke tests and do not
+count toward the result.
+
+**7. CI and a rehearsal precede the one-shot tag.** CI runs the install path on Ubuntu, macOS and
+Windows runners: install the exact wheel into a fresh environment, launch the stdio server, drive it
+with a scripted MCP client, and assert both a denied call and a verified chain. Ubuntu is included
+although Claude Desktop is not: it proves the install path, not the GUI step, which no runner covers.
+The whole flow (wheel build, release, release-triggered quickstart job) is rehearsed first under the
+unprotected name `rehearsal-001`. `usability-001` is created only after a clean rehearsal, from the
+exact artifact the pull request produced, with its SHA-256 compared before publication.
+
+**8. Recruiting.** Participants are recruited from outside the project. If fewer than three complete,
+the result is "N=k, inconclusive", which is a statement about recruitment, not about the install path.
+
+**9. Disclosure of a branch force-push.** After this document first merged, an amended commit was
+force-pushed to the branch of its own pull request, PR 228, which had already merged. Main was never
+affected, the branch was deleted, and the orphaned commit `38e984124d41` is not on main.
+Non-fast-forward pushes are now blocked on all branches by ruleset 27634417, so the rule is enforced
+rather than remembered.
