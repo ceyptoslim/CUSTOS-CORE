@@ -8,6 +8,13 @@ open" format — no claims beyond what the code and tests demonstrate.
 ---
 
 ## [Unreleased]
+- Frozen observation sets are now guarded by tests (`tests/test_frozen_manifests.py`). Every file
+  inside `docs/red-proof-records/run-*/` must be pinned by that run's manifest and match it by
+  SHA-256, so a pull request that edits, adds or deletes a frozen file fails CI instead of passing
+  green. Written after a documentation PR edited run 38610363998's README, which that run's own
+  manifest pins at `fc9d18d8`, and only a hand re-hash caught it before merge. One known gap is
+  named explicitly in the test rather than hidden: run 40937305618's manifest never pins its
+  `README.md`.
 - Run 38495005061 frozen in-repo (`docs/red-proof-records/run-38495005061/`) with a
   SHA-256 manifest, closing the one re-walkability gap in the series: the v3 record that
   `FN-CUSTOS-REDPROOF-002` reconstructs had been retrieved through a proxy link and was
