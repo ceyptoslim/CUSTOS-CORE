@@ -1,0 +1,4 @@
+# Frozen observation sets are hashed byte for byte. Any end-of-line conversion on
+# checkout or commit would change file bytes and break every digest in their
+# manifests, so conversion is disabled for these paths.
+docs/red-proof-records/run-*/** -text
