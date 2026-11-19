@@ -255,3 +255,47 @@ amendment before the first stranger.
 **What this does not establish.** It does not make runs reproducible and it does not pin transitive
 dependencies. It makes differences between runs visible, which is all a first-run usability trial can
 honestly claim from an environment it does not control.
+
+## Amendment 6 — 2026-11-19: the instrument, fixed before the first stranger
+
+Appended after `d5e70e6944ce`. The text above is unchanged. Amendments 1 to 5 settled the artifact, the
+claim and the environment. This one settles the instrument: who is told what, what a transcript may
+have removed from it, when the clock starts, and what counts as help. Each of these was a degree of
+freedom the author could otherwise have exercised after seeing a result.
+
+**1. Consent and publication, before any run.** Each participant is told, before starting, in writing:
+that the trial tests the install path and not them; that a transcript or recording will be committed to
+the public repository and pinned in a manifest; that they may withdraw at any point before publication,
+in which case the run is reported as withdrawn and excluded from the count rather than counted as a
+pass or a fail; and that they are not named unless they ask to be. A run started without that notice is
+not a run and is not reported.
+
+**2. Redaction, and what "unedited" means.** The transcript is unedited in substance: no command,
+output, error, wait or detour is removed, reordered, summarised or tidied. Before commit, exactly four
+things may be replaced with a fixed placeholder: the participant's username, their home directory path,
+their hostname, and any credential or token that appears in the output. Each replacement is listed in a
+redaction note committed beside the transcript, naming the placeholder and the kind of string it
+replaced, never the original. The unredacted transcript is kept by the author and provided to any
+reader who asks, unless the participant objects, so the redaction can be checked instead of trusted.
+
+**3. The clock, and who holds it.** The participant holds the clock. It starts when they open this
+README's quickstart section and stops when the block is observed in the sense Amendment 2 fixed. Elapsed
+time comes from the participant's own terminal history, not from the author's recollection, and the
+timestamps of the first and last command are recorded with the run. If a participant cannot produce
+timestamps, the run is recorded as `elapsed time not measured` and cannot count as a PASS, because the
+five minutes is the claim under test. This changes no threshold, so no clock disclosure is owed here;
+the consent notice and the redaction are author-side work and take no time from the participant.
+
+**4. What counts as help.** No help means no substantive answer to any question about the task. Saying
+"I cannot answer that during the trial" is not help. Any answer that tells the participant what to type,
+where a file belongs, which command to run, or what an error means is help, and makes the run a FAIL.
+Reading this repository's code, tests or issues is source reading; reading the README is the task
+itself. Whether the author was present during the run is recorded either way.
+
+**5. Who counts as a stranger.** Someone who has not read this repository, has not run CUSTOS, and is
+neither the author nor an AI system. Prior use of Claude Desktop is allowed and recorded, because the
+trial tests the install path, not the client.
+
+**What this does not change.** The claim, the pass and failure definitions, the pool, the five-minute
+threshold and the artifact all stand as written above. These five items constrain the author, not the
+participant.
