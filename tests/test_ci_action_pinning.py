@@ -14,6 +14,17 @@ import re
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOWS = ROOT / ".github" / "workflows"
 
+# Workflows that live outside .github/workflows because they are copied into
+# other repositories: docs/design/anchor-repo/verify-anchors.yml runs in
+# custos-anchors on every push. They execute elsewhere, so they are held to the
+# same rule. A moving tag here pins nothing in the repository that runs it,
+# which is exactly how this file went unpinned without the guard noticing.
+TEMPLATES = ROOT / "docs" / "design" / "anchor-repo"
+
+
+def _workflow_files():
+    return sorted(WORKFLOWS.glob("*.yml")) + sorted(TEMPLATES.glob("*.yml"))
+
 # `uses: owner/repo[/path]@ref`. A ref is acceptable only as a full 40-hex
 # commit sha; local actions (./...) and docker:// references are out of scope
 # because neither resolves through a mutable upstream tag.
@@ -23,7 +34,7 @@ FLOATING_RE = re.compile(r"^[^@]+@v\d+(\.\d+)*$")
 
 
 def _uses():
-    files = sorted(WORKFLOWS.glob("*.yml"))
+    files = _workflow_files()
     assert files, "no workflow files found, so this guard would pass vacuously"
     found = []
     for path in files:
@@ -52,7 +63,7 @@ def test_no_action_reference_floats_on_a_version_tag():
 def test_each_pinned_line_records_the_release_it_resolves_to():
     """A bare sha is unreadable to a reviewer, so the version must ride along."""
     missing = []
-    for path in sorted(WORKFLOWS.glob("*.yml")):
+    for path in _workflow_files():
         for line in path.read_text(encoding="utf-8").splitlines():
             if "uses:" not in line or "actions/" not in line:
                 continue
