@@ -23,6 +23,7 @@ import hashlib
 import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -30,6 +31,7 @@ import pytest
 ROOT = Path(__file__).resolve().parents[1]
 DIGEST = ROOT / "scripts" / "anchor_digest.sh"
 CHECK = ROOT / "scripts" / "check_anchors.sh"
+BASH = shutil.which("bash")
 RECORDS = ROOT / "docs" / "red-proof-records"
 EPOCH0 = ROOT / "docs" / "design" / "anchor-epoch-0.json"
 
@@ -40,6 +42,26 @@ FIXTURE_EXPECTED = "1a7bbf84ff34ef19e39d74519d7dae98b0945bbc12e04e174ea928ea5b1f
 
 def run(cmd, **kw):
     return subprocess.run(cmd, capture_output=True, text=True, **kw)
+
+
+def shasum_only_path(tmp_path):
+    """A PATH holding shasum and the core tools but no sha256sum, as on macOS."""
+    bin_dir = tmp_path / "shimbin"
+    bin_dir.mkdir(exist_ok=True)
+    for tool in ("find", "sort", "cut", "sed", "basename"):
+        src = shutil.which(tool)
+        assert src, f"{tool} missing from this machine"
+        (bin_dir / tool).symlink_to(src)
+    shasum = bin_dir / "shasum"
+    shasum.write_text(
+        f"#!{sys.executable}\n"
+        "import hashlib, sys\n"
+        "args = [a for a in sys.argv[1:] if a not in ('-a', '256', '--')]\n"
+        "data = open(args[-1], 'rb').read() if args else sys.stdin.buffer.read()\n"
+        "print(hashlib.sha256(data).hexdigest() + '  ' + (args[-1] if args else '-'))\n"
+    )
+    shasum.chmod(0o755)
+    return str(bin_dir)
 
 
 @pytest.fixture()
@@ -53,12 +75,23 @@ def fixture_run(tmp_path):
 
 
 class TestCanonicalForm:
-    def test_fixture_matches_the_pinned_value(self, fixture_run):
+    def test_fixture_matches_the_pinned_value(self, fixture_run, tmp_path):
         out = run(["bash", str(DIGEST), "per-run", str(fixture_run)])
         assert out.returncode == 0, out.stderr
         assert out.stdout.strip() == FIXTURE_EXPECTED, (
             "the canonical form moved; every anchored digest is now unreproducible "
             "without a new epoch"
+        )
+
+        # The same bytes through shasum instead of sha256sum, which is the only
+        # one macOS ships. A reader on a Mac must get this number, not an error.
+        fallback = run(
+            [BASH, str(DIGEST), "per-run", str(fixture_run)],
+            env={"PATH": shasum_only_path(tmp_path)},
+        )
+        assert fallback.returncode == 0, fallback.stderr
+        assert fallback.stdout.strip() == FIXTURE_EXPECTED, (
+            "sha256sum and shasum disagree, so the digest depends on the tool"
         )
 
     def test_independent_implementation_agrees(self, fixture_run):
@@ -109,10 +142,15 @@ class TestEpochRecord:
         assert len(rec["aggregate"]) == 64
 
     def test_pinned_script_digest_matches_the_tree(self):
-        rec = json.loads(EPOCH0.read_text())
+        # The newest in-tree record is the one that must pin the current scheme.
+        # Older epochs are history and are not rewritten when the script changes.
+        records = sorted((ROOT / "docs" / "design").glob("anchor-epoch-*.json"))
+        assert records, "no anchor records in the tree"
+        newest = max((json.loads(p.read_text()) for p in records), key=lambda r: r["epoch"])
         actual = hashlib.sha256(DIGEST.read_bytes()).hexdigest()
-        assert rec["scheme"]["script_sha256"] == actual, (
-            "the digest scheme changed; anchor a new epoch rather than editing epoch 0"
+        assert newest["scheme"]["script_sha256"] == actual, (
+            f"epoch {newest['epoch']} pins {newest['scheme']['script_sha256'][:12]} but the "
+            f"script is {actual[:12]}; a scheme change needs a new epoch"
         )
 
     def test_aggregate_matches_the_listing(self):

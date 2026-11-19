@@ -133,7 +133,8 @@ that could vary was checked rather than assumed:
 | File modes | Not hashed. Measured: `chmod 600` leaves the digest unchanged. |
 | Line endings | `.gitattributes` sets `-text` on the frozen paths, so no checkout converts bytes. |
 | Filenames containing newlines | Unsupported, and no frozen record has one. |
-| Tool versions | `sha256sum`, `sort`, `cut`, `sed` from coreutils, plus `python3` for `anchor-hash` and `record`. The record must contain no floats, because float formatting can differ between Python versions; epoch is an integer and every other field is a string. |
+| `sha256` implementation | `sha256sum` when present, `shasum -a 256` otherwise, resolved once at startup. Measured: both produce `96219e94…` on the same tree. With neither present the script exits 4 and prints nothing, so nobody quotes a number from a machine that could not compute it. |
+| Tool versions | `sort`, `cut`, `sed` from coreutils, plus `python3` for `anchor-hash` and `record`. The record must contain no floats, because float formatting can differ between Python versions; epoch is an integer and every other field is a string. |
 | Empty run directory | Degenerate, yields the empty-stream digest. The manifest guard fails such a directory first, since every file present must be pinned. |
 
 ## Changing the scheme
@@ -143,6 +144,16 @@ epoch, and in its commit message put one line naming the script digest it replac
 is visible to anyone holding the previous tip without them having to diff the script. Before the
 first anchor the same information goes in the amendment table below, and epoch 0 is simply
 rewritten.
+
+## Scheme change log
+
+Changes after the first anchor, each one an epoch of its own:
+
+| Epoch | Script digest | Replaced | Reason |
+|---|---|---|---|
+| 1 | `019bc008…` | `1257fc26…` | The script called `sha256sum` unconditionally, so on macOS, which ships `shasum` and not `sha256sum`, it exited 127 and printed nothing. A reader there could not reproduce the number at all. The canonical form is untouched: the aggregate is still `96219e94…`, and only the tool that computes the hash changed. |
+
+The writer anchors a scheme change even when every digest is identical, because a record pins the script: a new script under an old anchor would claim a reproducibility nobody can check.
 
 ## Amended before publication
 

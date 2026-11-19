@@ -61,10 +61,20 @@ jobs:
           newest="$(ls -1 "$RUNNER_TEMP"/anchors/epoch-*.json | sort -V | tail -1)"
           current_aggregate="$(bash scripts/anchor_digest.sh aggregate docs/red-proof-records)"
           anchored_aggregate="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["aggregate"])' "$newest")"
-          if [ "$current_aggregate" = "$anchored_aggregate" ]; then
-            echo "nothing to anchor: the aggregate already matches the newest record"
+          current_script="$(python3 -c 'import hashlib,sys;print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' scripts/anchor_digest.sh)"
+          anchored_script="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["scheme"]["script_sha256"])' "$newest")"
+          # A scheme change is an epoch even when every digest is identical: the
+          # record pins the script, so a new script under an old anchor would
+          # claim a reproducibility nobody can check.
+          if [ "$current_aggregate" = "$anchored_aggregate" ] && [ "$current_script" = "$anchored_script" ]; then
+            echo "nothing to anchor: the aggregate and the script digest both match the newest record"
             echo "write=no" >> "$GITHUB_OUTPUT"
             exit 0
+          fi
+          if [ "$current_aggregate" != "$anchored_aggregate" ]; then
+            echo "reason: the aggregate moved"
+          else
+            echo "reason: the digest scheme changed, script $anchored_script became $current_script"
           fi
           prev_epoch="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1]))["epoch"])' "$newest")"
           prev_hash="$(bash scripts/anchor_digest.sh anchor-hash "$newest")"
