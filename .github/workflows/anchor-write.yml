@@ -33,6 +33,16 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
+      - name: Check the write token is present
+        env:
+          TOKEN: ${{ secrets.ANCHOR_WRITE_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::error::ANCHOR_WRITE_TOKEN is empty. The anchor-write environment secret is missing or was removed, so this run cannot write an epoch. Failing rather than skipping."
+            exit 1
+          fi
+          echo "write token present"
+
       - name: Fetch the existing chain
         run: |
           set -euo pipefail
