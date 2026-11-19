@@ -110,6 +110,9 @@ class TestAppendOnlyRule:
     def test_clean_tree_passes(self):
         out = run(["bash", str(CHECK), str(EPOCH0), str(RECORDS)])
         assert out.returncode == 0, out.stdout + out.stderr
+        # The record it compared against is named, and named honestly: a green
+        # run against the in-tree copy is not an external verification.
+        assert "in-tree reference copy, not independent" in out.stdout, out.stdout
 
     def test_edited_run_fails(self, tmp_path):
         root = tmp_path / "records"
@@ -149,6 +152,13 @@ class TestAppendOnlyRule:
         out = run(["bash", str(CHECK), str(rec), str(root)])
         assert out.returncode == 1
         assert "MISSING" in out.stdout
+
+        # An external anchor that cannot be read fails closed. Falling back to
+        # the in-tree copy would turn an unreachable anchor into a green run.
+        missing = tmp_path / "no-such-anchor.json"
+        out = run(["bash", str(CHECK), str(missing), str(root), "--origin", "external"])
+        assert out.returncode == 2, out.stdout + out.stderr
+        assert "refusing to fall back" in out.stdout + out.stderr
 
 
 class TestLineEndingGuard:

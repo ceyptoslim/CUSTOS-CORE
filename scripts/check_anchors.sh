@@ -6,13 +6,56 @@
 # added over time and are anchored at the next epoch. Nothing else is allowed to
 # move.
 #
-# Usage: check_anchors.sh <anchor-record.json> <root>
-# Exit:  0 unchanged, 1 drift or a missing anchored run, 2 usage/parse error.
+# Usage: check_anchors.sh <anchor-record.json> <root> [--origin in-tree|external]
+# Exit:  0 unchanged, 1 drift or a missing anchored run, 2 usage/parse error or an
+#        external anchor that could not be read (fail closed).
+#
+# Every run prints which record it compared against, because a green run against
+# the in-tree reference copy is not an external verification and must never read
+# as one.
 set -euo pipefail
 
-[ $# -eq 2 ] || { echo "usage: $0 <anchor-record.json> <root>" >&2; exit 2; }
-record="$1"; root="$2"
-[ -f "$record" ] || { echo "anchor record not found: $record" >&2; exit 2; }
+[ $# -ge 2 ] || { echo "usage: $0 <anchor-record.json> <root> [--origin in-tree|external]" >&2; exit 2; }
+record="$1"; root="$2"; shift 2
+origin=""
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --origin) origin="${2:-}"; shift 2 ;;
+        *) echo "unknown argument: $1" >&2; exit 2 ;;
+    esac
+done
+repo_root="$(cd "$(dirname "$0")/.." && pwd)"
+# Canonicalise so a relative path and an absolute path to the same file are
+# classified the same way. A record that does not exist keeps its raw path.
+if [ -f "$record" ]; then
+    record_abs="$(cd "$(dirname "$record")" && pwd)/$(basename "$record")"
+else
+    record_abs="$record"
+fi
+if [ -z "$origin" ]; then
+    case "$record_abs" in
+        "$repo_root"/*) origin="in-tree" ;;
+        *) origin="external" ;;
+    esac
+fi
+case "$origin" in
+    in-tree|external) ;;
+    *) echo "unknown origin: $origin" >&2; exit 2 ;;
+esac
+if [ ! -f "$record" ]; then
+    if [ "$origin" = "external" ]; then
+        echo "FAIL     external anchor unreadable: $record" >&2
+        echo "         refusing to fall back to the in-tree copy; an unreachable anchor is not a pass" >&2
+    else
+        echo "anchor record not found: $record" >&2
+    fi
+    exit 2
+fi
+if [ "$origin" = "in-tree" ]; then
+    echo "source   $record (in-tree reference copy, not independent)"
+else
+    echo "source   $record (external anchor)"
+fi
 
 here="$(cd "$(dirname "$0")" && pwd)"
 status=0
