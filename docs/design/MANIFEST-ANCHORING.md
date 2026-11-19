@@ -84,6 +84,25 @@ tree no longer matches a record the repository cannot alter. It does not show th
 anchored is what executed on a runner, it is not third-party corroboration of the observation
 sets, and it does not move `custody_verified` off False.
 
+## What earns the external label
+
+The label is earned by two conditions, not by where a file happens to sit and not by a flag:
+
+1. The record was fetched from the anchor repository's fixed address, and the caller states that
+   address with `--chain-source`.
+2. Its `prev_anchor_hash` chain walks back to epoch 0 without a break, and the record checked is
+   the chain tip.
+
+Three labels, and no fourth. `in-tree reference copy, not independent` when the record is inside
+this checkout. `external path, chain not verified` when the record sits outside the checkout but
+either condition is missing, which includes a path supplied by hand and a chain whose source was
+not stated. `external anchor, chain verified to epoch 0` only when both hold. A path chosen by an
+operator proves nothing about who published it, so it cannot earn the claim on its own.
+
+A chain that does not verify exits 2 rather than degrading to a weaker label, and a record that is
+not the tip exits 2 as well, because checking an old record against a newer chain would report
+agreement with a state nobody is claiming.
+
 **Until the external repository exists, nothing here is external anchoring.** The check reads
 `docs/design/anchor-epoch-0.json`, a reference copy that a pull request can edit along with
 everything else, so what CI enforces today is the append-only rule against accidents. Every run
@@ -91,6 +110,16 @@ prints the record it compared against and labels it `in-tree reference copy, not
 a green run cannot be read as an external verification. When the anchor repository is live the
 check is given `--origin external`, and an unreadable or missing anchor then exits 2 rather than
 falling back to the copy, because an unreachable anchor is not a pass.
+
+## Amended before publication
+
+`docs/design/anchor-epoch-0.json` was amended on 2026-11-19, before any record was published
+anywhere, when the script gained the `anchor-hash` mode and the chain labels. The recorded script
+digest moved from `0ac9b319…` to `6b7dd37f…` and the record's own anchor hash moved from
+`7c6a991e…` to `cf1661db…`. Every run digest and the aggregate are unchanged, because the
+canonical form itself did not change: the aggregate is still `96219e94…`. Once a record is
+published, the same edit would be visible as a broken chain and a changed anchor hash, which is
+the point.
 
 ## Superseded values
 

@@ -15,6 +15,10 @@
 #   anchor_digest.sh listing   <root>               -> "<digest>  <run-name>" per run
 #   anchor_digest.sh aggregate <root>               -> one digest over the listing
 #   anchor_digest.sh record    <root> <commit> <epoch> <prev-anchor-hash>
+#   anchor_digest.sh anchor-hash <record.json>      -> the record's own hash
+#
+# anchor-hash is sha256 over the record serialised with sorted keys, no spaces,
+# one trailing newline. The chain in check_anchors.sh links records by it.
 #
 # Paths containing newlines are not supported; no frozen record has one, and the
 # guard fails loudly rather than silently hashing something else.
@@ -25,6 +29,15 @@ canonical_lines() {
     ( cd "$dir" && find . -type f | LC_ALL=C sort | while IFS= read -r f; do
         printf '%s  %s\n' "$(sha256sum -- "$f" | cut -d' ' -f1)" "${f#./}"
     done ) | LC_ALL=C sort
+}
+
+anchor_hash() {
+    python3 - "$1" <<'PYEOF'
+import hashlib, json, sys
+rec = json.load(open(sys.argv[1]))
+body = json.dumps(rec, sort_keys=True, separators=(",", ":")) + "\n"
+print(hashlib.sha256(body.encode()).hexdigest())
+PYEOF
 }
 
 per_run() {
@@ -70,5 +83,6 @@ case "${1:-}" in
     listing)   [ $# -eq 2 ] || { echo "usage: $0 listing <root>" >&2; exit 2; }; listing "$2" ;;
     aggregate) [ $# -eq 2 ] || { echo "usage: $0 aggregate <root>" >&2; exit 2; }; aggregate "$2" ;;
     record)    [ $# -eq 5 ] || { echo "usage: $0 record <root> <commit> <epoch> <prev-anchor-hash>" >&2; exit 2; }; record "$2" "$3" "$4" "$5" ;;
-    *) echo "usage: $0 {per-run|listing|aggregate|record} ..." >&2; exit 2 ;;
+    anchor-hash) [ $# -eq 2 ] || { echo "usage: $0 anchor-hash <record.json>" >&2; exit 2; }; anchor_hash "$2" ;;
+    *) echo "usage: $0 {per-run|listing|aggregate|record|anchor-hash} ..." >&2; exit 2 ;;
 esac
