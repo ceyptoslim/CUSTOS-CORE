@@ -11,6 +11,8 @@ A multi-layer AI governance platform composed of:
 
 CUSTOS-CORE and LORL-9.1 provide the open-core governance and agent infrastructure. The Base44 applications provide application-specific workflows, integrations, operational interfaces, and commercial services built on top of that foundation.
 
+**Testing the install path?** The first-run usability trial is open in Discussions: [Help test: a five-minute install trial](../../discussions/243). It measures the `usability-001` tag, so use the tag-pinned README linked there rather than this page.
+
 ---
 
 ## Quickstart: watch a call being blocked
