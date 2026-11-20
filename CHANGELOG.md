@@ -8,6 +8,14 @@ open" format — no claims beyond what the code and tests demonstrate.
 ---
 
 ## [Unreleased]
+- The README's "Enterprise Capabilities" section described PostgreSQL audit persistence, OTLP
+  tracing, tenant authorization binding, the DNS-rebinding SSRF guard, the per-target circuit
+  breaker and multi-tenant policy persistence as "gated behind enterprise licensing". They are not:
+  all of them ship in the AGPL-3.0 core, and neither public repository contains a licence check, an
+  entitlement flag or a feature gate. The section is now "Open Core and the Enterprise Tier", names
+  the file each capability lives in, and states that the enterprise tier adds the `/v1/execute`
+  router and the Kubernetes/Helm packaging rather than withheld features. Found on 2026-11-20 while
+  checking an outside review of this repository against the tree.
 - Run 40937305618's `README.md` is now pinned. The manifest never listed it, so the file could
   change without a re-walk noticing. The pin was added on 2026-11-19 as one appended row, with no
   existing line altered, and the guard's `KNOWN_UNPINNED` entry removed in the same commit.
