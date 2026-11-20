@@ -339,3 +339,50 @@ fails to install instead of installing silently.
 
 **What is unchanged.** The claim, the pass and failure definitions, the pool requirement, the
 five-minute threshold and the artifact all stand as written above.
+
+## Amendment 8 — 2026-11-19: the README moved after the tag, and which README the trial measures
+
+Appended after `29bf5df00362`. The text above is unchanged.
+
+**What moved.** Between the tag commit `fc2f7b1c` and `29bf5df00362`, the README changed by seven lines,
+all of them in the LORL-9.1 section and the honest-claims table: the two fail-mode paragraphs, the
+verification line, the key-distinction sentence, one integrations row and one claims row. None is in the
+quickstart and none describes the install path this trial measures. They corrected statements about a
+different repository, which is why they could not wait for a trial amendment.
+
+**The quickstart block is byte-identical.** Extracted from both refs, from the
+`## Quickstart: watch a call being blocked` heading to the next top-level heading, the section hashes to
+
+    sha256 608bcd7321deb7f6dee1c6d809c757a0d5aee0ade2c6c26107507c0afecaec9e   2626 bytes, 70 lines
+
+at `fc2f7b1ca2e67e82f75e550c725a8ebef3f44228` and at `29bf5df00362132ce86fc7d85017819b0a67f444`. The
+text a stranger is given to copy is the same text this document covers.
+
+**Which README the trial measures.** The measurement is the README at the tag commit. Participants are
+sent the commit-pinned page, not the repository front page:
+
+    https://github.com/ceyptoslim/CUSTOS-CORE/blob/fc2f7b1ca2e67e82f75e550c725a8ebef3f44228/README.md
+
+Fetched anonymously on 2026-11-19, that URL and `.../blob/usability-001/README.md` both return HTTP 200
+with the same bytes, sha256 `c9c1492b…`. The commit form is used because it survives anything happening
+to the tag; the tag form is equivalent while the tag exists.
+
+**The recruitment post is not the invitation.** Amendment 7 fixed that the invitation carries the link,
+the clock rule and nothing else. A public recruitment post may also carry the reporting template
+(operating system, client version, `pip freeze` output, elapsed time, transcript), because those are the
+evidence requirements this document already imposes. Such a post discloses no install command, no config
+snippet, and no hint about what the result should look like; the only tool it names is `pip freeze`,
+which Amendment 5 already requires in every transcript. Whoever volunteers then receives the invitation: the pinned link and the clock
+rule.
+
+**One wheel, not two.** The rehearsal and the trial were served the same bytes from the same commit, so
+there is a single wheel digest to record, `b58f3207…`, already in Amendment 4. The second digest in this
+document, `44501ff1…`, is the file digest of the environment record, not a second wheel.
+
+**The clock numbers, checked against the threshold.** Amendment 4 records 10.0 seconds on the rehearsal
+run and 13.6 seconds on the trial tag's run, against a 300-second threshold. Neither is near it, and the
+disclosure it requires is already in the text: what those seconds do not cover is the human part,
+reading, editing a configuration file, restarting the client and sending the prompt.
+
+**What is unchanged.** The claim, the pass and failure definitions, the pool, the five-minute threshold,
+the artifact and the single tag all stand as written above.
