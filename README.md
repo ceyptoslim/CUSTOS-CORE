@@ -166,27 +166,45 @@ Verified implementation:
 
 ---
 
-## Enterprise Capabilities
+## Open Core and the Enterprise Tier
 
-Features available in the enterprise tier, verified as implemented in the codebase but gated behind enterprise licensing:
+The public repositories are the product. Every primitive below ships in the AGPL-3.0 code and runs
+without a licence key: there is no runtime entitlement check and no feature flag in either
+repository, so a self-hosted deployment is not missing any of it.
 
-### CUSTOS-CORE Enterprise (Private Repo)
-- `/v1/execute` enforcement firewall (blocks/forwards targets) — assembled by `custos-enterprise` router
-- DNS-rebinding SSRF protection (`getaddrinfo` resolution)
-- Per-target circuit breaker (not global)
-- Production fail-closed authentication
-- Tenant authorization binding (cross-tenant = 403)
-- PostgreSQL audit backend
-- OTLP/OpenTelemetry tracing
-- Kubernetes/Helm deployment (see `custos-enterprise` — private repo)
-- Multi-tenant policy persistence
-- Policy diff/replay/snapshot
+### In the public core (CUSTOS-CORE, AGPL-3.0)
 
-### LORL-9.1 Enterprise
-- Ollama/Llama3 integration (zero-cost local inference)
-- CUSTOS governance wiring (CustosClient + GovernedExecutor)
+| Capability | Where |
+| --- | --- |
+| Pre-flight action gate, deny-by-default (`/v1/evaluate`) | `custos/action_gate.py`, `main.py` |
+| DNS-rebinding SSRF guard (`getaddrinfo` resolution) | `custos/execution.py` |
+| Per-target circuit breaker (not global) | `custos/execution.py` |
+| Fail-closed authentication | `custos/auth.py` |
+| Tenant authorization binding (cross-tenant = 403) | `main.py` |
+| Hash-chained audit trail | `custos/audit.py` |
+| PostgreSQL audit backend | `custos/audit.py` |
+| Multi-tenant policy persistence | `custos/policy_store.py` |
+| Policy diff, replay and snapshot | `custos/policy_diff.py`, `custos/replay.py`, `custos/snapshot.py` |
+| OTLP/OpenTelemetry tracing | `custos/tracing.py` |
+| RFC 3161 chain-head custody | `custos/custody.py` |
+
+### In the public orchestration layer (LORL-9.1, AGPL-3.0)
+
+- Ollama/Llama3 integration for local inference
+- CUSTOS governance wiring (`CustosClient` + `GovernedExecutor`), which evaluates before dispatch
 - OPA/Rego policy enforcement
-- Governed agent execution API endpoint
+- Governed agent execution endpoint
+
+### What the enterprise tier adds (private, BSL 1.1)
+
+Packaging and assembly rather than withheld features:
+
+- `/v1/execute` enforcement firewall, a forwarding service that blocks or forwards targets, assembled
+  from the public `custos/execution.py` and `custos/firewall.py` components
+- Kubernetes and Helm packaging for multi-tenant deployment
+
+An earlier revision of this section listed the core features above as gated behind enterprise
+licensing. They were not, and the correction is recorded here rather than quietly applied.
 
 ---
 
